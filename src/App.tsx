@@ -783,3 +783,366 @@ export default function App() {
     mood: 0,
     search: 0,
   });
+
+  const setFeedTabLoading = useCallback((tab: FeedLoadTab, on: boolean) => {
+    setFeedLoading((prev) => (prev[tab] === on ? prev : { ...prev, [tab]: on }));
+  }, []);
+
+  const showFeedSkeleton = useMemo(() => {
+    if (activeTab === 'home') {
+      return feedLoading.home && homeSections.length === 0 && quickPicks.length === 0;
+    }
+    if (activeTab === 'explore') {
+      return feedLoading.explore && exploreSections.length === 0;
+    }
+    if (activeTab === 'mood') return feedLoading.mood && sections.length === 0;
+    if (activeTab === 'search') return feedLoading.search && sections.length === 0;
+    return false;
+  }, [activeTab, feedLoading, homeSections, exploreSections, sections, quickPicks]);
+
+  const tabHasFeedContent = useMemo(() => {
+    if (activeTab === 'home') return homeSections.length > 0 || quickPicks.length > 0;
+    if (activeTab === 'explore') return exploreSections.length > 0;
+    if (activeTab === 'mood' || activeTab === 'search') return sections.length > 0;
+    return true;
+  }, [activeTab, homeSections, exploreSections, sections, quickPicks]);
+
+  const openPlayer = useCallback(() => {
+    setPrevTab((prev) => (prev === 'player' ? 'home' : prev));
+    setActiveLyricLine(activeLyricLineRef.current);
+    setActiveTab('player');
+  }, []);
+
+  useEffect(() => {
+    if (activeTab !== 'player') return;
+    setActiveLyricLine(activeLyricLineRef.current);
+  }, [activeTab]);
+
+  const openMoodsGenres = useCallback(() => navigateTo('moods_genres'), [navigateTo]);
+
+  const changeLanguage = useCallback(
+    (newLang: Language) => {
+      if (newLang === lang) return;
+      try {
+        localStorage.setItem('zenith_lang', newLang);
+      } catch (err) {
+        console.debug('App', err);
+      }
+      setLang(newLang);
+      clearHomeBrowseCache();
+      const dataSeq = ++feedSeqRef.current.home;
+      setFeedTabLoading('home', true);
+      setHomeSections([]);
+      setQuickPicks([]);
+      getHomeFeed(newLang)
+        .then(({ sections: nextHome, quickPicks: picks }) => {
+          if (dataSeq !== feedSeqRef.current.home) return;
+          setHomeSections(stableOrderSections(nextHome));
+          setQuickPicks(picks);
+        })
+        .catch((err) => console.debug('App', err))
+        .finally(() => {
+          if (dataSeq === feedSeqRef.current.home) setFeedTabLoading('home', false);
+        });
+      const exploreSeq = ++feedSeqRef.current.explore;
+      getExplore(newLang)
+        .then((data) => {
+          if (exploreSeq !== feedSeqRef.current.explore) return;
+          setExploreSections(stableOrderSections(data));
+        })
+        .catch((err) => console.debug('App', err));
+    },
+    [lang, setFeedTabLoading]
+  );
+
+  useEffect(() => {
+    document.documentElement.lang = lang;
+    const tt = translations[lang];
+    invoke('set_tray_labels', {
+      play: tt.trayPlayPause,
+      next: tt.trayNext,
+      show: tt.trayShow,
+      quit: tt.trayQuit,
+    }).catch((err) => console.debug('App', err));
+  }, [lang]);
+
+  const debouncedSearch = useDebounce(searchQuery, 400);
+
+  const handleSearch = useCallback(
+    (rawQuery: string, language: Language = lang) => {
+      const query = rawQuery.trim().slice(0, MAX_SEARCH_LENGTH).trim();
+      if (!query) return;
+      const dataSeq = ++feedSeqRef.current.search;
+      setFeedTabLoading('search', true);
+      setSections([]);
+      const safety = window.setTimeout(() => setFeedTabLoading('search', false), 15000);
+      navigateTo('search');
+      setActiveMood(null);
+      setBrowseEmptyKind(null);
+      searchMusic(query, language)
+        .then((data) => {
+          if (dataSeq !== feedSeqRef.current.search) return;
+          setSections(stableOrderSections(data));
+        })
+        .catch(() => {
+          if (dataSeq !== feedSeqRef.current.search) return;
+          setSections(stableOrderSections([]));
+          pushToast(translations[language].searchFailed, 'error');
+        })
+        .finally(() => {
+          window.clearTimeout(safety);
+          setFeedTabLoading('search', false);
+        });
+    },
+    [lang, navigateTo, setFeedTabLoading]
+  );
+
+  const loadHome = useCallback(
+    (language: Language = lang, navigate = true) => {
+      const dataSeq = ++feedSeqRef.current.home;
+      setFeedTabLoading('home', true);
+      if (navigate) {
+        navigateTo('home');
+        setSearchQuery('');
+        setActiveMood(null);
+        setBrowseEmptyKind(null);
+        clearHomeBrowseCache();
+      }
+      const safety = window.setTimeout(() => setFeedTabLoading('home', false), 8000);
+      getHomeFeed(language)
+        .then(({ sections: nextHome, quickPicks: picks }) => {
+          if (dataSeq !== feedSeqRef.current.home) return;
+          const normalizedHome = stableOrderSections(nextHome);
+          setHomeSections(normalizedHome);
+          setQuickPicks(picks);
+          try {
+            const allTracks = [
+              ...picks,
+              ...normalizedHome.flatMap((s) => s.items).filter((i) => i.type === 'track'),
+            ];
+            startBackgroundPrefetch(allTracks);
+            allTracks.slice(0, 3).forEach((t) => prefetchStream(t));
+          } catch (err) {
+            console.debug('App', err);
+          }
+        })
+        .catch(() => {
+          if (dataSeq !== feedSeqRef.current.home) return;
+        })
+        .finally(() => {
+          window.clearTimeout(safety);
+          setFeedTabLoading('home', false);
+        });
+    },
+    [lang, navigateTo, setFeedTabLoading, prefetchStream]
+  );
+
+  const searchLangRef = useRef(lang);
+  useEffect(() => {
+    const langChanged = searchLangRef.current !== lang;
+    searchLangRef.current = lang;
+    if (!debouncedSearch.trim()) return;
+    if (langChanged && activeTabRef.current !== 'search') return;
+    handleSearch(debouncedSearch, lang);
+  }, [debouncedSearch, lang, handleSearch]);
+
+  useEffect(() => {
+    if (searchQuery.trim() !== '' || activeTab !== 'search') return;
+    loadHome(lang);
+  }, [searchQuery, activeTab, lang, loadHome]);
+
+  const loadExplore = useCallback(
+    (language: Language = lang) => {
+      const dataSeq = ++feedSeqRef.current.explore;
+      setFeedTabLoading('explore', true);
+      navigateTo('explore');
+      setSearchQuery('');
+      setActiveMood(null);
+      setBrowseEmptyKind(null);
+      clearHomeBrowseCache();
+      const safety = window.setTimeout(() => setFeedTabLoading('explore', false), 8000);
+      getExplore(language)
+        .then((data) => {
+          if (dataSeq !== feedSeqRef.current.explore) return;
+          setExploreSections(stableOrderSections(data));
+        })
+        .catch(() => {
+          if (dataSeq !== feedSeqRef.current.explore) return;
+        })
+        .finally(() => {
+          window.clearTimeout(safety);
+          setFeedTabLoading('explore', false);
+        });
+    },
+    [lang, navigateTo, setFeedTabLoading]
+  );
+
+  const loadMood = useCallback(
+    (categoryId: string, browseId: string, language: Language = lang) => {
+      const dataSeq = ++feedSeqRef.current.mood;
+      setFeedTabLoading('mood', true);
+      navigateTo('mood');
+      setSearchQuery('');
+      setBrowseTitle(null);
+      setBrowseEmptyKind(null);
+      setActiveMood(categoryId);
+      const safety = window.setTimeout(() => setFeedTabLoading('mood', false), 8000);
+      getMoodPlaylist(browseId, language)
+        .then((data) => {
+          if (dataSeq !== feedSeqRef.current.mood) return;
+          setSections(stableOrderSections(data));
+        })
+        .catch(() => {
+          if (dataSeq !== feedSeqRef.current.mood) return;
+          setSections(stableOrderSections([]));
+        })
+        .finally(() => {
+          window.clearTimeout(safety);
+          setFeedTabLoading('mood', false);
+        });
+    },
+    [lang, navigateTo, setFeedTabLoading]
+  );
+
+  const openBrowsePage = useCallback(
+    (item: Track) => {
+      const dataSeq = ++feedSeqRef.current.mood;
+      setFeedTabLoading('mood', true);
+      setSearchQuery('');
+      setActiveMood(browseMoodId(item.id));
+      setBrowseTitle(item.title);
+      setBrowseEmptyKind(null);
+      setSections([]);
+      navigateTo('mood');
+      const safety = window.setTimeout(() => setFeedTabLoading('mood', false), 12000);
+      getMoodPlaylist(item.id, lang)
+        .then((data) => {
+          if (dataSeq !== feedSeqRef.current.mood) return;
+          setSections(stableOrderSections(data));
+        })
+        .catch(() => {
+          if (dataSeq !== feedSeqRef.current.mood) return;
+          setSections(stableOrderSections([]));
+          pushToast(translations[lang].playlistOpenFailed, 'error');
+        })
+        .finally(() => {
+          window.clearTimeout(safety);
+          if (dataSeq === feedSeqRef.current.mood) setFeedTabLoading('mood', false);
+        });
+    },
+    [lang, navigateTo, setFeedTabLoading]
+  );
+
+  const lastCollectionRef = useRef<Track | null>(null);
+  const openCollectionPage = useCallback(
+    async (collection: Track) => {
+      const dataSeq = ++feedSeqRef.current.mood;
+      lastCollectionRef.current = collection;
+      const plain = toPlainPlaylistId(collection.id);
+      const emptyKind = plain === 'SE' ? 'episodes' : 'collection';
+      setFeedTabLoading('mood', true);
+      setSearchQuery('');
+      setActiveMood(browseMoodId(collection.id));
+      setBrowseTitle(collection.title);
+      setBrowseEmptyKind(null);
+      setSections([]);
+      navigateTo('mood');
+      const safety = window.setTimeout(() => setFeedTabLoading('mood', false), 45000);
+      try {
+        const res = await loadPlaylistItems(collection.id, lang, (items) => {
+          if (dataSeq !== feedSeqRef.current.mood) return;
+          setSections([{ title: collection.title, items }]);
+          setFeedTabLoading('mood', false);
+        });
+        if (dataSeq !== feedSeqRef.current.mood) return;
+        if (res.items.length) {
+          setBrowseEmptyKind(null);
+          setSections([{ title: collection.title, items: res.items }]);
+          return;
+        }
+        setSections([]);
+        setBrowseEmptyKind(res.status === 'failed' ? null : emptyKind);
+      } catch (e) {
+        console.warn('[playlist] open page failed', e);
+        if (dataSeq === feedSeqRef.current.mood) {
+          setSections([]);
+          setBrowseEmptyKind(emptyKind);
+          pushToast(translations[lang].playlistOpenFailed, 'error');
+        }
+      } finally {
+        window.clearTimeout(safety);
+        if (dataSeq === feedSeqRef.current.mood) setFeedTabLoading('mood', false);
+      }
+    },
+    [lang, navigateTo, setFeedTabLoading]
+  );
+
+  const openFavorites = useCallback(() => {
+    const seq = ++feedSeqRef.current.mood;
+    navigateTo('mood');
+    setSearchQuery('');
+    setBrowseTitle(t.favs);
+    setBrowseEmptyKind(null);
+    setActiveMood(FAVORITES_ID);
+    if (savedTracks.length === 0) setFeedTabLoading('mood', true);
+    else setFeedTabLoading('mood', false);
+    void (async () => {
+      let remote: Track[] = [];
+      try {
+        if (await isLoggedIn()) {
+          const playlist = await loadPlaylistItems('VLLM', lang);
+          remote = playlist.items.filter((item) => item.type === 'track');
+          if (!remote.length) {
+            const songs = await getLibrary('songs', lang);
+            remote = songs
+              .flatMap((section) => section.items)
+              .filter((item) => item.type === 'track');
+          }
+        }
+      } catch {
+        remote = [];
+      }
+      if (seq !== feedSeqRef.current.mood) return;
+      setAccountLikes(remote);
+      setFeedTabLoading('mood', false);
+    })();
+  }, [navigateTo, savedTracks.length, setFeedTabLoading, t.favs, lang]);
+
+  const openMoodById = useCallback(
+    (categoryId: string) => {
+      const browseId = moodBrowseIdFor(categoryId) ?? moodBrowseIdFor('focus');
+      if (browseId) loadMood(categoryId, browseId);
+    },
+    [loadMood]
+  );
+
+  const leavePlayer = useCallback(() => {
+    const dest = prevTab === 'player' ? 'home' : prevTab;
+    if (dest === 'home' && homeSections.length === 0 && quickPicks.length === 0) {
+      if (feedLoading.home) {
+        navigateTo('home');
+        return;
+      }
+      loadHome();
+      return;
+    }
+    if (dest === 'explore' && exploreSections.length === 0) {
+      if (feedLoading.explore) {
+        navigateTo('explore');
+        return;
+      }
+      loadExplore();
+      return;
+    }
+    navigateTo(dest);
+  }, [
+    prevTab,
+    homeSections.length,
+    quickPicks.length,
+    exploreSections.length,
+    feedLoading.home,
+    feedLoading.explore,
+    loadHome,
+    loadExplore,
+    navigateTo,
+  ]);
