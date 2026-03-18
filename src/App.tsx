@@ -1146,3 +1146,402 @@ export default function App() {
     loadExplore,
     navigateTo,
   ]);
+
+  const loadUserPlaylists = useCallback(async () => {
+    if (!(await isLoggedIn())) {
+      setUserPlaylists([]);
+      return;
+    }
+    const playlists = await getUserPlaylists(lang);
+    setUserPlaylists(playlists);
+  }, [lang]);
+
+  const refreshAccountProfile = useCallback(async () => {
+    if (!(await isLoggedIn())) {
+      setLibAccount(null);
+      return;
+    }
+    const profile = await getAccountProfile(lang);
+    if (profile) setLibAccount(profile);
+  }, [lang]);
+
+  const loadLibrary = useCallback(
+    async (category: LibraryCategory = libCategory) => {
+      const reqId = ++libReqIdRef.current;
+      setLibError(null);
+      const cached = peekLibraryCache(category, lang);
+      if (cached?.length) {
+        setLibSections(cached);
+        setLibLoading(false);
+      } else {
+        setLibLoading(true);
+      }
+      const safety = window.setTimeout(() => setLibLoading(false), 8000);
+      try {
+        if (!(await isLoggedIn())) {
+          clearAuthCache();
+          if (!(await isLoggedIn())) {
+            if (reqId !== libReqIdRef.current) return;
+            setLibAuthed(false);
+            setLibSections([]);
+            return;
+          }
+        }
+        if (reqId !== libReqIdRef.current) return;
+        let sections = await getLibrary(category, lang);
+        if (sections.length === 0) {
+          await new Promise((r) => setTimeout(r, 400));
+          clearAuthCache();
+          sections = await getLibrary(category, lang, { bypassCache: true });
+        }
+        void loadUserPlaylists();
+        void refreshAccountProfile();
+        if (reqId !== libReqIdRef.current) return;
+        setLibSections(sections);
+        setLibLoading(false);
+        window.clearTimeout(safety);
+        prefetchLibrary(lang, category);
+        void extendLibrarySections(category, lang, sections).then((more) => {
+          if (reqId !== libReqIdRef.current) return;
+          if (more !== sections) setLibSections(more);
+        });
+      } catch (e) {
+        console.warn('[library] load failed', e);
+        if (reqId === libReqIdRef.current && !cached?.length) {
+          setLibSections([]);
+          setLibError(translations[lang].libraryLoadError);
+        }
+      } finally {
+        window.clearTimeout(safety);
+        if (reqId === libReqIdRef.current) {
+          setLibLoading(false);
+        }
+      }
+    },
+    [lang, libCategory, loadUserPlaylists, refreshAccountProfile]
+  );
+
+  useEffect(() => {
+    if (activeTab === 'library' && libAuthed && !authBootstrapping) {
+      void loadLibrary(libCategory);
+    }
+  }, [activeTab, libAuthed, authBootstrapping, libCategory]);
+
+  const authBootRanRef = useRef(false);
+  useEffect(() => {
+    if (authBootRanRef.current) return;
+    authBootRanRef.current = true;
+    (async () => {
+      try {
+        let restored = false;
+        const lateLogin = () =>
+          window.setTimeout(async () => {
+            if (!(await waitForLogin(lang, 6, 1500))) return;
+            setIsOffline(false);
+            setSessionExpired(false);
+            setLibAuthed(true);
+            void loadUserPlaylists();
+            void refreshAccountProfile();
+          }, 1500);
+        if (getRememberLogin()) {
+          try {
+            restored = await invoke<boolean>('restore_ytm_session');
+            clearAuthCache();
+          } catch (e) {
+            console.warn('[auth] restore session failed', e);
+          }
+        } else {
+          try {
+            await invoke('clear_ytm_session_store');
+          } catch (err) {
+            console.debug('App', err);
+          }
+          clearAuthCache();
+        }
+        if (!(await isLoggedIn())) {
+          setLibAuthed(false);
+          if (restored) lateLogin();
+        } else {
+          const ok = await resolveLoginState(lang);
+          if (!ok && lastSessionCheckWasNetworkError()) {
+            setIsOffline(true);
+            setLibAuthed(false);
+            lateLogin();
+          } else if (!ok && lastSessionCheckWasInconclusive()) {
+            setLibAuthed(false);
+            lateLogin();
+          } else if (ok) {
+            setIsOffline(false);
+            setSessionExpired(false);
+            setLibAuthed(true);
+            void loadUserPlaylists();
+            void refreshAccountProfile();
+            void persistSessionIfWanted();
+          } else {
+            setLibAuthed(false);
+            setUserPlaylists([]);
+            setLibAccount(null);
+            setSessionExpired(true);
+            pushToast(translations[lang].sessionExpired, 'error');
+          }
+        }
+      } finally {
+        setAuthBootstrapping(false);
+      }
+    })();
+  }, [lang, loadUserPlaylists, persistSessionIfWanted, refreshAccountProfile]);
+
+  const stopLoginPoll = useCallback(() => {
+    if (loginPollDelayRef.current) {
+      clearTimeout(loginPollDelayRef.current);
+      loginPollDelayRef.current = null;
+    }
+    if (loginPollRef.current) {
+      clearInterval(loginPollRef.current);
+      loginPollRef.current = null;
+    }
+  }, []);
+
+  const completeLogin = useCallback(async () => {
+    if (loginFinishingRef.current) return;
+    loginFinishingRef.current = true;
+    try {
+      clearAuthCache();
+      clearHomeBrowseCache();
+      let captured = false;
+      try {
+        captured = await invoke<boolean>('capture_ytm_login_session');
+      } catch (err) {
+        console.debug('App', err);
+      }
+      if (!captured) {
+        try {
+          captured = await invoke<boolean>('sync_ytm_auth_to_main');
+        } catch (err) {
+          console.debug('App', err);
+        }
+      }
+      if (!captured) {
+        clearAuthCache();
+        if (!(await isLoggedIn())) return;
+      }
+      clearAuthCache();
+      let authed = await waitForLogin(lang, 8, 500);
+      if (!authed && captured && lastSessionCheckWasNetworkError() && (await isLoggedIn())) {
+        console.warn('[login] session check unreachable, accepting popup cookies');
+        authed = true;
+      }
+      if (!authed) {
+        return;
+      }
+      loginDoneRef.current = true;
+      setLoginBusy(false);
+      stopLoginPoll();
+      try {
+        if (getRememberLogin()) await persistSessionIfWanted();
+        else await invoke('forget_ytm_session_file');
+      } catch (err) {
+        console.debug('App', err);
+      }
+      loginClosingRef.current = true;
+      try {
+        await invoke('close_google_login');
+      } catch (err) {
+        console.debug('App', err);
+      }
+      window.setTimeout(() => {
+        loginClosingRef.current = false;
+      }, 800);
+
+      setLibAuthed(true);
+      setSessionExpired(false);
+      pushToast(translations[lang].loginSuccess, 'success');
+      loadHome(lang);
+      setLibCategory('landing');
+      void loadLibrary('landing');
+      void loadUserPlaylists();
+      void refreshAccountProfile();
+      try {
+        await appWindow.setFocus();
+      } catch (err) {
+        console.debug('App', err);
+      }
+    } finally {
+      loginFinishingRef.current = false;
+    }
+  }, [
+    lang,
+    loadHome,
+    loadLibrary,
+    loadUserPlaylists,
+    persistSessionIfWanted,
+    refreshAccountProfile,
+    stopLoginPoll,
+  ]);
+
+  const finalizeLoginFromPopup = useCallback(async () => {
+    if (loginFinishingRef.current || loginDoneRef.current) return;
+    let captured = false;
+    try {
+      captured = await invoke<boolean>('capture_ytm_login_session');
+    } catch (err) {
+      console.debug('App', err);
+    }
+    if (!captured) return;
+    await completeLogin();
+  }, [completeLogin]);
+
+  const handleLogout = useCallback(() => {
+    stopLoginPoll();
+    setLoginBusy(false);
+    loginDoneRef.current = false;
+    loginFinishingRef.current = false;
+
+    feedSeqRef.current.home += 1;
+    feedSeqRef.current.explore += 1;
+    feedSeqRef.current.mood += 1;
+    feedSeqRef.current.search += 1;
+    libReqIdRef.current += 1;
+
+    clearAuthCache();
+    clearCaches();
+    streamCacheRef.current.clear();
+    setSections([]);
+    setHomeSections([]);
+    setExploreSections([]);
+    setQuickPicks([]);
+    setUserPlaylists([]);
+    setAccountLikes([]);
+    setLibSections([]);
+    setLibAccount(null);
+    setLibError(null);
+    setLibAuthed(false);
+    setSessionExpired(false);
+    setLibCategory('landing');
+    setFeedLoading(FEED_LOADING_INITIAL);
+    setLibLoading(false);
+    setIsSettingsOpen(false);
+    pushToast(translations[lang].loggedOut, 'info');
+
+    void (async () => {
+      for (const cmd of [
+        'clear_stream_cache',
+        'clear_ytm_auth',
+        'clear_ytm_session_store',
+        'clear_login_webview_data',
+      ]) {
+        try {
+          await invoke(cmd);
+        } catch (e) {
+          console.warn(`[logout] ${cmd} failed`, e);
+        }
+      }
+      clearAuthCache();
+      clearCaches();
+      loadHome(lang);
+    })();
+  }, [lang, loadHome, stopLoginPoll]);
+
+  const changeLibCategory = useCallback(
+    (category: LibraryCategory) => {
+      const plan = nextLibraryViewState(libCategory, category);
+      if (!plan.clear) return;
+      setLibSections([]);
+      setLibLoading(true);
+      setLibCategory(plan.category);
+    },
+    [libCategory]
+  );
+
+  const handleLogin = useCallback(async () => {
+    clearAuthCache();
+    const valid = await resolveLoginState(lang);
+    if (!valid && lastSessionCheckWasNetworkError()) {
+      setIsOffline(true);
+      return;
+    }
+    setIsOffline(false);
+    setLibAuthed(valid);
+    if (valid) {
+      setSessionExpired(false);
+      clearHomeBrowseCache();
+      loadHome(lang);
+      void loadLibrary();
+      void refreshAccountProfile();
+      return;
+    }
+    setLoginBusy(true);
+    loginDoneRef.current = false;
+
+    const attachLoginWindowHandlers = () => {
+      window.setTimeout(() => {
+        void invoke<boolean>('capture_ytm_login_session')
+          .then((captured) => {
+            if (captured)
+              finalizeLoginFromPopup().catch((err) =>
+                console.debug('App attachLoginWindowHandlers', err)
+              );
+          })
+          .catch((err) => console.debug('App attachLoginWindowHandlers', err));
+      }, 1200);
+
+      WebviewWindow.getByLabel('google-login')
+        .then((loginWindow) => {
+          loginWindow?.once('tauri://destroyed', () => {
+            if (loginClosingRef.current || loginFinishingRef.current || loginDoneRef.current) {
+              return;
+            }
+            setLoginBusy(false);
+            clearAuthCache();
+            pushToast(translations[lang].loginCancelled, 'info');
+          });
+        })
+        .catch((err) => console.debug('App attachLoginWindowHandlers', err));
+    };
+
+    try {
+      const existing = await WebviewWindow.getByLabel('google-login');
+      if (existing) {
+        await existing.show();
+        await existing.setFocus();
+        attachLoginWindowHandlers();
+        return;
+      }
+    } catch (err) {
+      console.debug('App', err);
+    }
+    try {
+      await invoke('open_google_login', { title: t.loginWindowTitle });
+    } catch (e) {
+      console.error('[login] failed to open the sign-in window', e);
+      setLoginBusy(false);
+      pushToast(translations[lang].loginFailed, 'error');
+      return;
+    }
+
+    try {
+      const loginWindow = await WebviewWindow.getByLabel('google-login');
+      if (!loginWindow) {
+        setLoginBusy(false);
+        pushToast(translations[lang].loginFailed, 'error');
+        return;
+      }
+      await loginWindow.show();
+      await loginWindow.setFocus();
+    } catch (e) {
+      console.error('[login] sign-in window missing after open', e);
+      setLoginBusy(false);
+      pushToast(translations[lang].loginFailed, 'error');
+      return;
+    }
+
+    attachLoginWindowHandlers();
+  }, [
+    lang,
+    t.loginWindowTitle,
+    completeLogin,
+    finalizeLoginFromPopup,
+    loadHome,
+    loadLibrary,
+    refreshAccountProfile,
+  ]);

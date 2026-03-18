@@ -377,3 +377,449 @@ export const MOODS_AND_MOMENTS = [
     color: '#FF5722',
   },
 ];
+
+export const GENRES = [
+  {
+    id: 'african',
+    title: 'African',
+    browseId: moodBrowse('ggMPOg1uX0UzWGxlRE5jMDVk'),
+    color: '#0F9D58',
+  },
+  {
+    id: 'arabic',
+    title: 'Arabic',
+    browseId: moodBrowse('ggMPOg1uX3VOQWxsblVZTFNE'),
+    color: '#FF9800',
+  },
+  {
+    id: 'autumn',
+    title: 'Autumn',
+    browseId: moodBrowse('ggMPOg1uXzl4dDJmbUJXVGVU'),
+    color: '#795548',
+  },
+  {
+    id: 'blues',
+    title: 'Blues',
+    browseId: moodBrowse('ggMPOg1uX2NXUkgxdW0zUHJp'),
+    color: '#2196F3',
+  },
+  {
+    id: 'bollywood',
+    title: 'Bollywood & Indian',
+    browseId: moodBrowse('ggMPOg1uX0JrcUJGUHhxaTFV'),
+    color: '#9C27B0',
+  },
+  {
+    id: 'classical',
+    title: 'Classical',
+    browseId: moodBrowse('ggMPOg1uX1N4VmduTmdUR3dm'),
+    color: '#E0E0E0',
+  },
+  {
+    id: 'country',
+    title: 'Country & Americana',
+    browseId: moodBrowse('ggMPOg1uX1RXcFlyZEpRb1d3'),
+    color: '#2196F3',
+  },
+  {
+    id: 'dance',
+    title: 'Dance & electronic',
+    browseId: moodBrowse('ggMPOg1uX1NPTld3SDN3WGs4'),
+    color: '#00BCD4',
+  },
+  {
+    id: 'decades',
+    title: 'Decades',
+    browseId: moodBrowse('ggMPOg1uX1V4cTVVT0JjY0xI'),
+    color: '#4CAF50',
+  },
+  {
+    id: 'family',
+    title: 'Family',
+    browseId: moodBrowse('ggMPOg1uXzMyY3J2SGM0bVh5'),
+    color: '#03A9F4',
+  },
+  {
+    id: 'folk',
+    title: 'Folk & acoustic',
+    browseId: moodBrowse('ggMPOg1uXzBTRFBmQ3N4b0R6'),
+    color: '#00E676',
+  },
+  {
+    id: 'hiphop',
+    title: 'Hip-hop',
+    browseId: moodBrowse('ggMPOg1uX2E4aVJuU05GOVQ0'),
+    color: '#FF5722',
+  },
+  {
+    id: 'indie',
+    title: 'Indie & alternative',
+    browseId: moodBrowse('ggMPOg1uX21NWWpBbU01SDgy'),
+    color: '#9E9E9E',
+  },
+  {
+    id: 'jpop',
+    title: 'J-Pop',
+    browseId: moodBrowse('ggMPOg1uXzAwSjVITDBZckJR'),
+    color: '#E91E63',
+  },
+  { id: 'jazz', title: 'Jazz', browseId: moodBrowse('ggMPOg1uX3lPcDFRaE9wM1BS'), color: '#3F51B5' },
+  {
+    id: 'kpop',
+    title: 'K-Pop',
+    browseId: moodBrowse('ggMPOg1uX0JrbjBDOFFPSzJW'),
+    color: '#AB47BC',
+  },
+  {
+    id: 'latin',
+    title: 'Latin',
+    browseId: moodBrowse('ggMPOg1uX29wWTRjMHV1dWN5'),
+    color: '#FFC107',
+  },
+  {
+    id: 'mandopop',
+    title: 'Mandopop & cantopop',
+    browseId: moodBrowse('ggMPOg1uX2hXVUQwc0JTNXlE'),
+    color: '#F44336',
+  },
+  {
+    id: 'metal',
+    title: 'Metal',
+    browseId: moodBrowse('ggMPOg1uXzdlSXhKZ0hMV1Z4'),
+    color: '#9E9E9E',
+  },
+  { id: 'pop', title: 'Pop', browseId: moodBrowse('ggMPOg1uX1BmNzc2V2p0YXJ5'), color: '#E040FB' },
+  {
+    id: 'rnb',
+    title: 'R&B & soul',
+    browseId: moodBrowse('ggMPOg1uX2JxQ2hxc2J5UFhR'),
+    color: '#7E57C2',
+  },
+  {
+    id: 'reggae',
+    title: 'Reggae & caribbean',
+    browseId: moodBrowse('ggMPOg1uX1JUc2lFcDFuUUth'),
+    color: '#FFEB3B',
+  },
+  { id: 'rock', title: 'Rock', browseId: moodBrowse('ggMPOg1uXzJKTm5jUEZ5Uzlu'), color: '#F44336' },
+  {
+    id: 'soundtracks',
+    title: 'Soundtracks & musicals',
+    browseId: moodBrowse('ggMPOg1uX2tWZXBsRm05cHNR'),
+    color: '#00BCD4',
+  },
+];
+
+const imageCache = new Map<string, number>();
+const browseCache = new Map<string, { data: Section[]; ts: number }>();
+const librarySectionCache = new Map<string, { at: number; sections: Section[] }>();
+const searchCache = new Map<string, { data: Section[]; ts: number }>();
+const IMAGE_CACHE_LIMIT = 12;
+const BROWSE_CACHE_LIMIT = 6;
+const SEARCH_CACHE_LIMIT = 8;
+const IMAGE_CACHE_TTL = 30 * 60 * 1000;
+const YTIMG_BASE = 'https://i.ytimg.com/vi/';
+
+function pruneOldest<T>(cache: Map<string, T>, limit: number) {
+  while (cache.size > limit) {
+    const oldestKey = cache.keys().next().value as string | undefined;
+    if (!oldestKey) break;
+    cache.delete(oldestKey);
+  }
+}
+
+export function preloadImage(url: string): Promise<void> {
+  if (!url) return Promise.resolve();
+  const cached = imageCache.get(url);
+  if (cached && Date.now() - cached < IMAGE_CACHE_TTL) return Promise.resolve();
+  if (cached) imageCache.delete(url);
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.decoding = 'async';
+    img.fetchPriority = 'low';
+    img.onload = () => {
+      imageCache.set(url, Date.now());
+      pruneOldest(imageCache, IMAGE_CACHE_LIMIT);
+      resolve();
+    };
+    img.onerror = () => {
+      if (url.includes('maxresdefault')) {
+        const fallback = url.replace('maxresdefault', 'hqdefault');
+        const img2 = new Image();
+        img2.decoding = 'async';
+        img2.fetchPriority = 'low';
+        img2.onload = () => {
+          imageCache.set(fallback, Date.now());
+          pruneOldest(imageCache, IMAGE_CACHE_LIMIT);
+          resolve();
+        };
+        img2.onerror = reject;
+        img2.src = fallback;
+      } else {
+        reject(new Error('img load failed'));
+      }
+    };
+    img.src = url;
+  });
+}
+
+export function prefetchCovers(tracks: Track[]) {
+  tracks.slice(0, 1).forEach((t) => {
+    preloadImage(t.coverSmall || t.cover).catch((err) =>
+      console.debug('youtube prefetchCovers', err)
+    );
+  });
+}
+
+let browseEpoch = 0;
+
+export function clearCaches() {
+  imageCache.clear();
+  browseCache.clear();
+  searchCache.clear();
+  lyricsCache.clear();
+  browseEpoch += 1;
+}
+
+export function clearHomeBrowseCache() {
+  browseEpoch += 1;
+  for (const key of browseCache.keys()) {
+    if (
+      key.startsWith('FEmusic_home:') ||
+      key.startsWith('FEmusic_explore:') ||
+      key.startsWith('FEmusic_new_releases:')
+    ) {
+      browseCache.delete(key);
+    }
+  }
+}
+
+export function invalidateLibraryCache() {
+  for (const key of browseCache.keys()) {
+    if (
+      key.startsWith('FEmusic_liked_') ||
+      key.startsWith('FEmusic_library_') ||
+      key.startsWith('FEmusic_history')
+    ) {
+      browseCache.delete(key);
+    }
+  }
+  librarySectionCache.clear();
+}
+
+const PLAYLIST_OVERRIDE_MS = 10 * 60 * 1000;
+const deletedPlaylists = new Map<string, number>();
+const renamedPlaylists = new Map<string, { title: string; ts: number }>();
+
+export function applyPlaylistOverrides<T extends { id: string; title: string }>(
+  list: T[],
+  now = Date.now()
+): T[] {
+  const out: T[] = [];
+  for (const item of list) {
+    const plain = toPlainPlaylistId(item.id);
+    const del = deletedPlaylists.get(plain);
+    if (del && now - del < PLAYLIST_OVERRIDE_MS) continue;
+    const ren = renamedPlaylists.get(plain);
+    out.push(ren && now - ren.ts < PLAYLIST_OVERRIDE_MS ? { ...item, title: ren.title } : item);
+  }
+  return out;
+}
+
+export function rememberPlaylistDeleted(id: string, now = Date.now()) {
+  deletedPlaylists.set(toPlainPlaylistId(id), now);
+  renamedPlaylists.delete(toPlainPlaylistId(id));
+}
+
+export function rememberPlaylistRenamed(id: string, title: string, now = Date.now()) {
+  renamedPlaylists.set(toPlainPlaylistId(id), { title, ts: now });
+}
+
+async function invokeWithTimeout<T>(
+  cmd: string,
+  args?: Record<string, unknown>,
+  ms = 15000
+): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      invoke<T>(cmd, args),
+      new Promise<T>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`invoke ${cmd} timed out`)), ms);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+export function getOptimizedCover(
+  url: string | undefined,
+  size: 'small' | 'medium' | 'large'
+): string {
+  if (!url) return '';
+  if (url.includes('ui-avatars')) {
+    const sz = size === 'small' ? 120 : size === 'medium' ? 360 : 540;
+    return url.replace('size=540', `size=${sz}`);
+  }
+  let u = url;
+  if (u.startsWith('//')) u = 'https:' + u;
+  if (u.includes('ytimg.com/vi')) {
+    const res = size === 'small' ? 'mqdefault' : 'hqdefault';
+    return u.replace(/\/[a-z0-9_]+\.jpg(\?.*)?$/i, `/${res}.jpg`);
+  }
+  const px = size === 'small' ? 120 : size === 'medium' ? 226 : 544;
+  if (/=w\d+-h\d+/i.test(u)) {
+    return u.replace(/=w\d+-h\d+/i, `=w${px}-h${px}`);
+  }
+  if (/=s\d+/i.test(u)) {
+    return u.replace(/=s\d+/i, `=s${px}`);
+  }
+  return u;
+}
+
+export async function getHome(lang: Language): Promise<Section[]> {
+  return await fetchBrowse('FEmusic_home', lang);
+}
+
+export interface HomeFeed {
+  sections: Section[];
+  quickPicks: Track[];
+}
+
+const QUICK_PICK_TITLES = ['quick picks', 'szybkie wybory'];
+
+export async function getHomeFeed(lang: Language): Promise<HomeFeed> {
+  let sections = await fetchBrowse('FEmusic_home', lang);
+  if (sections.length === 0) {
+    const landing = await fetchBrowse('FEmusic_library_landing', lang);
+    if (landing.length) sections = landing;
+  }
+  const qpIndex = sections.findIndex((s) =>
+    QUICK_PICK_TITLES.some((k) => s.title.toLowerCase().includes(k))
+  );
+  if (qpIndex >= 0) {
+    const quickPicks = sections[qpIndex].items.filter((i) => i.type === 'track').slice(0, 16);
+    const rest = sections.filter((_, i) => i !== qpIndex);
+    return { sections: rest, quickPicks };
+  }
+  const quickPicks: Track[] = [];
+  const seen = new Set<string>();
+  const pushItem = (item: Track) => {
+    if (seen.has(item.id)) return;
+    seen.add(item.id);
+    quickPicks.push(item);
+  };
+  for (const section of sections) {
+    for (const item of section.items) {
+      if (item.type === 'track') pushItem(item);
+      if (quickPicks.length >= 12) break;
+    }
+    if (quickPicks.length >= 12) break;
+  }
+  if (quickPicks.length < 6) {
+    for (const section of sections) {
+      for (const item of section.items) {
+        if (item.type === 'album' || item.type === 'playlist') pushItem(item);
+        if (quickPicks.length >= 12) break;
+      }
+      if (quickPicks.length >= 12) break;
+    }
+  }
+  return { sections, quickPicks };
+}
+
+function orderExploreSectionsData(sections: Section[]): Section[] {
+  const groups = [
+    ['new album', 'nowe albumy', 'singles', 'single', 'new release', 'nowości'],
+    ['trending', 'trendy', 'na czasie', 'chart', 'charts', 'top'],
+    ['new music video', 'nowe teledyski', 'music video', 'teledyski'],
+  ];
+  return [...sections]
+    .map((section, index) => {
+      const title = section.title.toLowerCase();
+      const priority = groups.findIndex((g) => g.some((k) => title.includes(k)));
+      return { section, index, priority: priority === -1 ? groups.length : priority };
+    })
+    .sort((a, b) => a.priority - b.priority || a.index - b.index)
+    .map((e) => e.section);
+}
+
+export async function getExplore(lang: Language): Promise<Section[]> {
+  let explore = await fetchBrowse('FEmusic_explore', lang);
+  if (explore.length === 0) {
+    explore = await fetchBrowse('FEmusic_new_releases', lang);
+  }
+  const merged = dedupeSections(explore);
+  return orderExploreSectionsData(merged.filter((s) => s.items.length > 0));
+}
+
+export async function getNewReleasesAlbums(lang: Language): Promise<Track[]> {
+  try {
+    const sections = await fetchBrowse('FEmusic_new_releases', lang);
+    const all = sections.flatMap((s) => s.items);
+    const unique = new Map<string, Track>();
+    for (const t of all) if (!unique.has(t.id)) unique.set(t.id, t);
+    return Array.from(unique.values()).slice(0, 80);
+  } catch {
+    return [];
+  }
+}
+
+export async function getNewReleasesVideos(lang: Language): Promise<Track[]> {
+  try {
+    const sections = await fetchBrowse('FEmusic_new_releases', lang);
+    const videoKeywords = ['video', 'teledysk', 'clip', 'wideo'];
+    const videoSections = sections.filter((s) =>
+      videoKeywords.some((k) => s.title.toLowerCase().includes(k))
+    );
+    const source = videoSections.length > 0 ? videoSections : sections;
+    const all = source.flatMap((s) => s.items);
+    const unique = new Map<string, Track>();
+    for (const t of all) if (!unique.has(t.id)) unique.set(t.id, t);
+    return Array.from(unique.values()).slice(0, 60);
+  } catch {
+    return [];
+  }
+}
+
+export async function getQuickPicks(lang: Language): Promise<Track[]> {
+  try {
+    return (await getHomeFeed(lang)).quickPicks;
+  } catch {
+    return [];
+  }
+}
+
+export async function getMoodPlaylist(browseId: string, lang: Language): Promise<Section[]> {
+  try {
+    return await fetchBrowse(browseId, lang);
+  } catch {
+    return [];
+  }
+}
+
+function findContinuationToken(node: any): string | null {
+  let found: string | null = null;
+  const walk = (n: any) => {
+    if (!n || found) return;
+    if (Array.isArray(n)) {
+      n.forEach(walk);
+      return;
+    }
+    if (typeof n !== 'object') return;
+    const modern = n.continuationItemRenderer?.continuationEndpoint?.continuationCommand?.token;
+    if (typeof modern === 'string' && modern) {
+      found = modern;
+      return;
+    }
+    const legacy = n.nextContinuationData?.continuation;
+    if (typeof legacy === 'string' && legacy) {
+      found = legacy;
+      return;
+    }
+    Object.values(n).forEach(walk);
+  };
+  walk(node);
+  return found;
+}
