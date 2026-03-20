@@ -1545,3 +1545,454 @@ export default function App() {
     loadLibrary,
     refreshAccountProfile,
   ]);
+
+  const cancelLogin = useCallback(async () => {
+    stopLoginPoll();
+    loginDoneRef.current = true;
+    setLoginBusy(false);
+    try {
+      await invoke('close_google_login');
+    } catch (err) {
+      console.debug('App', err);
+    }
+  }, [stopLoginPoll]);
+
+  const refreshAuth = useCallback(() => {
+    void (async () => {
+      clearAuthCache();
+      clearHomeBrowseCache();
+      invalidateLibraryCache();
+      const ok = await resolveLoginState(lang, true);
+      if (ok) {
+        setIsOffline(false);
+        setSessionExpired(false);
+        setLibAuthed(true);
+        void loadLibrary();
+        void loadUserPlaylists();
+        void refreshAccountProfile();
+        loadHome(lang);
+        return;
+      }
+      if (lastSessionCheckWasNetworkError()) {
+        setIsOffline(true);
+        return;
+      }
+      if (lastSessionCheckWasInconclusive()) {
+        return;
+      }
+      setLibAuthed(false);
+      setUserPlaylists([]);
+      setLibAccount(null);
+      setLibSections([]);
+      setSessionExpired(true);
+      pushToast(translations[lang].sessionExpired, 'error');
+    })();
+  }, [lang, loadLibrary, loadHome, loadUserPlaylists, refreshAccountProfile]);
+
+  useEffect(() => () => stopLoginPoll(), [stopLoginPoll]);
+
+  useEffect(() => {
+    if (!loginBusy || loginDoneRef.current) return;
+    let disposed = false;
+    const tick = async () => {
+      if (disposed || loginFinishingRef.current || loginDoneRef.current) return;
+      try {
+        const captured = await invoke<boolean>('capture_ytm_login_session');
+        if (captured) await finalizeLoginFromPopup();
+      } catch (err) {
+        console.debug('App tick', err);
+      }
+    };
+    void tick();
+    const id = window.setInterval(() => {
+      void tick();
+    }, 3000);
+    return () => {
+      disposed = true;
+      clearInterval(id);
+    };
+  }, [loginBusy, finalizeLoginFromPopup]);
+
+  useEffect(() => {
+    let disposed = false;
+    const unsubs: Array<() => void> = [];
+    const onCookiesSynced = () => {
+      finalizeLoginFromPopup().catch((err) => console.debug('App onCookiesSynced', err));
+    };
+    listen('ytm-login-cookies-synced', () => {
+      onCookiesSynced();
+    }).then((fn) => {
+      if (disposed) fn();
+      else unsubs.push(fn);
+    });
+    return () => {
+      disposed = true;
+      unsubs.forEach((fn) => fn());
+    };
+  }, [finalizeLoginFromPopup]);
+
+  const submitNewPlaylist = useCallback(async () => {
+    const title = committedPlaylistTitle(npTitle, npTitleRef.current?.value);
+    const desc = committedPlaylistDescription(npDesc, npDescRef.current?.value);
+    if (!title || npBusy) return;
+    if (title !== npTitle) setNpTitle(title);
+    setNpBusy(true);
+    setNpError(false);
+    try {
+      const id = await createPlaylist(title, desc, npPrivacy, lang);
+      if (!id) throw new Error('no playlist id');
+      setNpOpen(false);
+      setNpTitle('');
+      setNpDesc('');
+      setNpPrivacy('PRIVATE');
+      setLibCategory('playlists');
+      loadLibrary('playlists');
+    } catch (e) {
+      if (e instanceof SessionExpiredError) {
+        setLibAuthed(false);
+        setUserPlaylists([]);
+        setLibAccount(null);
+        setLibSections([]);
+        setSessionExpired(true);
+        setNpOpen(false);
+        pushToast(translations[lang].sessionExpired, 'error');
+      }
+      setNpError(true);
+    } finally {
+      setNpBusy(false);
+    }
+  }, [npTitle, npDesc, npPrivacy, npBusy, lang, loadLibrary]);
+
+  const hydratePanels = useCallback(
+    (track: Track) => {
+      const provider = lyricsProviderRef.current;
+      lastHydrateKeyRef.current = `${track.id}|${provider}|${lang}`;
+      const reqId = ++lyricsReqIdRef.current;
+      setLyricsLoading(true);
+      setLyrics(null);
+      lyricsRef.current = null;
+      activeLyricLineRef.current = -1;
+      setActiveLyricLine(-1);
+      const lyricsTrack =
+        !track.durationSec && durationRef.current > 0
+          ? { ...track, durationSec: durationRef.current }
+          : track;
+      debugLyricsProviders(lyricsTrack);
+      getLyrics(lyricsTrack, lang, provider, (plain) => {
+        if (reqId !== lyricsReqIdRef.current) return;
+        setLyrics(plain);
+        setLyricsLoading(false);
+      })
+        .then((data) => {
+          if (reqId !== lyricsReqIdRef.current) return;
+          setLyrics(data);
+          setLyricsLoading(false);
+        })
+        .catch(() => {
+          if (reqId !== lyricsReqIdRef.current) return;
+          setLyrics(null);
+          setLyricsLoading(false);
+        });
+
+      if (panelTabRef.current === 'related') {
+        const relReqId = ++relatedReqIdRef.current;
+        setRelatedLoading(true);
+        setRelated(null);
+        getWatchRelated(track.id, lang)
+          .then((data) => {
+            if (relReqId !== relatedReqIdRef.current) return;
+            setRelated(data);
+            setRelatedLoading(false);
+          })
+          .catch(() => {
+            if (relReqId !== relatedReqIdRef.current) return;
+            setRelated(null);
+            setRelatedLoading(false);
+          });
+      }
+    },
+    [lang, lyricsProvider]
+  );
+
+  const fetchRelatedForTrack = useCallback(
+    (track: Track) => {
+      const relReqId = ++relatedReqIdRef.current;
+      setRelatedLoading(true);
+      setRelated(null);
+      getWatchRelated(track.id, lang)
+        .then((data) => {
+          if (relReqId !== relatedReqIdRef.current) return;
+          setRelated(data);
+          setRelatedLoading(false);
+        })
+        .catch(() => {
+          if (relReqId !== relatedReqIdRef.current) return;
+          setRelated(null);
+          setRelatedLoading(false);
+        });
+    },
+    [lang]
+  );
+
+  const showStreamStuck = async (L: Language) => {
+    let kind: string | null = null;
+    try {
+      kind = await invoke<string | null>('stream_last_failure');
+    } catch (err) {
+      console.debug('App showStreamStuck', err);
+    }
+    const msg = streamStuckMessage(translations[L], kind, libAuthedRef.current);
+    pushToast(msg, 'error');
+  };
+
+  const resolveStreamUrl = useCallback(
+    async (trackId: string, forceFresh = false) => {
+      const url = await getAudioStream(trackId, lang, forceFresh);
+      if (url) streamCacheSet(streamCacheRef.current, trackId, url, STREAM_CACHE_LIMIT);
+      return url;
+    },
+    [lang]
+  );
+  const resolveStreamUrlRef = useLatest(async (id: string) => {
+    const c = streamCacheRef.current.get(id);
+    if (c && Date.now() - c.ts < STREAM_CACHE_TTL) return c.url;
+    return resolveStreamUrl(id);
+  });
+
+  const loadTrack = useCallback(
+    async (track: Track, autoPlay = true, fadeSeconds?: number, startAt = 0) => {
+      const gen = ++loadGenRef.current;
+      const switchingTrack = currentTrackIdRef.current !== track.id;
+      currentTrackIdRef.current = track.id;
+      setCurrentTrack(track);
+      setBuffering(true);
+      const stale = () => gen !== loadGenRef.current;
+      const scheduleOutputCheck = (g: number) => {
+        window.setTimeout(() => {
+          if (g !== loadGenRef.current || !isPlayingRef.current) return;
+          audio.ensureOutput(true);
+        }, 1200);
+      };
+
+      trackSwitchingRef.current = true;
+      if (switchingTrack) {
+        if (lyricsProviderRef.current !== 'Auto') {
+          lyricsProviderRef.current = 'Auto';
+          setLyricsProvider('Auto');
+        }
+      }
+      if (switchingTrack) {
+        audioDurationTrackIdRef.current = null;
+        const knownDuration = knownDurationSec(track);
+        durationRef.current = knownDuration;
+        setDuration(knownDuration);
+        progressRef.current = startAt > 0 ? startAt : 0;
+      }
+      if (lastHydrateKeyRef.current.split('|')[0] !== track.id) hydratePanels(track);
+      const knownDuration = knownDurationSec(track, switchingTrack ? 0 : durationRef.current);
+      const paintKnown = (pos: number) => {
+        const d = knownDurationSec(track, switchingTrack ? 0 : durationRef.current);
+        durationRef.current = d;
+        setDuration(d);
+        paintProgressUiRef.current(pos, d);
+      };
+      if (switchingTrack || startAt > 0 || knownDuration > 0) {
+        progressRef.current = startAt > 0 ? startAt : switchingTrack ? 0 : progressRef.current;
+        paintKnown(progressRef.current);
+      }
+      try {
+        await loadTrackInner();
+      } finally {
+        if (!stale()) {
+          trackSwitchingRef.current = false;
+          syncDurationFromAudioRef.current();
+        }
+      }
+      return;
+
+      async function loadTrackInner() {
+        const skipOnFail = () => {
+          const L = (localStorage.getItem('zenith_lang') as Language) || 'en';
+          prefetchPausedUntilRef.current = Date.now() + PREFETCH_PAUSE_AFTER_FAIL_MS;
+          streamFailStreakRef.current += 1;
+          const streak = streamFailStreakRef.current;
+          const qi = queueIndexRef.current;
+          const q = queueRef.current;
+          if (streak >= 3) {
+            void showStreamStuck(L);
+            autoFadeTrackRef.current = null;
+            window.setTimeout(() => {
+              autoFadePendingRef.current = false;
+            }, 8000);
+            return;
+          }
+          pushToast(translations[L].streamUnavailable, 'error');
+          autoFadeTrackRef.current = null;
+          if (autoFadePendingRef.current) {
+            autoFadePendingRef.current = false;
+            window.setTimeout(() => {
+              if (loadGenRef.current !== gen) return;
+              void playByIndexRef.current(qi);
+            }, 700);
+            return;
+          }
+          if (qi < q.length - 1) {
+            window.setTimeout(() => {
+              if (loadGenRef.current !== gen) return;
+              void playByIndexRef.current(qi + 1);
+            }, 700 * streak);
+          }
+        };
+
+        const baseFade = fadeSeconds ?? Math.min(MANUAL_FADE_SECS, getCrossfadeSeconds());
+        const fadeDur = audio.isCrossfading ? Math.min(0.55, baseFade) : baseFade;
+        const forceBlend = forceBlendRef.current;
+        forceBlendRef.current = false;
+        const wantFade =
+          (crossfadeEnabled || forceBlend) &&
+          autoPlay &&
+          audio.hasSource &&
+          fadeDur > 0 &&
+          startAt <= 0;
+
+        if (!wantFade) {
+          audio.abortAll();
+          setIsPlaying(false);
+          progressRef.current = startAt > 0 ? startAt : 0;
+          paintKnown(progressRef.current);
+        }
+
+        try {
+          foregroundResolvingRef.current = true;
+          let streamUrl: string | null;
+          try {
+            streamUrl = await resolveStreamUrl(track.id);
+          } finally {
+            foregroundResolvingRef.current = false;
+            window.setTimeout(() => {
+              for (let k = 0; k < 3; k++) {
+                const next = prefetchPendingRef.current.shift();
+                if (!next) break;
+                prefetchStreamRef.current?.(next);
+              }
+            }, 0);
+          }
+          if (stale()) return;
+          if (!streamUrl) {
+            try {
+              streamUrl = await invoke<string | null>('resolve_alternate_stream', {
+                videoId: track.id,
+                query: `${track.title} ${track.artist}`,
+                title: track.title,
+                duration: null,
+              });
+            } catch {
+              streamUrl = null;
+            }
+            if (stale()) return;
+          }
+          if (!streamUrl) {
+            console.warn('[playback] stream unavailable:', track.id);
+            audio.abortAll();
+            audioDurationTrackIdRef.current = null;
+            setIsPlaying(false);
+            setBuffering(false);
+            skipOnFail();
+            return;
+          }
+          if (wantFade) {
+            try {
+              await audio.crossfadeTo(streamUrl, fadeDur);
+              if (stale()) return;
+              setIsPlaying(true);
+              progressRef.current = 0;
+              paintProgressUiRef.current(0);
+              streamFailStreakRef.current = 0;
+              streamErrorRetryRef.current = null;
+              autoFadePendingRef.current = false;
+              setBuffering(false);
+              audio.releaseInactive();
+              scheduleOutputCheck(gen);
+              return;
+            } catch (e) {
+              if (stale()) return;
+              audio.abortAll();
+              progressRef.current = 0;
+              paintKnown(0);
+              streamUrl = await resolveStreamUrl(track.id, true);
+              if (stale() || !streamUrl) {
+                setBuffering(false);
+                if (!streamUrl) skipOnFail();
+                return;
+              }
+            }
+          }
+          if (stale()) return;
+          audio.src = streamUrl;
+          audio.volume = volumeRef.current;
+          audio.releaseInactive();
+          if (startAt > 0) {
+            audio.currentTime = startAt;
+            progressRef.current = startAt;
+            paintProgressUiRef.current(startAt);
+          }
+          if (autoPlay) {
+            try {
+              await audio.play();
+              if (stale()) return;
+              setIsPlaying(true);
+              scheduleOutputCheck(gen);
+              streamFailStreakRef.current = 0;
+              streamErrorRetryRef.current = null;
+              autoFadePendingRef.current = false;
+              setBuffering(false);
+              return;
+            } catch (e) {
+              audio.load();
+              const ready = await audio.waitReady(5000);
+              if (stale()) return;
+              if (!ready) {
+                const fresh = await resolveStreamUrl(track.id, true);
+                if (fresh && gen === loadGenRef.current) {
+                  audio.src = fresh;
+                  audio.volume = volumeRef.current;
+                  try {
+                    await audio.play();
+                    if (stale()) return;
+                    setIsPlaying(true);
+                    streamFailStreakRef.current = 0;
+                    streamErrorRetryRef.current = null;
+                    autoFadePendingRef.current = false;
+                    setBuffering(false);
+                    return;
+                  } catch (err) {
+                    console.debug('App loadTrackInner', err);
+                  }
+                }
+                setIsPlaying(false);
+                setBuffering(false);
+                skipOnFail();
+                return;
+              }
+              if (autoPlay) {
+                await audio.play();
+                if (stale()) return;
+                setIsPlaying(true);
+              }
+            }
+          }
+          streamFailStreakRef.current = 0;
+          streamErrorRetryRef.current = null;
+          autoFadePendingRef.current = false;
+          setBuffering(false);
+        } catch (err) {
+          if (stale()) return;
+          console.warn('[playback] load failed:', track.id, err);
+          setIsPlaying(false);
+          setBuffering(false);
+          skipOnFail();
+        }
+      }
+    },
+    [audio, crossfadeEnabled, resolveStreamUrl, hydratePanels]
+  );
