@@ -84,3 +84,99 @@ fn reset_login_sync_state() {
     LOGIN_SYNC_SCHEDULED.store(false, Ordering::SeqCst);
     LOGIN_CAPTURE_GEN.fetch_add(1, Ordering::SeqCst);
 }
+
+fn login_popup_exists(app: &tauri::AppHandle) -> bool {
+    app.get_webview_window("google-login").is_some()
+}
+
+fn emit_login_synced(app: &tauri::AppHandle) {
+    let _ = app.emit("ytm-login-cookies-synced", ());
+    let _ = app.emit_to("main", "ytm-login-cookies-synced", ());
+}
+
+fn try_capture_login_session(app: &tauri::AppHandle) -> bool {
+    auth_store::capture_login_session(app).unwrap_or(false)
+}
+
+fn schedule_login_cookie_sync(app: &tauri::AppHandle) {
+    if LOGIN_SYNC_SCHEDULED.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    let app = app.clone();
+    std::thread::spawn(move || {
+        struct WatchGuard;
+        impl Drop for WatchGuard {
+            fn drop(&mut self) {
+                LOGIN_SYNC_SCHEDULED.store(false, Ordering::SeqCst);
+            }
+        }
+        let _guard = WatchGuard;
+
+        auth_store::set_login_popup_sync_ready(true);
+
+        for attempt in 0..15 {
+            let delay_ms = 500 + attempt * 500;
+            std::thread::sleep(std::time::Duration::from_millis(delay_ms));
+            if app.get_webview_window("google-login").is_none() {
+                return;
+            }
+            let (tx, rx) = std::sync::mpsc::channel();
+            let app_main = app.clone();
+            if app
+                .run_on_main_thread(move || {
+                    let synced = try_capture_login_session(&app_main);
+                    let _ = tx.send(synced);
+                })
+                .is_err()
+            {
+                continue;
+            }
+            if rx
+                .recv_timeout(std::time::Duration::from_secs(8))
+                .unwrap_or(false)
+            {
+                crate::ytm_api::refresh_cookie_cache_from_webview(&app);
+                emit_login_synced(&app);
+                return;
+            }
+        }
+    });
+}
+
+fn queue_login_capture(app: &tauri::AppHandle) {
+    if !login_popup_exists(app) {
+        return;
+    }
+    auth_store::set_login_popup_sync_ready(true);
+    let gen = LOGIN_CAPTURE_GEN.fetch_add(1, Ordering::SeqCst) + 1;
+    let app = app.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(280));
+        if LOGIN_CAPTURE_GEN.load(Ordering::SeqCst) != gen {
+            return;
+        }
+        if app.get_webview_window("google-login").is_none() {
+            return;
+        }
+        let (tx, rx) = std::sync::mpsc::channel();
+        let app_main = app.clone();
+        let captured = app
+            .run_on_main_thread(move || {
+                let synced = try_capture_login_session(&app_main);
+                let _ = tx.send(synced);
+            })
+            .is_ok()
+            && rx
+                .recv_timeout(std::time::Duration::from_secs(8))
+                .unwrap_or(false);
+        if LOGIN_CAPTURE_GEN.load(Ordering::SeqCst) != gen {
+            return;
+        }
+        if captured {
+            crate::ytm_api::refresh_cookie_cache_from_webview(&app);
+            emit_login_synced(&app);
+            return;
+        }
+        schedule_login_cookie_sync(&app);
+    });
+}
