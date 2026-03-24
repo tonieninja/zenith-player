@@ -1996,3 +1996,345 @@ export default function App() {
     },
     [audio, crossfadeEnabled, resolveStreamUrl, hydratePanels]
   );
+
+  const playByIndex = useCallback(
+    async (index: number, fadeSeconds?: number, recordHistory = true) => {
+      const q = queueRef.current;
+      if (index < 0 || index >= q.length) return;
+      const nextTrack = q[index];
+      const manualFade =
+        fadeSeconds ??
+        (crossfadeEnabled ? Math.min(MANUAL_FADE_SECS, getCrossfadeSeconds()) : undefined);
+      if (fadeSeconds === undefined) {
+        autoFadePendingRef.current = false;
+        autoFadeTrackRef.current = currentTrackIdRef.current;
+        forceBlendRef.current = false;
+      }
+      if (recordHistory) {
+        playHistoryRef.current = pushPlayHistory(playHistoryRef.current, currentTrackIdRef.current);
+      }
+      queueIndexRef.current = index;
+      setQueueIndex(index);
+      await loadTrack(nextTrack, true, manualFade);
+    },
+    [loadTrack, crossfadeEnabled]
+  );
+  const playByIndexRef =
+    useLatest<(index: number, fadeSeconds?: number) => Promise<void>>(playByIndex);
+
+  const collectionReqRef = useRef(0);
+  const handleCollectionClick = useCallback(
+    async (collection: Track) => {
+      if (toPlainPlaylistId(collection.id) === 'SE') {
+        await openCollectionPage(collection);
+        return;
+      }
+
+      const req = ++collectionReqRef.current;
+      const L = translations[lang];
+      const slowHint = window.setTimeout(() => {
+        if (req === collectionReqRef.current) {
+          pushToast(L.openingPlaylist.replace('{name}', collection.title), 'info', 2000);
+        }
+      }, 700);
+      try {
+        openPlayer();
+        setPlayingFrom(collection.title);
+        const res = await loadPlaylistItems(collection.id, lang);
+        if (req !== collectionReqRef.current) return;
+        const items = res.items;
+        if (!items.length) {
+          await openCollectionPage(collection);
+          return;
+        }
+
+        const albumArtist =
+          collection.type === 'album'
+            ? ((collection.artist || '')
+                .split(' • ')
+                .map((x) => x.trim())
+                .find((x) => x && !/^\d{4}$/.test(x) && !/^(album|single|singiel|ep)$/i.test(x)) ??
+              '')
+            : '';
+        const itemsWithCover = items.map((i) => ({
+          ...i,
+          artist: albumArtist && i.artist === L.variousArtists ? albumArtist : i.artist,
+          cover: i.cover.includes('ui-avatars') ? collection.cover : i.cover,
+          coverSmall: i.coverSmall?.includes('ui-avatars') ? collection.coverSmall : i.coverSmall,
+          coverLarge: i.coverLarge?.includes('ui-avatars') ? collection.coverLarge : i.coverLarge,
+        }));
+
+        setQueue(itemsWithCover);
+        setQueueIndex(0);
+        setShuffleOn(false);
+        originalQueueRef.current = null;
+        setPlayingFrom(collection.title);
+        playingFromIdRef.current = toPlainPlaylistId(collection.id);
+        playingAlbumRef.current = collection.type === 'album' || isAlbumCollectionId(collection.id);
+        openPlayer();
+        await loadTrack(itemsWithCover[0]);
+      } catch (e) {
+        console.warn('[playlist] open failed', e);
+        if (req === collectionReqRef.current) pushToast(L.playlistOpenFailed, 'error');
+      } finally {
+        window.clearTimeout(slowHint);
+      }
+    },
+    [lang, openPlayer, loadTrack, openCollectionPage]
+  );
+
+  const handleItemClick = useCallback(
+    async (track: Track, sectionTitle?: string, sectionItems?: Track[]) => {
+      const plan = itemClickPlan(track);
+      if (plan.kind === 'browse-page') {
+        openBrowsePage(track);
+        return;
+      }
+      if (plan.kind === 'play-collection') {
+        await handleCollectionClick(track);
+        return;
+      }
+      openPlayer();
+      const items = (sectionItems || []).filter(
+        (i) => i.type === 'track' || /^[\w-]{11}$/.test(i.id)
+      );
+      setShuffleOn(false);
+      originalQueueRef.current = null;
+      if (items.length > 0) {
+        const idx = Math.max(
+          0,
+          items.findIndex((i) => i.id === track.id)
+        );
+        setQueue(items);
+        setQueueIndex(idx);
+        setPlayingFrom(sectionTitle || null);
+      } else {
+        setQueue([track]);
+        setQueueIndex(0);
+        setPlayingFrom(null);
+      }
+      playingFromIdRef.current = null;
+      playingAlbumRef.current = false;
+      await loadTrack(track);
+    },
+    [openPlayer, loadTrack, handleCollectionClick, openBrowsePage]
+  );
+
+  const togglePlay = useCallback(async () => {
+    if (!currentTrack) return;
+    const fadeMs = pluginManager.isEnabled('fade-on-pause') ? getFadePauseMs() : 0;
+    if (isPlaying) {
+      if (fadeMs > 0) {
+        await rampVolumeAsync(audio, 0, fadeMs);
+        audio.pause();
+        audio.volume = volume;
+      } else {
+        audio.pause();
+      }
+      setIsPlaying(false);
+    } else {
+      const deadAudio =
+        !audio.hasSource ||
+        !audio.isReady ||
+        !Number.isFinite(audio.duration) ||
+        audio.duration <= 0;
+      if (deadAudio) {
+        await loadTrack(currentTrack, true, undefined, progressRef.current);
+        return;
+      }
+      try {
+        if (fadeMs > 0) {
+          audio.volume = 0;
+          await audio.play();
+          await rampVolumeAsync(audio, volume, fadeMs);
+        } else {
+          audio.volume = volume;
+          await audio.play();
+        }
+        setIsPlaying(true);
+      } catch {
+        audio.volume = volume;
+        await loadTrack(currentTrack, true, undefined, progressRef.current);
+      }
+    }
+  }, [audio, currentTrack, isPlaying, volume, loadTrack]);
+
+  const radioForRef = useRef<string | null>(null);
+  const tailRef = useRef<{ id: string; end: number | null } | null>(null);
+  const radioLangRef = useLatest(lang);
+  const radioBusyRef = useRef<Promise<number> | null>(null);
+  const extendQueueWithRadio = useCallback((): Promise<number> => {
+    if (radioBusyRef.current) return radioBusyRef.current;
+    const job = (async () => {
+      const q = queueRef.current;
+      const cur = q[queueIndexRef.current] ?? q[q.length - 1];
+      if (!cur) return 0;
+      const have = new Set(q.map((t) => t.id));
+      const fresh = (list: Track[]) => list.filter((t) => t.type === 'track' && !have.has(t.id));
+      let more: Track[] = [];
+      try {
+        more = fresh(await getRadioTracks(cur.id, radioLangRef.current));
+      } catch (err) {
+        console.debug('App radio', err);
+      }
+      if (more.length === 0) {
+        try {
+          const who = (cur.artist || '').split(' • ')[0];
+          more = fresh(
+            await getRelatedTracks(`${cur.title} ${who}`.trim(), radioLangRef.current, cur.id)
+          );
+        } catch (err) {
+          console.debug('App related', err);
+        }
+      }
+      if (more.length === 0) return 0;
+      const latest = queueRef.current;
+      const next = [
+        ...latest,
+        ...more.slice(0, 25).filter((t) => !latest.some((x) => x.id === t.id)),
+      ];
+      queueRef.current = next;
+      setQueue(next);
+      return next.length - latest.length;
+    })();
+    radioBusyRef.current = job;
+    void job.finally(() => {
+      radioBusyRef.current = null;
+    });
+    return job;
+  }, []);
+
+  const playNext = useCallback(() => {
+    const idx = queueIndexRef.current;
+    const q = queueRef.current;
+    if (idx < q.length - 1) playByIndex(idx + 1);
+    else if (loopMode === 'all' && q.length > 0) playByIndex(0);
+    else if (q.length > 0) {
+      const at = q.length;
+      void extendQueueWithRadio().then((added) => {
+        if (added > 0 && queueIndexRef.current === idx) void playByIndexRef.current(at);
+      });
+    }
+  }, [playByIndex, loopMode, extendQueueWithRadio]);
+
+  const playPrev = useCallback(() => {
+    if (!currentTrack) return;
+    const positionSec = pickPrevPosition(progressRef.current, audioRef.current?.currentTime);
+    const q = queueRef.current;
+    const decision = decidePrevious({
+      positionSec,
+      queueIndex: queueIndexRef.current,
+      queueLength: q.length,
+      loopMode,
+      shuffleOn,
+      historyIds: playHistoryRef.current,
+      queueIds: q.map((t) => t.id),
+    });
+    if (decision.kind === 'restart') {
+      audio.currentTime = 0;
+      progressRef.current = 0;
+      paintProgressUiRef.current(0);
+      return;
+    }
+    if (decision.kind === 'goto') {
+      const popped = popPlayHistory(playHistoryRef.current, currentTrack.id);
+      playHistoryRef.current = popped.history;
+      playByIndex(decision.index, undefined, false);
+    }
+  }, [audio, currentTrack, playByIndex, loopMode, shuffleOn]);
+
+  const toggleMute = useCallback(() => {
+    setIsMuted((m) => {
+      audio.muted = !m;
+      return !m;
+    });
+  }, [audio]);
+
+  const cycleLoop = useCallback(() => {
+    setLoopMode((m) => (m === 'off' ? 'all' : m === 'all' ? 'one' : 'off'));
+  }, []);
+
+  const toggleShuffle = useCallback(() => {
+    if (queue.length === 0) return;
+    if (!shuffleOn) {
+      originalQueueRef.current = queue;
+      const current = queue[queueIndex];
+      const rest = queue.filter((_, i) => i !== queueIndex);
+      setQueue(current ? [current, ...smartShuffle(rest)] : smartShuffle(rest));
+      setQueueIndex(0);
+      setShuffleOn(true);
+    } else {
+      const original = originalQueueRef.current;
+      if (original && original.length > 0) {
+        const idx = currentTrack
+          ? Math.max(
+              0,
+              original.findIndex((i) => i.id === currentTrack.id)
+            )
+          : 0;
+        setQueue(original);
+        setQueueIndex(idx);
+      }
+      originalQueueRef.current = null;
+      playHistoryRef.current = [];
+      setShuffleOn(false);
+    }
+  }, [queue, queueIndex, shuffleOn, currentTrack]);
+
+  const ratingReqRef = useRef(0);
+  useEffect(() => {
+    const id = currentTrack?.id;
+    const req = ++ratingReqRef.current;
+    setTrackRatingState(id && likedIdSetRef.current.has(id) ? 'LIKE' : 'INDIFFERENT');
+    if (!id || !libAuthed || !/^[\w-]{11}$/.test(id)) return;
+    getTrackLikeStatus(id, lang)
+      .then((st) => {
+        if (st && req === ratingReqRef.current) setTrackRatingState(st);
+      })
+      .catch((e) => console.debug('[like] status lookup failed', e));
+  }, [currentTrack?.id, libAuthed]);
+
+  useEffect(() => {
+    const id = currentTrack?.id;
+    if (id && likedIdSet.has(id)) setTrackRatingState((r) => (r === 'DISLIKE' ? r : 'LIKE'));
+  }, [likedIdSet, currentTrack?.id]);
+
+  const applyTrackRating = useCallback(
+    (next: TrackLikeStatus) => {
+      if (!currentTrack) return;
+      const track: Track = {
+        id: currentTrack.id,
+        type: 'track',
+        title: currentTrack.title,
+        artist: currentTrack.artist,
+        cover: currentTrack.cover,
+        coverSmall: currentTrack.coverSmall,
+        coverLarge: currentTrack.coverLarge,
+      };
+      const wasSaved = savedTracks.some((x) => x.id === track.id);
+      ratingReqRef.current += 1;
+      setTrackRatingState(next);
+      if (next !== 'LIKE') {
+        setAccountLikes((prev) =>
+          prev.some((x) => x.id === track.id) ? prev.filter((x) => x.id !== track.id) : prev
+        );
+      }
+      if (next === 'LIKE' && !wasSaved) {
+        pushToast(t.addedToFavs, 'success', 1800);
+        setSavedTracks((prev) => [track, ...prev]);
+      } else if (next !== 'LIKE' && wasSaved) {
+        pushToast(t.removedFromFavs, 'success', 1800);
+        setSavedTracks((prev) => prev.filter((x) => x.id !== track.id));
+      }
+      if (libAuthed && /^[\w-]{11}$/.test(track.id)) {
+        setTrackRating(track.id, next, lang).catch((e) => {
+          console.warn('[like] sync failed', e);
+          pushToast(
+            translations[lang][next === 'DISLIKE' ? 'dislikeSyncFailed' : 'likeSyncFailed'],
+            'error'
+          );
+        });
+      }
+    },
+    [currentTrack, savedTracks, t, libAuthed, lang]
+  );
