@@ -2338,3 +2338,355 @@ export default function App() {
     },
     [currentTrack, savedTracks, t, libAuthed, lang]
   );
+
+  const toggleSave = useCallback(() => {
+    const liked = trackRating === 'LIKE' || savedTracks.some((x) => x.id === currentTrack?.id);
+    applyTrackRating(liked ? 'INDIFFERENT' : 'LIKE');
+  }, [applyTrackRating, savedTracks, currentTrack, trackRating]);
+
+  const toggleLike = useCallback(() => {
+    applyTrackRating(nextLikeStatus(trackRating, 'like'));
+  }, [applyTrackRating, trackRating]);
+
+  const toggleDislike = useCallback(() => {
+    applyTrackRating(nextLikeStatus(trackRating, 'dislike'));
+  }, [applyTrackRating, trackRating]);
+
+  const addCurrentToPlaylist = useCallback(
+    async (pl: Track, allowDuplicate = false, picked?: Track) => {
+      const track = picked ?? currentTrack;
+      if (!track) return;
+      const L = translations[lang];
+      try {
+        await addToPlaylist(pl.id, track.id, lang, { allowDuplicate });
+        pushToast(L.addedToPlaylist.replace('{name}', pl.title), 'success');
+      } catch (e) {
+        if (e instanceof AlreadyInPlaylistError) {
+          pushToast(L.alreadyInPlaylist.replace('{name}', pl.title), 'info', 6000, {
+            label: L.addAnyway,
+            onClick: () => void addCurrentToPlaylistRef.current(pl, true, track),
+          });
+          return;
+        }
+        console.warn('[playlist] add failed', e);
+        pushToast(L.addToPlaylistFailed, 'error');
+      }
+    },
+    [currentTrack, lang]
+  );
+  const addCurrentToPlaylistRef = useLatest(addCurrentToPlaylist);
+
+  const submitPlaylistEdit = useCallback(async () => {
+    if (!plEdit || plEditBusy) return;
+    if (plEdit.mode === 'rename' && !plEditTitle.trim()) return;
+    setPlEditBusy(true);
+    setPlEditError(false);
+    try {
+      if (plEdit.mode === 'rename') {
+        const title = plEditTitle.trim();
+        await renamePlaylist(plEdit.pl.id, title, lang);
+        setUserPlaylists((prev) => prev.map((p) => (p.id === plEdit.pl.id ? { ...p, title } : p)));
+        setLibSections((prev) =>
+          prev.map((sec) => ({
+            ...sec,
+            items: sec.items.map((p) => (p.id === plEdit.pl.id ? { ...p, title } : p)),
+          }))
+        );
+        if (playingFromIdRef.current === toPlainPlaylistId(plEdit.pl.id)) setPlayingFrom(title);
+        pushToast(translations[lang].playlistRenamed, 'success');
+      } else {
+        await deletePlaylist(plEdit.pl.id, lang);
+        setUserPlaylists((prev) => prev.filter((p) => p.id !== plEdit.pl.id));
+        setLibSections((prev) =>
+          prev.map((sec) => ({
+            ...sec,
+            items: sec.items.filter(
+              (p) => toPlainPlaylistId(p.id) !== toPlainPlaylistId(plEdit.pl.id)
+            ),
+          }))
+        );
+        if (playingFromIdRef.current === toPlainPlaylistId(plEdit.pl.id)) {
+          playingFromIdRef.current = null;
+          setPlayingFrom(null);
+        }
+        if (isViewingPlaylist(activeTab, activeMood, plEdit.pl.id)) {
+          ++feedSeqRef.current.mood;
+          setSections([]);
+          setBrowseTitle(null);
+          setBrowseEmptyKind(null);
+          setActiveMood(null);
+          navigateTo('library');
+        }
+        pushToast(translations[lang].playlistDeleted, 'success');
+      }
+      setPlEdit(null);
+      void loadUserPlaylists();
+      if (activeTab === 'library') void loadLibrary(libCategory);
+    } catch (e) {
+      console.warn('[playlist] edit failed', e);
+      setPlEditError(true);
+    } finally {
+      setPlEditBusy(false);
+    }
+  }, [
+    plEdit,
+    plEditBusy,
+    plEditTitle,
+    lang,
+    loadUserPlaylists,
+    loadLibrary,
+    activeTab,
+    activeMood,
+    libCategory,
+    navigateTo,
+  ]);
+
+  useEffect(() => {
+    if (panelTab !== 'related' || !currentTrack) return;
+    fetchRelatedForTrack(currentTrack);
+  }, [panelTab, currentTrack?.id, fetchRelatedForTrack]);
+
+  const progressScrubRef = useRef(false);
+
+  const paintProgressUi = useCallback((t: number, d = durationRef.current) => {
+    const pct = d > 0 ? (t / d) * 100 : 0;
+    progressFillRef.current?.style.setProperty('width', `${pct}%`);
+    progressHandleRef.current?.style.setProperty('left', `${pct}%`);
+    if (!progressScrubRef.current) {
+      progressTimeElRef.current?.replaceChildren(document.createTextNode(formatTime(t)));
+    }
+    if (showRemainingRef.current && d > 0) {
+      durationTimeElRef.current?.replaceChildren(
+        document.createTextNode(`-${formatTime(Math.max(0, d - t))}`)
+      );
+    } else {
+      durationTimeElRef.current?.replaceChildren(
+        document.createTextNode(d > 0 ? formatTime(d) : '0:00')
+      );
+    }
+  }, []);
+  const paintProgressUiRef = useLatest<(t: number, d?: number) => void>(paintProgressUi);
+
+  const getLyricProgress = useCallback(
+    () => audioRef.current?.currentTime ?? progressRef.current,
+    []
+  );
+
+  const seekTo = useCallback(
+    (time: number) => {
+      audio.currentTime = time;
+      progressRef.current = time;
+      paintProgressUi(time);
+      const idx = getActiveLyricIndex(lyricsRef.current?.synced, time, lyricsSyncOffsetRef.current);
+      activeLyricLineRef.current = idx;
+      if (activeTabRef.current === 'player' || overlayPluginsOnRef.current) {
+        setActiveLyricLine(idx);
+      }
+      pluginManager.notifySeek(time);
+      if (pluginManager.isEnabled('listening-room') && isRoomHost() && currentTrackIdRef.current) {
+        lastRoomPushRef.current = Date.now();
+        const m = overlayMetaRef.current;
+        void broadcastRoom({
+          trackId: currentTrackIdRef.current,
+          title: m.title,
+          artist: m.artist,
+          coverUrl: m.coverUrl,
+          position: time,
+          isPlaying: isPlayingRef.current,
+          hostId: getRoomCode(),
+        }).catch((err) => console.debug('App', err));
+      }
+    },
+    [audio, paintProgressUi]
+  );
+
+  const {
+    trackRef: progressTrackRef,
+    scrubbing: progressScrubbing,
+    scrubTime: progressScrubTime,
+    onPointerDown: onProgressPointerDown,
+    onPointerMove: onProgressPointerMove,
+    onPointerUp: onProgressPointerUp,
+  } = useScrubBar(duration, seekTo);
+
+  useEffect(() => {
+    progressScrubRef.current = progressScrubbing;
+  }, [progressScrubbing]);
+
+  useEffect(() => {
+    if (!progressScrubbing) return;
+    paintProgressUi(progressScrubTime);
+    progressTimeElRef.current?.replaceChildren(
+      document.createTextNode(formatTime(progressScrubTime))
+    );
+  }, [progressScrubbing, progressScrubTime, paintProgressUi]);
+
+  const setVolumeTo = useCallback(
+    (ratio: number) => {
+      setVolume(ratio);
+      rampVolume(audio, ratio, pluginManager.isEnabled('smooth-volume'));
+      if (pluginManager.isEnabled('remember-volume')) saveRememberedVolume(ratio);
+      if (isMuted && ratio > 0) {
+        audio.muted = false;
+        setIsMuted(false);
+      }
+    },
+    [audio, isMuted]
+  );
+
+  const handleVolumeClick = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      const rect = e.currentTarget.getBoundingClientRect();
+      setVolumeTo(Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width)));
+    },
+    [setVolumeTo]
+  );
+
+  const volumeBlockRef = useRef<HTMLDivElement | null>(null);
+  const volumeNowRef = useLatest(isMuted ? 0 : volume);
+  const setVolumeToRef = useLatest(setVolumeTo);
+  useEffect(() => {
+    const el = volumeBlockRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const next = applyWheelVolume(volumeNowRef.current, e);
+      if (next !== volumeNowRef.current) setVolumeToRef.current(next);
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, []);
+
+  useEffect(() => {
+    let lastUiAt = 0;
+    const syncDurationFromAudio = () => {
+      const id = currentTrackIdRef.current;
+      if (!id || trackSwitchingRef.current || !audio.hasSource) return;
+      const ad = audio.duration;
+      if (!Number.isFinite(ad) || ad <= 0) return;
+      audioDurationTrackIdRef.current = id;
+      const d = barDurationForTrack(durationRef.current, ad, true);
+      if (d > 0 && Math.abs(d - durationRef.current) > 0.25) {
+        durationRef.current = d;
+        setDuration(d);
+        paintProgressUi(progressRef.current, d);
+      } else if (d > 0) {
+        durationRef.current = d;
+      }
+    };
+    syncDurationFromAudioRef.current = syncDurationFromAudio;
+    const onTimeUpdate = () => {
+      if (trackSwitchingRef.current) return;
+      const t = audio.currentTime;
+      if (audioDurationTrackIdRef.current !== currentTrackIdRef.current) syncDurationFromAudio();
+      const trusted = audioDurationTrackIdRef.current === currentTrackIdRef.current;
+      const d = barDurationForTrack(durationRef.current, audio.duration, trusted);
+      progressRef.current = t;
+      if (d > 0) durationRef.current = d;
+
+      const synced = lyricsRef.current?.synced;
+      const lyricIdx = synced?.length
+        ? getActiveLyricIndex(synced, t, lyricsSyncOffsetRef.current)
+        : -1;
+      const lineChanged = lyricIdx !== activeLyricLineRef.current;
+      if (lineChanged) {
+        activeLyricLineRef.current = lyricIdx;
+        if (activeTabRef.current === 'player' || overlayPluginsOnRef.current) {
+          setActiveLyricLine(lyricIdx);
+        }
+      }
+
+      if (overlayPluginsOnRef.current && (lineChanged || document.hidden)) {
+        const lyr = lyricsRef.current;
+        const m = overlayMetaRef.current;
+        void pushLyricsOverlay(
+          {
+            title: m.title,
+            artist: m.artist,
+            coverUrl: m.coverUrl,
+            trackId: m.trackId,
+            progress: t,
+            rate: audio.playbackRate,
+            activeLyricIndex: lyricIdx,
+            isPlaying: isPlayingRef.current,
+            synced: lyr?.synced,
+            text: lyr?.text,
+          },
+          { secondScreen: secondScreenLyricsRef.current }
+        );
+      }
+
+      const nearId = currentTrackIdRef.current;
+      if (nearId && d > 0 && isPlayingRef.current && loopModeRef.current !== 'one') {
+        const left = d - t;
+        const cfsNow = crossfadeSecsRef.current;
+        if (
+          left <= cfsNow + 30 &&
+          radioForRef.current !== nearId &&
+          loopModeRef.current !== 'all' &&
+          queueIndexRef.current >= queueRef.current.length - 1
+        ) {
+          radioForRef.current = nearId;
+          void extendQueueWithRadio();
+        }
+        if (crossfadeEnabledRef.current && left <= cfsNow + 25 && tailRef.current?.id !== nearId) {
+          tailRef.current = { id: nearId, end: null };
+          const src = audio.src;
+          if (src) {
+            void invoke<number | null>('zaudio_tail', { url: src, d })
+              .then((end) => {
+                if (tailRef.current?.id === nearId) tailRef.current = { id: nearId, end };
+              })
+              .catch((err) => console.debug('App tail', err));
+          }
+        }
+      }
+
+      if (
+        (crossfadeEnabledRef.current || playingAlbumRef.current) &&
+        !audio.isCrossfading &&
+        loopModeRef.current !== 'one' &&
+        d > 0 &&
+        isPlayingRef.current
+      ) {
+        const cfs = crossfadeSecsRef.current;
+        const q = queueRef.current;
+        const qi = queueIndexRef.current;
+        const trackId = currentTrackIdRef.current;
+        const gapless = playingAlbumRef.current && getGaplessAlbums();
+        const tail = tailRef.current;
+        const end =
+          !gapless && tail && tail.id === trackId && tail.end && tail.end > 0
+            ? Math.min(d, tail.end)
+            : d;
+        const remaining = end - t;
+        const plan = planAutoTransition({
+          crossfadeOn: crossfadeEnabledRef.current,
+          crossfadeSecs: cfs,
+          album: playingAlbumRef.current,
+          gapless,
+          remaining,
+        });
+        if (
+          (gapless || crossfadeEnabledRef.current) &&
+          trackId &&
+          prerollForRef.current !== trackId &&
+          remaining <= (gapless ? GAPLESS_PREROLL_SECS : cfs + 8) &&
+          remaining > (gapless ? GAPLESS_LEAD_SECS : cfs)
+        ) {
+          const ni = qi < q.length - 1 ? qi + 1 : loopModeRef.current === 'all' ? 0 : -1;
+          const next = ni >= 0 && ni !== qi ? q[ni] : null;
+          if (next) {
+            prerollForRef.current = trackId;
+            void resolveStreamUrlRef
+              .current(next.id)
+              .then((u) => {
+                if (u && currentTrackIdRef.current === trackId) audio.preroll(u);
+              })
+              .catch((err) => console.debug('App onTimeUpdate', err));
+          }
+        }
+        if (plan && trackId && autoFadeTrackRef.current !== trackId) {
+          const spacing = gapless ? 1500 : Math.max(cfs * 1000 + 2000, 5000);
+          if (Date.now() - lastAutoFadeAtRef.current >= spacing) {
+            let nextIndex = -1;
