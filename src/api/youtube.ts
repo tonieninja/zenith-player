@@ -823,3 +823,415 @@ function findContinuationToken(node: any): string | null {
   walk(node);
   return found;
 }
+
+function dedupeSections(sections: Section[]): Section[] {
+  const seen = new Set<string>();
+  return sections.filter((s) => {
+    const key = s.title.toLowerCase().trim();
+    if (!key) return false;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+async function fetchWithTimeout(
+  url: string,
+  init: RequestInit,
+  timeoutMs = 14000
+): Promise<Response> {
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    window.clearTimeout(timer);
+  }
+}
+
+export async function ytmBrowseRaw(
+  body: { browseId?: string; continuation?: string },
+  lang: Language
+): Promise<any> {
+  const response = await fetchWithTimeout(ytmUrl('browse'), {
+    method: 'POST',
+    headers: await buildAuthHeaders(lang),
+    body: JSON.stringify({ ...buildClientContext(lang), ...body }),
+  });
+  if (!response.ok) throw new Error(`browse HTTP ${response.status}`);
+  return JSON.parse(await response.text());
+}
+
+export { findContinuationToken };
+
+async function fetchPlaylistContinuation(
+  token: string,
+  lang: Language
+): Promise<{ data: unknown; next: string | null }> {
+  const response = await fetchWithTimeout(ytmUrl('browse'), {
+    method: 'POST',
+    headers: await buildAuthHeaders(lang),
+    body: JSON.stringify({ ...buildClientContext(lang), continuation: token }),
+  });
+  if (!response.ok) throw new Error(`browse continuation HTTP ${response.status}`);
+  const data = JSON.parse(await response.text());
+  return { data, next: findContinuationToken(data) };
+}
+
+function isHomeExploreCacheKey(cacheKey: string): boolean {
+  return (
+    cacheKey.startsWith('FEmusic_home:') ||
+    cacheKey.startsWith('FEmusic_explore:') ||
+    cacheKey.startsWith('FEmusic_new_releases:')
+  );
+}
+
+async function fetchBrowse(browseId: string, lang: Language): Promise<Section[]> {
+  const cookie = await getYtmCookie();
+  const authed = extractSapisid(cookie) ? '1' : '0';
+  const cacheKey = `${browseId}:${lang}:${authed}`;
+  const cached = browseCache.get(cacheKey);
+  const ttl =
+    browseId.startsWith('FEmusic_home') || browseId.startsWith('FEmusic_explore') ? 180000 : 120000;
+  if (cached && Date.now() - cached.ts < ttl) return cached.data;
+  const epoch = browseEpoch;
+
+  return Promise.race([
+    fetchBrowseUncached(browseId, lang, cacheKey, epoch),
+    new Promise<Section[]>((resolve) => window.setTimeout(() => resolve([]), 14000)),
+  ]).catch(() => [] as Section[]);
+}
+
+async function fetchBrowseUncached(
+  rawBrowseId: string,
+  lang: Language,
+  cacheKey: string,
+  epoch = browseEpoch
+): Promise<Section[]> {
+  const { browseId, params } = splitBrowseId(rawBrowseId);
+  const isPl = lang === 'pl';
+  const t = translations[lang];
+
+  const store = (result: Section[]) => {
+    if (isHomeExploreCacheKey(cacheKey) && epoch !== browseEpoch) return result;
+    browseCache.set(cacheKey, { data: result, ts: Date.now() });
+    pruneOldest(browseCache, BROWSE_CACHE_LIMIT);
+    return result;
+  };
+
+  const parsePayload = (data: unknown): Section[] => {
+    if (!data || typeof data !== 'object') return [];
+    const o = data as Record<string, unknown>;
+    if (Array.isArray(o.zenithSections)) {
+      const sections = (o.zenithSections as Section[]).filter(
+        (s) => s?.title && Array.isArray(s.items) && s.items.length > 0
+      );
+      if (sections.length) return dedupeSections(sections);
+    }
+    if (o.error) return [];
+    let result = parseShelves(data, t);
+    if (!result.length && browseId === 'FEmusic_home') {
+      result = parseRichHome(data, t);
+    }
+    return dedupeSections(result);
+  };
+
+  const isLibrary =
+    browseId.includes('library') ||
+    browseId.includes('liked') ||
+    browseId.startsWith('FEmusic_library') ||
+    browseId.startsWith('FEmusic_liked');
+
+  try {
+    if (!isLibrary) {
+      const rawText = await invokeWithTimeout<string>(
+        'ytm_browse',
+        {
+          browseId,
+          hl: isPl ? 'pl' : 'en',
+          gl: isPl ? 'PL' : 'US',
+          params: params ?? null,
+        },
+        12000
+      );
+      const result = parsePayload(JSON.parse(rawText));
+      if (result.length) return store(result);
+    }
+  } catch (rustErr) {
+    console.warn('[browse] rust path failed', browseId, rustErr);
+  }
+
+  const headers = await buildAuthHeaders(lang);
+  try {
+    const response = await fetchWithTimeout(
+      ytmUrl('browse'),
+      {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          ...buildClientContext(lang),
+          browseId,
+          ...(params ? { params } : {}),
+        }),
+      },
+      8000
+    );
+    const rawText = await response.text();
+    if (response.ok) {
+      const json = JSON.parse(rawText);
+      if (isLibrary) libraryContinuations.set(cacheKey, findContinuationToken(json));
+      const result = parsePayload(json);
+      if (result.length) return store(result);
+    } else {
+      console.warn('[browse]', browseId, 'HTTP', response.status, rawText.slice(0, 200));
+    }
+  } catch (error) {
+    console.warn('[browse] fetch failed', browseId, error);
+  }
+
+  return [];
+}
+
+export async function searchMusic(query: string, lang: Language): Promise<Section[]> {
+  const q = query.trim();
+  if (!q) return [];
+  const cacheKey = `${q.toLowerCase()}:${lang}`;
+  const cached = searchCache.get(cacheKey);
+  if (cached && Date.now() - cached.ts < 60000) return cached.data;
+
+  const t = translations[lang];
+  const SONGS_PARAMS = 'EgWKAQIIAWoKEAMQBBAJEAoQBQ==';
+
+  const run = async (params?: string): Promise<Section[]> => {
+    const body: Record<string, unknown> = { ...buildClientContext(lang), query: q };
+    if (params) body.params = params;
+    const response = await fetchWithTimeout(
+      ytmUrl('search'),
+      {
+        method: 'POST',
+        headers: await buildAuthHeaders(lang),
+        body: JSON.stringify(body),
+      },
+      10000
+    );
+    if (!response.ok) return [];
+    const data = JSON.parse(await response.text());
+    return parseShelves(data, t);
+  };
+
+  try {
+    const [mixed, songs] = await Promise.all([run(), run(SONGS_PARAMS)]);
+    const merged = mergeSearchSections(mixed, songs, t);
+    if (merged.length > 0) {
+      searchCache.set(cacheKey, { data: merged, ts: Date.now() });
+      pruneOldest(searchCache, SEARCH_CACHE_LIMIT);
+      return merged;
+    }
+    const fallback = await searchFallback(q, t);
+    if (fallback.length > 0) {
+      searchCache.set(cacheKey, { data: fallback, ts: Date.now() });
+      pruneOldest(searchCache, SEARCH_CACHE_LIMIT);
+    }
+    return fallback;
+  } catch {
+    return await searchFallback(q, t);
+  }
+}
+
+function mergeSearchSections(a: Section[], b: Section[], t: TranslationBundle): Section[] {
+  const out: Section[] = [];
+  const seenTitles = new Set<string>();
+  const seenIds = new Set<string>();
+  const push = (section: Section) => {
+    const items = section.items.filter((item) => {
+      if (seenIds.has(item.id)) return false;
+      seenIds.add(item.id);
+      return true;
+    });
+    if (!items.length) return;
+    const title = section.title || t.searchResults;
+    if (seenTitles.has(title)) {
+      const existing = out.find((s) => s.title === title);
+      if (existing) existing.items.push(...items);
+      return;
+    }
+    seenTitles.add(title);
+    out.push({ title, items });
+  };
+  a.forEach(push);
+  b.forEach(push);
+  return out;
+}
+
+const inflightStreams = new Map<string, Promise<string | null>>();
+
+function normalizeStreamUrl(raw: unknown): string | null {
+  if (typeof raw !== 'string' || !raw.trim()) return null;
+  const line = raw
+    .split(/\r?\n/)
+    .map((s) => s.trim())
+    .find((s) => s.startsWith('http://') || s.startsWith('https://'));
+  if (!line) return null;
+  if (line.startsWith('http://127.0.0.1/') || line.startsWith('http://localhost/')) {
+    return line;
+  }
+  return line;
+}
+
+function isYoutubeVideoId(id: string): boolean {
+  return /^[A-Za-z0-9_-]{11}$/.test(id);
+}
+
+const STREAM_INVOKE_TIMEOUT_MS = 125_000;
+
+export async function getAudioStream(
+  videoId: string,
+  _lang: Language,
+  fresh = false
+): Promise<string | null> {
+  if (!videoId?.trim() || !isYoutubeVideoId(videoId)) return null;
+
+  if (!fresh) {
+    const existing = inflightStreams.get(videoId);
+    if (existing) return existing;
+  }
+
+  const task = (async () => {
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const started = Date.now();
+      try {
+        const raw = await invokeWithTimeout<unknown>(
+          'get_stream_url',
+          { videoId, fresh: fresh || null },
+          STREAM_INVOKE_TIMEOUT_MS
+        );
+        const url = normalizeStreamUrl(raw);
+        if (!url) console.warn('[stream] no playable url for', videoId);
+        return url;
+      } catch (err) {
+        console.warn('[stream] invoke failed', videoId, 'attempt', attempt + 1, err);
+        if (Date.now() - started > 5000) return null;
+      }
+      if (attempt < 1) {
+        await new Promise((r) => setTimeout(r, 400));
+      }
+    }
+    return null;
+  })().finally(() => {
+    inflightStreams.delete(videoId);
+  });
+
+  inflightStreams.set(videoId, task);
+  return task;
+}
+
+export function isGeneratedMixId(id: string): boolean {
+  return toPlainPlaylistId(id).startsWith('RD');
+}
+
+export function toPlaylistBrowseId(id: string): string {
+  const raw = (id || '').trim();
+  if (!raw) return raw;
+  if (
+    raw.startsWith('VL') ||
+    raw.startsWith('FE') ||
+    raw.startsWith('UC') ||
+    raw.startsWith('MPRE') ||
+    raw.startsWith('MPSP')
+  ) {
+    return raw;
+  }
+  if (/^(PL|OL|LM|UU|RD)/.test(raw)) return `VL${raw}`;
+  return raw;
+}
+
+export function playlistBrowseCandidates(browseId: string): string[] {
+  const raw = (browseId || '').trim();
+  if (!raw) return [];
+  if (isGeneratedMixId(raw)) return [toPlaylistBrowseId(toPlainPlaylistId(raw))];
+  return Array.from(new Set([toPlaylistBrowseId(raw), raw].filter(Boolean)));
+}
+
+const EMPTY_PLAYLIST = Symbol('empty-playlist');
+
+function findRenderer(node: any, key: string, depth = 0): any {
+  if (!node || typeof node !== 'object' || depth > 24) return null;
+  if (Array.isArray(node)) {
+    for (const n of node) {
+      const hit = findRenderer(n, key, depth + 1);
+      if (hit) return hit;
+    }
+    return null;
+  }
+  if (node[key]) return node[key];
+  for (const v of Object.values(node)) {
+    const hit = findRenderer(v, key, depth + 1);
+    if (hit) return hit;
+  }
+  return null;
+}
+
+export function playlistContentRoot(data: any, browseId: string): any {
+  const shelf = findRenderer(data, 'musicPlaylistShelfRenderer');
+  if (shelf) return shelf;
+  if (browseId.startsWith('VL') && !isGeneratedMixId(browseId)) {
+    if (browseId === 'VLSE') {
+      const plain = findRenderer(data, 'musicShelfRenderer');
+      if (plain) return plain;
+    }
+    return EMPTY_PLAYLIST;
+  }
+  return findRenderer(data, 'musicShelfRenderer') ?? data;
+}
+
+export type PlaylistLoad = { items: Track[]; status: 'ok' | 'empty' | 'failed' };
+
+export async function getRadioTracks(videoId: string, lang: Language): Promise<Track[]> {
+  if (!isYoutubeVideoId(videoId)) return [];
+  const response = await fetchWithTimeout(
+    ytmUrl('next'),
+    {
+      method: 'POST',
+      headers: await buildAuthHeaders(lang),
+      body: JSON.stringify({
+        ...buildClientContext(lang),
+        videoId,
+        playlistId: `RDAMVM${videoId}`,
+        params: 'wAEB',
+        enablePersistentPlaylistPanel: true,
+        isAudioOnly: true,
+      }),
+    },
+    15000
+  );
+  if (!response.ok) return [];
+  return extractAllTracks(JSON.parse(await response.text()), translations[lang]).filter(
+    (t) => t.type === 'track' && t.id !== videoId
+  );
+}
+
+export async function getPlaylistItems(browseId: string, lang: Language): Promise<Track[]> {
+  return (await loadPlaylistItems(browseId, lang)).items;
+}
+
+const MIX_CONTINUATION_PAGES = 2;
+const PLAYLIST_CONTINUATION_PAGES = 50;
+
+async function loadWatchQueue(playlistId: string, lang: Language): Promise<Track[]> {
+  const response = await fetchWithTimeout(
+    ytmUrl('next'),
+    {
+      method: 'POST',
+      headers: await buildAuthHeaders(lang),
+      body: JSON.stringify({
+        ...buildClientContext(lang),
+        playlistId,
+        enablePersistentPlaylistPanel: true,
+        isAudioOnly: true,
+      }),
+    },
+    15000
+  );
+  if (!response.ok) return [];
+  return extractAllTracks(JSON.parse(await response.text()), translations[lang]);
+}
