@@ -180,3 +180,100 @@ fn queue_login_capture(app: &tauri::AppHandle) {
         schedule_login_cookie_sync(&app);
     });
 }
+
+fn on_login_popup_page_loaded(app: &tauri::AppHandle, url: &url::Url) {
+    if !login_nav::is_finish_page(url) {
+        return;
+    }
+    queue_login_capture(app);
+}
+
+#[tauri::command]
+async fn finish_login_if_ready(app: tauri::AppHandle) -> Result<bool, String> {
+    if !login_popup_exists(&app) {
+        return Ok(false);
+    }
+    auth_store::set_login_popup_sync_ready(true);
+    let synced = auth_store::capture_ytm_login_session(app.clone()).await?;
+    if synced {
+        emit_login_synced(&app);
+    }
+    Ok(synced)
+}
+
+#[tauri::command]
+async fn close_google_login(app: tauri::AppHandle) -> Result<(), String> {
+    let Some(win) = app.get_webview_window("google-login") else {
+        return Ok(());
+    };
+    let (tx, rx) = std::sync::mpsc::channel();
+    app.run_on_main_thread(move || {
+        let _ = win.destroy();
+        let _ = tx.send(());
+    })
+    .map_err(|e| e.to_string())?;
+    let _ = rx.recv_timeout(std::time::Duration::from_secs(3));
+    Ok(())
+}
+
+#[tauri::command]
+async fn open_google_login(app: tauri::AppHandle, title: String) -> Result<(), String> {
+    use tauri::WebviewWindowBuilder;
+
+    if let Some(existing) = app.get_webview_window("google-login") {
+        reset_login_sync_state();
+        existing.show().map_err(|e| e.to_string())?;
+        existing.set_focus().map_err(|e| e.to_string())?;
+        queue_login_capture(&app);
+        return Ok(());
+    }
+    reset_login_sync_state();
+
+    let data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| e.to_string())?
+        .join("webview-google-login");
+    std::fs::create_dir_all(&data_dir).map_err(|e| e.to_string())?;
+
+    let url = windows::app_url(login_nav::LOADING_PAGE)?;
+
+    let app_nav = app.clone();
+    let app_page = app.clone();
+    let win = WebviewWindowBuilder::new(&app, "google-login", url)
+        .title(&title)
+        .inner_size(500.0, 700.0)
+        .center()
+        .resizable(true)
+        .focused(true)
+        .enable_clipboard_access()
+        .background_color(tauri::window::Color(12, 14, 20, 255))
+        .user_agent(login_nav::user_agent())
+        .data_directory(data_dir)
+        .on_navigation(move |nav_url| {
+            if login_nav::is_loading_page(nav_url) {
+                return true;
+            }
+            match login_nav::decide(nav_url) {
+                login_nav::NavDecision::Allow => true,
+                login_nav::NavDecision::OpenExternal => {
+                    use tauri_plugin_opener::OpenerExt;
+                    let _ = app_nav.opener().open_url(nav_url.as_str(), None::<&str>);
+                    false
+                }
+                login_nav::NavDecision::Block => false,
+            }
+        })
+        .on_page_load(move |_window, payload| {
+            if payload.event() != PageLoadEvent::Finished {
+                return;
+            }
+            on_login_popup_page_loaded(&app_page, payload.url());
+        })
+        .build()
+        .map_err(|e| e.to_string())?;
+    win.show().map_err(|e| e.to_string())?;
+    win.set_focus().map_err(|e| e.to_string())?;
+
+    Ok(())
+}
