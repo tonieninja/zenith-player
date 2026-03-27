@@ -2690,3 +2690,220 @@ export default function App() {
           const spacing = gapless ? 1500 : Math.max(cfs * 1000 + 2000, 5000);
           if (Date.now() - lastAutoFadeAtRef.current >= spacing) {
             let nextIndex = -1;
+            if (qi < q.length - 1) nextIndex = qi + 1;
+            else if (loopModeRef.current === 'all' && q.length > 1) nextIndex = 0;
+            if (nextIndex >= 0) {
+              autoFadeTrackRef.current = trackId;
+              autoFadePendingRef.current = true;
+              lastAutoFadeAtRef.current = Date.now();
+              forceBlendRef.current = gapless;
+              void playByIndex(nextIndex, plan.fade).catch(() => {
+                autoFadePendingRef.current = false;
+              });
+            }
+          }
+        }
+      }
+
+      if (progressScrubRef.current) return;
+
+      if (pluginManager.isEnabled('listening-room') && isRoomHost() && currentTrackIdRef.current) {
+        const roomNow = Date.now();
+        if (roomNow - lastRoomPushRef.current >= 5000) {
+          lastRoomPushRef.current = roomNow;
+          const m = overlayMetaRef.current;
+          void broadcastRoom({
+            trackId: currentTrackIdRef.current,
+            title: m.title,
+            artist: m.artist,
+            coverUrl: m.coverUrl,
+            position: t,
+            isPlaying: isPlayingRef.current,
+            hostId: getRoomCode(),
+          }).catch((err) => console.debug('App onTimeUpdate', err));
+        }
+      }
+
+      const now = performance.now();
+      if (now - lastUiAt < UI_PROGRESS_MS) return;
+      lastUiAt = now;
+      paintProgressUi(t, d);
+      if (d > 0 && Math.abs(d - duration) > 0.25) {
+        setDuration(d);
+        const idx = queueIndexRef.current;
+        const cur = queueRef.current[idx];
+        if (
+          cur &&
+          cur.id === currentTrackIdRef.current &&
+          Math.abs((cur.durationSec || 0) - d) > 0.5
+        ) {
+          const next = queueRef.current.slice();
+          next[idx] = { ...cur, durationSec: d };
+          queueRef.current = next;
+          setQueue(next);
+        }
+        if (showRemainingRef.current) {
+          durationTimeElRef.current?.replaceChildren(
+            document.createTextNode(`-${formatTime(Math.max(0, d - t))}`)
+          );
+        } else {
+          durationTimeElRef.current?.replaceChildren(document.createTextNode(formatTime(d)));
+        }
+      }
+    };
+    const onEnded = () => {
+      if (audio.isCrossfading) return;
+      if (autoFadePendingRef.current) {
+        autoFadePendingRef.current = false;
+        return;
+      }
+      if (loopMode === 'one') {
+        audio.currentTime = 0;
+        audio.play().catch(() => setIsPlaying(false));
+        return;
+      }
+      if (queueIndex < queue.length - 1) playNext();
+      else if (loopMode === 'all' && queue.length > 0) playByIndex(0);
+      else if (queue.length > 0) {
+        const at = queueRef.current.length;
+        const idx = queueIndexRef.current;
+        void extendQueueWithRadio().then((added) => {
+          if (added > 0 && queueIndexRef.current === idx) void playByIndexRef.current(at);
+          else if (added === 0) setIsPlaying(false);
+        });
+      } else setIsPlaying(false);
+    };
+    const onPlay = () => setIsPlaying(true);
+    let startTicker = 0;
+    const onPlaying = () => {
+      setIsPlaying(true);
+      setBuffering(false);
+      window.clearInterval(startTicker);
+      const until = performance.now() + 1000;
+      const tick = () => {
+        if (performance.now() > until) window.clearInterval(startTicker);
+        if (trackSwitchingRef.current) return;
+        lastUiAt = 0;
+        onTimeUpdate();
+      };
+      tick();
+      startTicker = window.setInterval(tick, 100);
+    };
+    const onPause = () => setIsPlaying(false);
+    const onWaiting = () => setBuffering(true);
+    const onCanPlay = () => setBuffering(false);
+    const onDurationReady = () => {
+      if (trackSwitchingRef.current) return;
+      syncDurationFromAudio();
+    };
+    const onError = () => {
+      if (!audio.hasSource) return;
+      const id = currentTrackIdRef.current;
+      const resumeAt = progressRef.current;
+      const skipAhead = () => {
+        setIsPlaying(false);
+        setBuffering(false);
+        const qi = queueIndexRef.current;
+        const q = queueRef.current;
+        prefetchPausedUntilRef.current = Date.now() + PREFETCH_PAUSE_AFTER_FAIL_MS;
+        streamFailStreakRef.current += 1;
+        if (streamFailStreakRef.current >= 3) {
+          const L = (localStorage.getItem('zenith_lang') as Language) || 'en';
+          void showStreamStuck(L);
+          return;
+        }
+        if (qi < q.length - 1) {
+          window.setTimeout(() => {
+            if (currentTrackIdRef.current !== id) return;
+            void playByIndexRef.current(qi + 1);
+          }, 1200 * streamFailStreakRef.current);
+        }
+      };
+      const tryAlternate = async (): Promise<boolean> => {
+        if (!id || streamAltTriedRef.current === id) return false;
+        streamAltTriedRef.current = id;
+        const tr = queueRef.current[queueIndexRef.current];
+        if (!tr || tr.id !== id) return false;
+        const dur = Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : null;
+        try {
+          const alt = await invoke<string | null>('resolve_alternate_stream', {
+            videoId: id,
+            query: `${tr.title} ${tr.artist}`,
+            title: tr.title,
+            duration: dur,
+          });
+          if (!alt || currentTrackIdRef.current !== id) return false;
+          audio.src = alt;
+          audio.volume = volumeRef.current;
+          await audio.play();
+          return true;
+        } catch {
+          return false;
+        }
+      };
+      const giveUp = () => {
+        void tryAlternate().then((ok) => {
+          if (!ok) skipAhead();
+        });
+      };
+      if (!id || streamErrorRetryRef.current === id) {
+        giveUp();
+        return;
+      }
+      streamErrorRetryRef.current = id;
+      void resolveStreamUrl(id, true).then((url) => {
+        if (!url || currentTrackIdRef.current !== id) {
+          if (currentTrackIdRef.current === id) giveUp();
+          return;
+        }
+        audio.src = url;
+        audio.volume = volumeRef.current;
+        const restore = () => {
+          audio.removeEventListener('loadedmetadata', restore);
+          if (resumeAt > 0.4 && Number.isFinite(audio.duration) && audio.duration > 0) {
+            audio.currentTime = Math.min(resumeAt, Math.max(0, audio.duration - 0.25));
+          }
+        };
+        audio.addEventListener('loadedmetadata', restore);
+        audio.play().catch(() => {
+          giveUp();
+        });
+      });
+    };
+
+    audio.addEventListener('timeupdate', onTimeUpdate);
+    audio.addEventListener('ended', onEnded);
+    audio.addEventListener('play', onPlay);
+    audio.addEventListener('playing', onPlaying);
+    audio.addEventListener('pause', onPause);
+    audio.addEventListener('waiting', onWaiting);
+    audio.addEventListener('canplay', onCanPlay);
+    audio.addEventListener('loadedmetadata', onDurationReady);
+    audio.addEventListener('durationchange', onDurationReady);
+    audio.addEventListener('error', onError);
+
+    return () => {
+      audio.removeEventListener('timeupdate', onTimeUpdate);
+      audio.removeEventListener('ended', onEnded);
+      audio.removeEventListener('play', onPlay);
+      audio.removeEventListener('playing', onPlaying);
+      window.clearInterval(startTicker);
+      audio.removeEventListener('pause', onPause);
+      audio.removeEventListener('waiting', onWaiting);
+      audio.removeEventListener('canplay', onCanPlay);
+      audio.removeEventListener('loadedmetadata', onDurationReady);
+      audio.removeEventListener('durationchange', onDurationReady);
+      audio.removeEventListener('error', onError);
+    };
+  }, [
+    audio,
+    queueIndex,
+    queue.length,
+    playNext,
+    playByIndex,
+    loopMode,
+    duration,
+    paintProgressUi,
+    resolveStreamUrl,
+    extendQueueWithRadio,
+  ]);
