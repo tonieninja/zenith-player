@@ -1,5 +1,5 @@
 const en = {
-  searchPlaceholder: 'Seach in Zenith...',
+  searchPlaceholder: 'Search in Zenith...',
   home: 'Home',
   explore: 'Explore',
   library: 'Library',
