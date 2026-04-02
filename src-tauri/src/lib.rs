@@ -277,3 +277,71 @@ async fn open_google_login(app: tauri::AppHandle, title: String) -> Result<(), S
 
     Ok(())
 }
+
+#[tauri::command]
+async fn clear_ytm_auth(app: tauri::AppHandle) -> Result<(), String> {
+    let app2 = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        auth_store::with_webview_on_main(&app2, |handle| {
+            auth_store::wipe_webview_auth_cookies(handle);
+            Ok(())
+        })
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+    ytm_api::clear_cookie_cache();
+    stream::wipe_netscape_cookie_file(&app);
+    Ok(())
+}
+
+#[tauri::command]
+async fn clear_login_webview_data(app: tauri::AppHandle) -> Result<(), String> {
+    let app2 = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        auth_store::with_webview_on_main(&app2, |handle| {
+            if let Some(win) = handle.get_webview_window("google-login") {
+                let _ = win.destroy();
+            }
+            Ok(())
+        })
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+    let data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| e.to_string())?
+        .join("webview-google-login");
+    for attempt in 0..5 {
+        if !data_dir.exists() {
+            break;
+        }
+        match std::fs::remove_dir_all(&data_dir) {
+            Ok(()) => break,
+            Err(e) if attempt == 4 => {
+                if debug_log_enabled() {
+                    eprintln!("[Zenith] could not wipe login profile: {e}");
+                }
+            }
+            Err(_) => std::thread::sleep(std::time::Duration::from_millis(150)),
+        }
+    }
+    reset_login_sync_state();
+    Ok(())
+}
+
+struct TrayMenu {
+    play: MenuItem<tauri::Wry>,
+    next: MenuItem<tauri::Wry>,
+    show: MenuItem<tauri::Wry>,
+    quit: MenuItem<tauri::Wry>,
+}
+
+static TRAY_READY: AtomicBool = AtomicBool::new(false);
+static CLOSE_TO_TRAY: AtomicBool = AtomicBool::new(true);
+static GLOBAL_HOTKEYS_ON: AtomicBool = AtomicBool::new(true);
+static HOTKEY_LOCK: Mutex<()> = Mutex::new(());
+
+fn debug_log_enabled() -> bool {
+    std::env::var_os("ZENITH_DEBUG").is_some()
+}
