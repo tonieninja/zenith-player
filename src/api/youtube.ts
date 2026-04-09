@@ -1235,3 +1235,416 @@ async function loadWatchQueue(playlistId: string, lang: Language): Promise<Track
   if (!response.ok) return [];
   return extractAllTracks(JSON.parse(await response.text()), translations[lang]);
 }
+
+export async function loadPlaylistItems(
+  browseId: string,
+  lang: Language,
+  onPage?: (items: Track[]) => void
+): Promise<PlaylistLoad> {
+  const ids = playlistBrowseCandidates(browseId);
+  const generated = isGeneratedMixId(browseId);
+  const timeoutMs = generated ? 15000 : 20000;
+  const maxPages = generated ? MIX_CONTINUATION_PAGES : PLAYLIST_CONTINUATION_PAGES;
+  let sawEmpty = false;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    if (attempt > 0) {
+      await new Promise((r) => setTimeout(r, 450));
+    }
+    for (const id of ids) {
+      try {
+        const headers = await buildAuthHeaders(lang);
+        const response = await fetchWithTimeout(
+          ytmUrl('browse'),
+          {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({ ...buildClientContext(lang), browseId: id }),
+          },
+          timeoutMs
+        );
+        if (!response.ok) continue;
+        const data = JSON.parse(await response.text());
+        if (data?.error || !data?.contents) continue;
+        const root = playlistContentRoot(data, id);
+        if (root === EMPTY_PLAYLIST) {
+          sawEmpty = true;
+          continue;
+        }
+        const tracks: Track[] = [];
+        const seen = new Set<string>();
+        const addFrom = (payload: unknown) => {
+          let added = 0;
+          for (const t of extractAllTracks(payload, translations[lang])) {
+            if (!seen.has(t.id)) {
+              seen.add(t.id);
+              tracks.push(t);
+              added += 1;
+            }
+          }
+          return added;
+        };
+        addFrom(root);
+        if (tracks.length) onPage?.(tracks.slice());
+        let token = findContinuationToken(root);
+        for (let round = 0; token && round < maxPages; round += 1) {
+          let cont: { data: unknown; next: string | null };
+          try {
+            cont = await fetchPlaylistContinuation(token, lang);
+          } catch {
+            break;
+          }
+          if (!addFrom(cont.data)) break;
+          onPage?.(tracks.slice());
+          token = cont.next !== token ? cont.next : null;
+        }
+        if (tracks.length) return { items: tracks, status: 'ok' };
+        sawEmpty = true;
+      } catch (err) {
+        console.debug('youtube loadPlaylistItems', err);
+      }
+    }
+    if (generated) {
+      try {
+        const queue = await loadWatchQueue(toPlainPlaylistId(browseId), lang);
+        if (queue.length) {
+          onPage?.(queue);
+          return { items: queue, status: 'ok' };
+        }
+      } catch (err) {
+        console.debug('youtube loadPlaylistItems', err);
+      }
+    }
+  }
+  return { items: [], status: sawEmpty ? 'empty' : 'failed' };
+}
+
+export type LibraryCategory =
+  | 'landing'
+  | 'playlists'
+  | 'songs'
+  | 'albums'
+  | 'artists'
+  | 'subscriptions'
+  | 'history'
+  | 'podcasts';
+
+export const LIBRARY_BROWSE_IDS: Record<LibraryCategory, string> = {
+  landing: 'FEmusic_library_landing',
+  playlists: 'FEmusic_liked_playlists',
+  songs: 'FEmusic_liked_videos',
+  albums: 'FEmusic_liked_albums',
+  artists: 'FEmusic_library_corpus_track_artists',
+  subscriptions: 'FEmusic_library_corpus_artists',
+  history: 'FEmusic_history',
+  podcasts: 'FEmusic_library_non_music_audio_list',
+};
+
+const libraryContinuations = new Map<string, string | null>();
+const LIBRARY_INITIAL_PAGE_LIMIT = 1;
+const LIBRARY_BACKGROUND_PAGE_LIMIT = 40;
+
+const LIBRARY_CACHE_TTL_MS = 10 * 60 * 1000;
+
+function libraryCacheKey(category: LibraryCategory, lang: Language) {
+  return `${category}:${lang}`;
+}
+
+async function appendLibraryPages(
+  browseId: string,
+  lang: Language,
+  sections: Section[],
+  maxPages: number = LIBRARY_INITIAL_PAGE_LIMIT
+) {
+  if (!sections.length) return sections;
+  const key = [...libraryContinuations.keys()].find((k) => k.startsWith(`${browseId}:${lang}:`));
+  let token = key ? libraryContinuations.get(key) : null;
+  if (key) libraryContinuations.delete(key);
+  const target = sections[sections.length - 1];
+  const seen = new Set(target.items.map((i) => i.id));
+  const t = translations[lang];
+  for (let round = 0; token && round < maxPages; round += 1) {
+    try {
+      const cont = await fetchPlaylistContinuation(token, lang);
+      for (const sec of parseShelves(cont.data, t)) {
+        for (const item of sec.items) {
+          if (!seen.has(item.id)) {
+            seen.add(item.id);
+            target.items.push(item);
+          }
+        }
+      }
+      token = cont.next && cont.next !== token ? cont.next : null;
+    } catch {
+      break;
+    }
+  }
+  if (token) libraryContinuations.set(`${browseId}:${lang}:pending`, token);
+  else libraryContinuations.delete(`${browseId}:${lang}:pending`);
+  return sections;
+}
+
+export async function extendLibrarySections(
+  category: LibraryCategory,
+  lang: Language,
+  sections: Section[],
+  maxPages: number = LIBRARY_BACKGROUND_PAGE_LIMIT
+): Promise<Section[]> {
+  if (!sections.length) return sections;
+  const id = LIBRARY_BROWSE_IDS[category];
+  const cloned = sections.map((s) => ({ ...s, items: s.items.slice() }));
+  await appendLibraryPages(id, lang, cloned, maxPages);
+  const cacheKey = libraryCacheKey(category, lang);
+  librarySectionCache.set(cacheKey, { at: Date.now(), sections: cloned });
+  return cloned;
+}
+
+export function peekLibraryCache(category: LibraryCategory, lang: Language): Section[] | null {
+  const hit = librarySectionCache.get(libraryCacheKey(category, lang));
+  if (!hit?.sections?.length) return null;
+  return hit.sections.map((sec) => ({ ...sec, items: applyPlaylistOverrides(sec.items) }));
+}
+
+const LIBRARY_PREFETCH_ORDER: LibraryCategory[] = [
+  'playlists',
+  'songs',
+  'albums',
+  'artists',
+  'subscriptions',
+  'history',
+  'podcasts',
+];
+
+export function prefetchLibrary(lang: Language, except?: LibraryCategory) {
+  void (async () => {
+    for (const cat of LIBRARY_PREFETCH_ORDER) {
+      if (cat === except) continue;
+      try {
+        await getLibrary(cat, lang);
+      } catch (err) {
+        console.debug('youtube prefetchLibrary', err);
+      }
+    }
+  })();
+}
+
+export async function getLibrary(
+  category: LibraryCategory,
+  lang: Language,
+  opts: { maxPages?: number; bypassCache?: boolean } = {}
+): Promise<Section[]> {
+  if (!(await isLoggedIn())) return [];
+  const cacheKey = libraryCacheKey(category, lang);
+  if (!opts.bypassCache) {
+    const hit = librarySectionCache.get(cacheKey);
+    if (hit && Date.now() - hit.at < LIBRARY_CACHE_TTL_MS) {
+      return hit.sections.map((sec) => ({ ...sec, items: applyPlaylistOverrides(sec.items) }));
+    }
+  }
+  try {
+    const id = LIBRARY_BROWSE_IDS[category];
+    const maxPages = opts.maxPages ?? LIBRARY_INITIAL_PAGE_LIMIT;
+    const sections = await appendLibraryPages(id, lang, await fetchBrowse(id, lang), maxPages);
+    const mapped = sections.map((sec) => ({ ...sec, items: applyPlaylistOverrides(sec.items) }));
+    librarySectionCache.set(cacheKey, { at: Date.now(), sections: mapped });
+    return mapped;
+  } catch {
+    return [];
+  }
+}
+
+export interface AccountProfile {
+  name: string;
+  email?: string;
+  avatarUrl?: string;
+}
+
+function runsText(node: unknown): string {
+  if (!node || typeof node !== 'object') return '';
+  const o = node as { runs?: { text?: string }[]; simpleText?: string };
+  if (Array.isArray(o.runs))
+    return o.runs
+      .map((r) => r?.text || '')
+      .join('')
+      .trim();
+  return typeof o.simpleText === 'string' ? o.simpleText.trim() : '';
+}
+
+function walkAccountProfile(node: unknown, depth = 0): AccountProfile | null {
+  if (!node || depth > 14) return null;
+  if (typeof node !== 'object') return null;
+  const o = node as Record<string, unknown>;
+
+  const active = o.activeAccountHeaderRenderer as Record<string, unknown> | undefined;
+  if (active) {
+    const name = runsText(active.accountName) || runsText(active.title);
+    if (name) {
+      const email = runsText(active.email) || runsText(active.accountByline) || undefined;
+      const thumbs = (active.accountPhoto as { thumbnails?: { url?: string }[] } | undefined)
+        ?.thumbnails;
+      const avatarUrl = thumbs?.[thumbs.length - 1]?.url;
+      return { name, email, avatarUrl };
+    }
+  }
+
+  const header = o.musicResponsiveHeaderRenderer as Record<string, unknown> | undefined;
+  if (header?.title) {
+    const runs = (header.title as { runs?: { text?: string }[] }).runs;
+    const name = runs?.[0]?.text?.trim();
+    if (name) {
+      const thumbs = (
+        header.thumbnail as {
+          musicThumbnailRenderer?: { thumbnail?: { thumbnails?: { url?: string }[] } };
+        }
+      )?.musicThumbnailRenderer?.thumbnail?.thumbnails;
+      const avatarUrl = thumbs?.[thumbs.length - 1]?.url;
+      return { name, avatarUrl };
+    }
+  }
+
+  const settings = o.accountSettingsPage as Record<string, unknown> | undefined;
+  if (settings?.title) {
+    const runs = (settings.title as { runs?: { text?: string }[] }).runs;
+    const name = runs?.[0]?.text?.trim();
+    if (name) return { name };
+  }
+
+  for (const v of Object.values(o)) {
+    if (Array.isArray(v)) {
+      for (const item of v) {
+        const found = walkAccountProfile(item, depth + 1);
+        if (found) return found;
+      }
+    } else {
+      const found = walkAccountProfile(v, depth + 1);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
+export async function getAccountProfile(lang: Language): Promise<AccountProfile | null> {
+  const headers = await buildAuthHeaders(lang);
+  if (!headers.Authorization) return null;
+  try {
+    const response = await fetchWithTimeout(
+      ytmUrl('account/account_menu'),
+      {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(buildClientContext(lang)),
+      },
+      8000
+    );
+    if (!response.ok) return null;
+    const data = JSON.parse(await response.text());
+    if (data?.error) return null;
+    return walkAccountProfile(data);
+  } catch {
+    return null;
+  }
+}
+
+export async function getUserPlaylists(lang: Language): Promise<Track[]> {
+  if (!(await isLoggedIn())) return [];
+  const [playlistSections, landingSections] = await Promise.all([
+    getLibrary('playlists', lang),
+    getLibrary('landing', lang),
+  ]);
+  const out: Track[] = [];
+  const seen = new Set<string>();
+  const pushPlaylist = (item: Track) => {
+    if (item.type !== 'playlist' || seen.has(item.id)) return;
+    seen.add(item.id);
+    out.push(item);
+  };
+  for (const section of [...playlistSections, ...landingSections]) {
+    for (const item of section.items) pushPlaylist(item);
+  }
+  if (!out.some((p) => p.title.toLowerCase().includes('liked'))) {
+    for (const section of landingSections) {
+      for (const item of section.items) {
+        if (
+          item.id.startsWith('VL') &&
+          (item.title.toLowerCase().includes('liked') ||
+            item.title.toLowerCase().includes('ulubione'))
+        ) {
+          pushPlaylist({ ...item, type: 'playlist' });
+        }
+      }
+    }
+  }
+  return out;
+}
+
+export type PlaylistPrivacy = 'PRIVATE' | 'PUBLIC' | 'UNLISTED';
+
+export class SessionExpiredError extends Error {
+  constructor() {
+    super('session expired');
+    this.name = 'SessionExpiredError';
+  }
+}
+
+export function extractCreatedPlaylistId(data: unknown): string | null {
+  const walk = (node: unknown, depth: number): string | null => {
+    if (!node || depth > 8 || typeof node !== 'object') return null;
+    if (Array.isArray(node)) {
+      for (const item of node) {
+        const found = walk(item, depth + 1);
+        if (found) return found;
+      }
+      return null;
+    }
+    const rec = node as Record<string, unknown>;
+    for (const key of ['playlistId', 'playlist_id']) {
+      const value = rec[key];
+      if (typeof value === 'string' && value.trim()) return toPlainPlaylistId(value.trim());
+    }
+    for (const value of Object.values(rec)) {
+      const found = walk(value, depth + 1);
+      if (found) return found;
+    }
+    return null;
+  };
+  return walk(data, 0);
+}
+
+export async function ytmAction(endpoint: string, body: Record<string, unknown>, lang: Language) {
+  const headers = await buildAuthHeaders(lang);
+  if (!headers.Authorization) throw new SessionExpiredError();
+  const response = await fetchWithTimeout(
+    ytmUrl(endpoint),
+    {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ ...buildClientContext(lang), ...body }),
+    },
+    12000
+  );
+  const text = await response.text();
+  if (responseSaysLoggedOut(text)) throw new SessionExpiredError();
+  if (!response.ok) {
+    if (response.status === 401) throw new SessionExpiredError();
+    throw new Error(`${endpoint} HTTP ${response.status}`);
+  }
+  let data: any = null;
+  try {
+    data = text ? JSON.parse(text) : {};
+  } catch {
+    throw new Error(`${endpoint}: bad response`);
+  }
+  if (data?.error) throw new Error(`${endpoint}: ${data.error.message || 'api error'}`);
+  if (typeof data?.status === 'string' && data.status !== 'STATUS_SUCCEEDED') {
+    throw new Error(`${endpoint}: ${data.status}`);
+  }
+  return data;
+}
+
+export function toPlainPlaylistId(id: string): string {
+  return id.startsWith('VL') ? id.slice(2) : id;
+}
+
+export function isEditablePlaylist(id: string): boolean {
+  const plain = toPlainPlaylistId(id);
+  return Boolean(plain) && !['LM', 'WL', 'SE', 'LL'].includes(plain) && !plain.startsWith('RD');
+}
