@@ -2907,3 +2907,363 @@ export default function App() {
     resolveStreamUrl,
     extendQueueWithRadio,
   ]);
+
+  useEffect(() => {
+    try {
+      const body = JSON.stringify(savedTracks.slice(0, 500));
+      localStorage.setItem('zenith_saved_tracks', body);
+      localStorage.removeItem('zenith_saved');
+      persistFavorites(body);
+    } catch (err) {
+      console.debug('App', err);
+    }
+  }, [savedTracks]);
+
+  useEffect(() => {
+    if (activeTab !== 'mood' || activeMood !== FAVORITES_ID) return;
+    const items = mergeFavoriteTracks(savedTracks, accountLikes);
+    setSections(items.length ? [{ title: t.favs, items }] : []);
+  }, [activeTab, activeMood, savedTracks, accountLikes, t.favs]);
+
+  useEffect(() => {
+    (window as any).__zenithCacheCleanup = clearCaches;
+    return () => {
+      audio.pause();
+      audio.src = '';
+      audio.load();
+      clearCaches();
+      streamCacheRef.current.clear();
+      (window as any).__zenithCacheCleanup = undefined;
+    };
+  }, [audio]);
+  const loadTrackRef = useLatest(loadTrack);
+  const hydratePanelsRef = useLatest(hydratePanels);
+  const loadHomeRef = useLatest(loadHome);
+  const openPlayerRef = useLatest(openPlayer);
+  const adoptEngineRef = useLatest<() => boolean>(() => {
+    const r = takeAudioRestore();
+    if (!r) return false;
+    const plan = r.plan;
+    const snap = r.snap;
+    if (snap?.hasSource && plan?.queue?.length) {
+      const idx = Math.min(Math.max(0, plan.index | 0), plan.queue.length - 1);
+      const track = plan.queue[idx];
+      if (!track?.id) return false;
+      if (!track.type) track.type = 'track';
+      setQueue(plan.queue);
+      queueRef.current = plan.queue;
+      setQueueIndex(idx);
+      queueIndexRef.current = idx;
+      setPlayingFrom(plan.playingFrom ?? null);
+      playingFromRef.current = plan.playingFrom ?? null;
+      playingFromIdRef.current = plan.playingFromId ?? null;
+      playingAlbumRef.current = isAlbumCollectionId(playingFromIdRef.current);
+      for (const p of r.played.slice(0, -1)) {
+        const t = plan.queue[p.index];
+        if (!t) continue;
+        pluginManager.notifyTrackChange({
+          id: t.id,
+          title: t.title,
+          artist: t.artist,
+          duration: 0,
+          position: 0,
+          isPlaying: true,
+          coverUrl: t.coverLarge || t.cover,
+        });
+      }
+      currentTrackIdRef.current = track.id;
+      setCurrentTrack(track);
+      hydratePanelsRef.current(track);
+      if (snap.muted) setIsMuted(true);
+      const d = (snap.d && snap.d > 0 ? snap.d : track.durationSec) || 0;
+      progressRef.current = snap.t;
+      durationRef.current = d;
+      setDuration(d);
+      setIsPlaying(!snap.paused);
+      isPlayingRef.current = !snap.paused;
+      setBuffering(false);
+      paintProgressUiRef.current(snap.t, d);
+      let tab: string | null = null;
+      try {
+        tab = localStorage.getItem('zenith_ui_tab');
+      } catch (err) {
+        console.debug('App', err);
+      }
+      const bootLang = (localStorage.getItem('zenith_lang') as Language) || 'en';
+      if (tab === 'player' || !isRestoredUi()) {
+        openPlayerRef.current();
+        loadHomeRef.current(bootLang, false);
+      } else loadHomeRef.current();
+      plan.queue.slice(idx + 1, idx + 3).forEach((t) => prefetchStream(t));
+      return true;
+    }
+    const disk = r.disk;
+    if (disk?.plan?.queue?.length && pluginManager.isEnabled('queue-persist')) {
+      const saved = loadPersistedQueue();
+      if (!saved || disk.savedAt > saved.savedAt) {
+        savePersistedQueue(
+          disk.plan.queue,
+          disk.plan.index,
+          disk.plan.playingFrom ?? null,
+          disk.progress,
+          disk.wasPlaying,
+          disk.plan.playingFromId ?? null
+        );
+      }
+    }
+    return false;
+  });
+
+  useEffect(() => {
+    if (!isNativeAudio()) return;
+    const LIMIT = 200;
+    const safeIndex = Math.max(0, Math.min(queueIndex, queue.length - 1));
+    const start =
+      queue.length > LIMIT ? Math.max(0, Math.min(safeIndex - 20, queue.length - LIMIT)) : 0;
+    const handle = window.setTimeout(() => {
+      void invoke('zaudio_plan', {
+        plan: {
+          queue: queue.slice(start, start + LIMIT),
+          index: safeIndex - start,
+          loopMode,
+          crossfade: crossfadeEnabled && pluginManager.isEnabled('crossfade') ? crossfadeSecs : 0,
+          playingFrom,
+          playingFromId: playingFromIdRef.current,
+          discordClientId: pluginManager.isEnabled('discord-rpc') ? getDiscordClientId() : null,
+        },
+      }).catch((err) => console.debug('App', err));
+    }, 150);
+    return () => window.clearTimeout(handle);
+  }, [queue, queueIndex, loopMode, crossfadeEnabled, crossfadeSecs, playingFrom, pluginStates]);
+
+  const pluginsBootstrappedRef = useRef(false);
+
+  useEffect(() => {
+    if (pluginsBootstrappedRef.current) return;
+    pluginsBootstrappedRef.current = true;
+
+    void syncCloseToTray(pluginManager.isEnabled('system-tray'));
+    void syncGlobalHotkeys(pluginManager.isEnabled('global-hotkeys'));
+    void pushHotkeyBindings();
+
+    const pluginTimer = window.setTimeout(() => {
+      for (const p of pluginManager.plugins) {
+        if (AUX_WINDOW_PLUGINS[p.id]) continue;
+        if (p.id === 'system-tray' || p.id === 'global-hotkeys') continue;
+        if (pluginManager.isEnabled(p.id)) {
+          try {
+            const r: unknown = p.onEnable?.();
+            if (r instanceof Promise) r.catch((e) => console.warn(`[plugins] ${p.id}`, e));
+          } catch (err) {
+            console.debug('App', err);
+          }
+        }
+      }
+    }, 900);
+
+    const bootstrap = async () => {
+      void (async () => {
+        try {
+          const cached = await invoke<{ clientVersion?: string; apiKey?: string }>(
+            'get_innertube_config'
+          );
+          applyInnertubeConfig(cached);
+        } catch (err) {
+          console.debug('App bootstrap', err);
+        }
+        try {
+          const report = await invoke<{
+            innertubeVersion?: string;
+            innertubeKey?: string;
+            playerVersion?: string;
+          }>('refresh_playback_deps');
+          applyInnertubeConfig(report);
+        } catch (err) {
+          console.debug('App bootstrap', err);
+        }
+      })();
+
+      if (adoptEngineRef.current()) return;
+      if (pluginManager.isEnabled('queue-persist')) {
+        const saved = loadPersistedQueue();
+        if (saved?.queue.length) {
+          const idx = Math.min(Math.max(0, saved.index), saved.queue.length - 1);
+          const track = saved.queue[idx];
+          if (track?.id) {
+            if (!track.type) track.type = 'track';
+            setQueue(saved.queue);
+            queueRef.current = saved.queue;
+            setQueueIndex(idx);
+            queueIndexRef.current = idx;
+            setPlayingFrom(saved.playingFrom);
+            playingFromRef.current = saved.playingFrom;
+            playingFromIdRef.current = saved.playingFromId ?? null;
+            playingAlbumRef.current = isAlbumCollectionId(playingFromIdRef.current);
+            const restoredDur = knownDurationSec(track);
+            if (restoredDur > 0) {
+              durationRef.current = restoredDur;
+              setDuration(restoredDur);
+            }
+            progressRef.current = saved.progress || 0;
+            openPlayerRef.current();
+            loadHomeRef.current((localStorage.getItem('zenith_lang') as Language) || 'en', false);
+            hydratePanelsRef.current(track);
+            saved.queue.slice(idx, idx + 3).forEach((t) => prefetchStream(t));
+            await loadTrackRef.current(track, saved.wasPlaying, undefined, saved.progress);
+            return;
+          }
+        }
+      }
+      loadHomeRef.current();
+    };
+    void bootstrap();
+
+    return () => window.clearTimeout(pluginTimer);
+  }, []);
+
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    const persistQueueNow = () => {
+      if (pluginManager.isEnabled('queue-persist') && queueRef.current.length) {
+        const idx = queueIndexRef.current;
+        let queue = queueRef.current;
+        const cur = queue[idx];
+        const d = knownDurationSec(cur, durationRef.current);
+        if (d > 0 && cur && Math.abs((cur.durationSec || 0) - d) > 0.5) {
+          queue = queue.slice();
+          queue[idx] = { ...cur, durationSec: d };
+          queueRef.current = queue;
+        }
+        savePersistedQueue(
+          queue,
+          idx,
+          playingFromRef.current,
+          progressRef.current,
+          isPlayingRef.current,
+          playingFromIdRef.current
+        );
+      }
+    };
+    let unlistenQuit: (() => void) | undefined;
+    getCurrentWindow()
+      .onCloseRequested((event) => {
+        event.preventDefault();
+        persistQueueNow();
+      })
+      .then((fn) => {
+        unlisten = fn;
+      });
+    listen('zenith-app-quitting', () => persistQueueNow()).then((fn) => {
+      unlistenQuit = fn;
+    });
+    let unlistenHidden: (() => void) | undefined;
+    listen('zenith-hidden-to-tray', () => {
+      persistQueueNow();
+      try {
+        localStorage.setItem('zenith_ui_tab', activeTabRef.current);
+      } catch (err) {
+        console.debug('App', err);
+      }
+    }).then((fn) => {
+      unlistenHidden = fn;
+    });
+    window.addEventListener('beforeunload', persistQueueNow);
+    return () => {
+      unlisten?.();
+      unlistenQuit?.();
+      unlistenHidden?.();
+      window.removeEventListener('beforeunload', persistQueueNow);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (activeTab !== 'search' || !sections.length) return;
+    const timer = window.setTimeout(() => {
+      const picks: Track[] = [];
+      for (const section of sections) {
+        for (const item of section.items) {
+          if (item.type === 'track' && picks.length < 2) picks.push(item);
+        }
+        if (picks.length >= 2) break;
+      }
+      picks.reverse().forEach((t) => prefetchStream(t));
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [activeTab, sections, prefetchStream]);
+
+  useEffect(() => {
+    if (!pluginManager.isEnabled('preload-next')) return;
+    const depth = getPreloadDepth();
+    const upcoming = queue.slice(queueIndex + 1, queueIndex + 1 + depth);
+    const upcomingIds = new Set(upcoming.map((t) => t.id));
+    for (const id of preloadDoneRef.current) {
+      if (!upcomingIds.has(id)) preloadDoneRef.current.delete(id);
+    }
+    for (const item of upcoming) {
+      if (preloadDoneRef.current.has(item.id)) continue;
+      preloadDoneRef.current.add(item.id);
+      prefetchStream(item);
+    }
+  }, [prefetchStream, queue, queueIndex, pluginStates['preload-next']]);
+
+  useEffect(() => {
+    audio.volume = volume;
+  }, [audio, volume]);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    const minTimer = window.setTimeout(() => setMinSplashElapsed(true), 600);
+    const leaveTimer = window.setTimeout(() => setSplashLeaving(true), 2600);
+    const hardCap = window.setTimeout(() => {
+      setShowSplash(false);
+    }, 3000);
+    return () => {
+      window.clearTimeout(minTimer);
+      window.clearTimeout(leaveTimer);
+      window.clearTimeout(hardCap);
+      mountedRef.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (prefetchComplete && minSplashElapsed) {
+      setSplashLeaving(true);
+      const hide = window.setTimeout(() => {
+        if (mountedRef.current) setShowSplash(false);
+      }, 350);
+      return () => window.clearTimeout(hide);
+    }
+  }, [prefetchComplete, minSplashElapsed]);
+
+  const startBackgroundPrefetch = useCallback((tracks: Track[]) => {
+    if (!tracks || tracks.length === 0) {
+      setPrefetchComplete(true);
+      return;
+    }
+    const covers = tracks
+      .filter((t) => Boolean(t.cover))
+      .slice(0, 2)
+      .map((t) => preloadImage(t.coverSmall || t.cover));
+    setPrefetchTotal(covers.length || 1);
+    setPrefetchDone(0);
+    setPrefetchComplete(false);
+    if (!covers.length) {
+      setPrefetchComplete(true);
+      return;
+    }
+    covers.forEach((p) => p.finally(() => setPrefetchDone((prev) => prev + 1)));
+    Promise.allSettled(covers).then(() => {
+      if (mountedRef.current) setPrefetchComplete(true);
+    });
+  }, []);
+
+  useEffect(() => {
+    lyricsProviderRef.current = lyricsProvider;
+    if (!currentTrack) return;
+    if (lastHydrateKeyRef.current === `${currentTrack.id}|${lyricsProvider}|${lang}`) return;
+    hydratePanels(currentTrack);
+  }, [lyricsProvider, lang]);
+
+  const presenceSyncRef = useRef({ sentAt: 0, sentPos: 0 });
+  const broadcastPlayback = useCallback(() => {
+    if (!currentTrack) {
