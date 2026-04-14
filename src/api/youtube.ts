@@ -1648,3 +1648,421 @@ export function isEditablePlaylist(id: string): boolean {
   const plain = toPlainPlaylistId(id);
   return Boolean(plain) && !['LM', 'WL', 'SE', 'LL'].includes(plain) && !plain.startsWith('RD');
 }
+
+export async function createPlaylist(
+  title: string,
+  description: string,
+  privacy: PlaylistPrivacy,
+  lang: Language
+): Promise<string | null> {
+  const name = title.trim().slice(0, 150);
+  if (!name) throw new Error('empty title');
+  const data = await ytmAction(
+    'playlist/create',
+    { title: name, description: description.slice(0, 5000), privacyStatus: privacy },
+    lang
+  );
+  const id = extractCreatedPlaylistId(data);
+  if (!id) throw new Error('no playlist id');
+  invalidateLibraryCache();
+  return id;
+}
+
+export async function renamePlaylist(id: string, title: string, lang: Language): Promise<void> {
+  const name = title.trim().slice(0, 150);
+  if (!name) throw new Error('empty title');
+  if (!isEditablePlaylist(id)) throw new Error('playlist not editable');
+  await ytmAction(
+    'browse/edit_playlist',
+    {
+      playlistId: toPlainPlaylistId(id),
+      actions: [{ action: 'ACTION_SET_PLAYLIST_NAME', playlistName: name }],
+    },
+    lang
+  );
+  rememberPlaylistRenamed(id, name);
+  invalidateLibraryCache();
+}
+
+export async function deletePlaylist(id: string, lang: Language): Promise<void> {
+  if (!isEditablePlaylist(id)) throw new Error('playlist not editable');
+  await ytmAction('playlist/delete', { playlistId: toPlainPlaylistId(id) }, lang);
+  rememberPlaylistDeleted(id);
+  invalidateLibraryCache();
+}
+
+export class AlreadyInPlaylistError extends Error {
+  constructor() {
+    super('already in playlist');
+    this.name = 'AlreadyInPlaylistError';
+  }
+}
+
+export async function addToPlaylist(
+  playlistId: string,
+  videoId: string,
+  lang: Language,
+  opts: { allowDuplicate?: boolean } = {}
+): Promise<void> {
+  if (!isYoutubeVideoId(videoId)) throw new Error('not a track');
+  if (!opts.allowDuplicate) {
+    const current = await loadPlaylistItems(
+      toPlaylistBrowseId(toPlainPlaylistId(playlistId)),
+      lang
+    );
+    if (current.items.some((t) => t.id === videoId)) throw new AlreadyInPlaylistError();
+  }
+  const action: Record<string, unknown> = { action: 'ACTION_ADD_VIDEO', addedVideoId: videoId };
+  if (!opts.allowDuplicate) action.dedupeOption = 'DEDUPE_OPTION_SKIP';
+  await ytmAction(
+    'browse/edit_playlist',
+    { playlistId: toPlainPlaylistId(playlistId), actions: [action] },
+    lang
+  );
+  invalidateLibraryCache();
+}
+
+export type TrackLikeStatus = 'LIKE' | 'DISLIKE' | 'INDIFFERENT';
+
+export function likeEndpointFor(status: TrackLikeStatus): string {
+  if (status === 'LIKE') return 'like/like';
+  if (status === 'DISLIKE') return 'like/dislike';
+  return 'like/removelike';
+}
+
+export function nextLikeStatus(
+  current: TrackLikeStatus,
+  action: 'like' | 'dislike'
+): TrackLikeStatus {
+  if (action === 'like') return current === 'LIKE' ? 'INDIFFERENT' : 'LIKE';
+  return current === 'DISLIKE' ? 'INDIFFERENT' : 'DISLIKE';
+}
+
+export async function setTrackRating(
+  videoId: string,
+  status: TrackLikeStatus,
+  lang: Language
+): Promise<void> {
+  if (!isYoutubeVideoId(videoId)) throw new Error('not a track');
+  await ytmAction(likeEndpointFor(status), { target: { videoId } }, lang);
+  invalidateLibraryCache();
+}
+
+export function findLikeStatus(data: unknown): TrackLikeStatus | null {
+  let found: TrackLikeStatus | null = null;
+  const walk = (node: any, depth: number) => {
+    if (found || !node || typeof node !== 'object' || depth > 40) return;
+    if (Array.isArray(node)) {
+      for (const n of node) walk(n, depth + 1);
+      return;
+    }
+    const st = node.likeButtonRenderer?.likeStatus ?? node.likeStatus;
+    if (st === 'LIKE' || st === 'DISLIKE' || st === 'INDIFFERENT') {
+      found = st;
+      return;
+    }
+    for (const v of Object.values(node)) walk(v, depth + 1);
+  };
+  walk(data, 0);
+  return found;
+}
+
+export async function getTrackLikeStatus(
+  videoId: string,
+  lang: Language
+): Promise<TrackLikeStatus | null> {
+  if (!isYoutubeVideoId(videoId)) return null;
+  const headers = await buildAuthHeaders(lang);
+  if (!headers.Authorization) return null;
+  const response = await fetchWithTimeout(
+    ytmUrl('next'),
+    {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ ...buildClientContext(lang), videoId, isAudioOnly: true }),
+    },
+    12000
+  );
+  if (!response.ok) return null;
+  const text = await response.text();
+  if (responseSaysLoggedOut(text)) return null;
+  try {
+    const data = JSON.parse(text);
+    return findLikeStatus(data?.playerOverlays);
+  } catch (e) {
+    console.debug('[like] next parse failed', e);
+    return null;
+  }
+}
+
+export async function setTrackLiked(
+  videoId: string,
+  liked: boolean,
+  lang: Language
+): Promise<void> {
+  await setTrackRating(videoId, liked ? 'LIKE' : 'INDIFFERENT', lang);
+}
+
+export interface RelatedResult {
+  sections: Section[];
+  about: string | null;
+}
+
+function findRelatedBrowseId(data: any): string | null {
+  let found: string | null = null;
+  const walk = (node: any) => {
+    if (!node || found) return;
+    if (Array.isArray(node)) {
+      node.forEach(walk);
+      return;
+    }
+    if (typeof node !== 'object') return;
+    const id = node.tabRenderer?.endpoint?.browseEndpoint?.browseId;
+    if (typeof id === 'string' && id.startsWith('MPTRt')) {
+      found = id;
+      return;
+    }
+    Object.values(node).forEach(walk);
+  };
+  walk(data);
+  return found;
+}
+
+function extractAboutText(data: any): string | null {
+  let about: string | null = null;
+  const walk = (node: any) => {
+    if (!node || about) return;
+    if (Array.isArray(node)) {
+      node.forEach(walk);
+      return;
+    }
+    if (typeof node !== 'object') return;
+    const shelf = node.musicDescriptionShelfRenderer;
+    if (shelf?.description) {
+      const text = extractFirstText(shelf.description);
+      if (text) {
+        about = text;
+        return;
+      }
+    }
+    Object.values(node).forEach(walk);
+  };
+  walk(data);
+  return about;
+}
+
+export async function getWatchRelated(videoId: string, lang: Language): Promise<RelatedResult> {
+  try {
+    const headers = await buildAuthHeaders(lang);
+    const nextRes = await fetch(ytmUrl('next'), {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ ...buildClientContext(lang), videoId }),
+    });
+    if (!nextRes.ok) return { sections: [], about: null };
+    const nextData = JSON.parse(await nextRes.text());
+    const browseId = findRelatedBrowseId(nextData);
+    if (!browseId) return { sections: [], about: null };
+    const relRes = await fetch(ytmUrl('browse'), {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ ...buildClientContext(lang), browseId }),
+    });
+    if (!relRes.ok) return { sections: [], about: null };
+    const relData = JSON.parse(await relRes.text());
+    return {
+      sections: parseShelves(relData, translations[lang]),
+      about: extractAboutText(relData),
+    };
+  } catch {
+    return { sections: [], about: null };
+  }
+}
+
+export async function getRelatedTracks(
+  query: string,
+  lang: Language,
+  excludeId?: string
+): Promise<Track[]> {
+  const sections = await searchMusic(query, lang);
+  return sections
+    .flatMap((s) => s.items)
+    .filter((i) => i.type === 'track')
+    .filter((i) => (excludeId ? i.id !== excludeId : true))
+    .slice(0, 14);
+}
+
+const errorMessage = (e: unknown) => (e instanceof Error ? e.message : String(e));
+
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new Error(`${label} timed out after ${Math.round(ms / 1000)}s`)),
+      ms
+    );
+    promise.then(
+      (v) => {
+        clearTimeout(timer);
+        resolve(v);
+      },
+      (e) => {
+        clearTimeout(timer);
+        reject(e);
+      }
+    );
+  });
+}
+
+const LYRICS_TIMEOUT_MS: Partial<Record<LyricsProvider, number>> = {
+  Musixmatch: 16000,
+  LyricsGenius: 15000,
+  'YouTube Music': 12000,
+  LRCLib: 10000,
+  'Lyrics.ovh': 8000,
+};
+const DEFAULT_LYRICS_TIMEOUT_MS = 12000;
+
+function lyricsTimeoutFor(provider: LyricsProvider): number {
+  return LYRICS_TIMEOUT_MS[provider] ?? DEFAULT_LYRICS_TIMEOUT_MS;
+}
+
+const lyricsCache = new Map<string, { data: LyricsResult; ts: number; ok: boolean }>();
+const LYRICS_CACHE_LIMIT = 20;
+const LYRICS_OK_TTL = 20 * 60 * 1000;
+const LYRICS_FAIL_TTL = 2 * 60 * 1000;
+
+type Attempt = { res: LyricsResult | null; failure: LyricsFailure | null };
+
+function settleWithGrace(
+  tasks: Promise<Attempt>[],
+  good: (x: Attempt) => boolean,
+  graceMs: number,
+  early?: Promise<void>
+): Promise<Attempt[]> {
+  return new Promise((resolve) => {
+    const done: (Attempt | undefined)[] = tasks.map(() => undefined);
+    let left = tasks.length;
+    let timer: number | undefined;
+    let finished = false;
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      if (timer !== undefined) window.clearTimeout(timer);
+      resolve(done.filter((x): x is Attempt => x !== undefined));
+    };
+    early?.then(finish);
+    tasks.forEach((t, i) => {
+      t.then((x) => {
+        done[i] = x;
+        left -= 1;
+        if (left === 0) finish();
+        else if (good(x) && timer === undefined) timer = window.setTimeout(finish, graceMs);
+      });
+    });
+  });
+}
+
+export async function getLyrics(
+  track: Track,
+  lang: Language,
+  preferred?: LyricsProvider,
+  onPlain?: (plain: LyricsResult) => void
+): Promise<LyricsResult | null> {
+  let smart = '1';
+  try {
+    smart = localStorage.getItem('zenith_smart_lyrics') === '0' ? '0' : '1';
+  } catch (err) {
+    console.debug('youtube getLyrics', err);
+  }
+  const cacheKey = `${track.id}:${preferred || 'Auto'}:${lang}:${smart}`;
+  const cached = lyricsCache.get(cacheKey);
+  if (cached && Date.now() - cached.ts < (cached.ok ? LYRICS_OK_TTL : LYRICS_FAIL_TTL)) {
+    return cached.data;
+  }
+  const result = await getLyricsUncached(track, lang, preferred, onPlain);
+  if (result) {
+    const ok = Boolean(result.synced?.length || result.text);
+    lyricsCache.set(cacheKey, { data: result, ts: Date.now(), ok });
+    pruneOldest(lyricsCache, LYRICS_CACHE_LIMIT);
+  }
+  return result;
+}
+
+async function getLyricsUncached(
+  track: Track,
+  lang: Language,
+  preferred?: LyricsProvider,
+  onPlain?: (plain: LyricsResult) => void
+): Promise<LyricsResult | null> {
+  const explicit = Boolean(preferred && preferred !== 'Auto');
+  let allowPlain = explicit;
+  let plainShown = false;
+  const maybePlain = (res: LyricsResult) => {
+    if (!allowPlain || plainShown) return;
+    if (!shouldShowEarlyPlain(res)) return;
+    plainShown = true;
+    onPlain?.(res);
+  };
+  const attempt = async (
+    p: LyricsProvider
+  ): Promise<{ res: LyricsResult | null; failure: LyricsFailure | null }> => {
+    try {
+      const res = await withTimeout(getLyricsForProvider(track, lang, p), lyricsTimeoutFor(p), p);
+      if (res && (res.synced?.length || res.text)) {
+        if (p === 'Lyrics.ovh' && !explicit) {
+          return {
+            res: null,
+            failure: {
+              provider: p,
+              reason: 'Lyrics.ovh result skipped until a title/artist match can be verified',
+            },
+          };
+        }
+        maybePlain(res);
+        return { res, failure: null };
+      }
+      return { res: null, failure: { provider: p, reason: 'No lyrics found for this track' } };
+    } catch (e) {
+      return { res: null, failure: { provider: p, reason: errorMessage(e) } };
+    }
+  };
+
+  if (explicit) {
+    const { res, failure } = await attempt(preferred!);
+    if (res) return res;
+    return { provider: preferred!, text: null, failures: failure ? [failure] : [] };
+  }
+
+  const failures: LyricsFailure[] = [];
+  let plainFallback: LyricsResult | null = null;
+
+  const fallbackOrder: LyricsProvider[] = ['YouTube Music', 'LyricsGenius'];
+  const fallbacks = fallbackOrder.map((p) => attempt(p));
+  const raced = await settleWithGrace(
+    [attempt('LRCLib'), attempt('Musixmatch')],
+    (x) => Boolean(x.res?.synced?.length),
+    1500
+  );
+  const syncedHits = raced
+    .map((x) => x.res)
+    .filter((r): r is LyricsResult => Boolean(r?.synced?.length));
+  for (const x of raced) if (x.failure) failures.push(x.failure);
+  if (syncedHits.length) {
+    return pickBestSyncedLyrics(syncedHits);
+  }
+  for (const x of raced) {
+    if (x.res?.text && !plainFallback) plainFallback = x.res;
+  }
+
+  allowPlain = true;
+  if (plainFallback) maybePlain(plainFallback);
+
+  for (const pending of fallbacks) {
+    const { res, failure } = await pending;
+    if (failure) failures.push(failure);
+    if (res?.synced?.length) return res;
+    if (res?.text && !plainFallback) {
+      plainFallback = res;
+      maybePlain(res);
+    }
+  }
