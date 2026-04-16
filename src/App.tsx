@@ -3267,3 +3267,388 @@ export default function App() {
   const presenceSyncRef = useRef({ sentAt: 0, sentPos: 0 });
   const broadcastPlayback = useCallback(() => {
     if (!currentTrack) {
+      pluginManager.notifyNowPlaying(null);
+      pluginManager.notifyTrackChange(null);
+      return;
+    }
+    const position = audio.currentTime || 0;
+    presenceSyncRef.current = { sentAt: Date.now(), sentPos: position };
+    const info = {
+      id: currentTrack.id,
+      title: currentTrack.title,
+      artist: currentTrack.artist,
+      duration: isFinite(audio.duration) && audio.duration > 0 ? audio.duration : duration,
+      position,
+      isPlaying,
+      coverUrl: currentTrack.coverLarge || currentTrack.cover,
+    };
+    pluginManager.notifyNowPlaying(info);
+    pluginManager.notifyTrackChange(info);
+  }, [audio, currentTrack, duration, isPlaying]);
+
+  useEffect(() => {
+    if (!currentTrack) {
+      pluginManager.notifyNowPlaying(null);
+      pluginManager.notifyTrackChange(null);
+      return;
+    }
+    broadcastPlayback();
+  }, [currentTrack?.id, isPlaying]);
+
+  useEffect(() => {
+    pluginManager.notifyPlayState(isPlaying);
+  }, [isPlaying]);
+
+  useEffect(() => {
+    audio.playbackRate = getPlaybackSpeed(pluginManager.isEnabled('playback-speed'));
+  }, [audio, pluginStates, speedRate]);
+
+  useEffect(() => {
+    if (!pluginManager.isEnabled('queue-persist') || !queue.length) return;
+    savePersistedQueue(
+      queue,
+      queueIndex,
+      playingFrom,
+      progressRef.current,
+      isPlaying,
+      playingFromIdRef.current
+    );
+  }, [queue, queueIndex, playingFrom, isPlaying, pluginStates]);
+
+  useEffect(() => {
+    if (!pluginManager.isEnabled('queue-persist') || !currentTrack) return;
+    const iv = window.setInterval(() => {
+      if (!isPlayingRef.current) return;
+      savePersistedQueue(
+        queueRef.current,
+        queueIndexRef.current,
+        playingFromRef.current,
+        progressRef.current,
+        isPlayingRef.current,
+        playingFromIdRef.current
+      );
+    }, 12000);
+    return () => window.clearInterval(iv);
+  }, [currentTrack, pluginStates]);
+  const togglePlayRef = useLatest(togglePlay);
+  const playNextRef = useLatest(playNext);
+  const playPrevRef = useLatest(playPrev);
+  const seekToRef = useLatest(seekTo);
+  const toggleMuteRef = useLatest(toggleMute);
+
+  useEffect(() => {
+    registerMediaSessionHandlers({
+      play: () => {
+        if (!isPlayingRef.current) void togglePlayRef.current();
+      },
+      pause: () => {
+        if (isPlayingRef.current) void togglePlayRef.current();
+      },
+      next: () => playNextRef.current(),
+      prev: () => playPrevRef.current(),
+      seek: (t) => seekToRef.current(t),
+    });
+  }, []);
+
+  useEffect(() => {
+    registerSleepTimerCallback(() => {
+      audio.pause();
+      setIsPlaying(false);
+    });
+    registerAbLoopSink((a, b) => audio.setLoop(a, b));
+    registerAutoPauseCallback(() => {
+      if (isPlayingRef.current) {
+        audio.pause();
+        setIsPlaying(false);
+      }
+    });
+    const onHotkey = (action: string) => {
+      if (action === 'toggle-play') togglePlayRef.current();
+      else if (action === 'next') playNextRef.current();
+      else if (action === 'prev') playPrevRef.current();
+      else if (action === 'seek-forward')
+        seekToRef.current(Math.min(durationRef.current, progressRef.current + 10));
+      else if (action === 'seek-back') seekToRef.current(Math.max(0, progressRef.current - 10));
+      else if (action === 'volume-up') {
+        const v = Math.min(1, volumeRef.current + 0.05);
+        setVolume(v);
+        rampVolume(audio, v, pluginManager.isEnabled('smooth-volume'));
+        if (pluginManager.isEnabled('remember-volume')) saveRememberedVolume(v);
+      } else if (action === 'volume-down') {
+        const v = Math.max(0, volumeRef.current - 0.05);
+        setVolume(v);
+        rampVolume(audio, v, pluginManager.isEnabled('smooth-volume'));
+        if (pluginManager.isEnabled('remember-volume')) saveRememberedVolume(v);
+      } else if (action === 'mute') toggleMuteRef.current();
+      else if (action === 'like') toggleSaveRef.current();
+    };
+    hotkeyActionRef.current = onHotkey;
+    registerKeyboardHandler(onHotkey);
+  }, [audio]);
+
+  useEffect(() => {
+    return setupKeyboardShortcuts(pluginManager.isEnabled('keyboard-shortcuts'));
+  }, [pluginStates]);
+  const overlayStackRef = useLatest({
+    np: npOpen,
+    plEdit: plEdit !== null,
+    fdEdit: fdEdit !== null,
+    plugins: isPluginsOpen,
+    settings: isSettingsOpen,
+    queue: queueOpen,
+  });
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const typing = isTypingEvent(e);
+      if (e.key === 'Escape') {
+        if (document.querySelector('.zen-select.open')) return;
+        if (typing && (e.target as HTMLInputElement | null)?.value) return;
+        const open = overlayStackRef.current;
+        if (open.np) setNpOpen(false);
+        else if (open.plEdit) setPlEdit(null);
+        else if (open.fdEdit) setFdEdit(null);
+        else if (open.plugins) setIsPluginsOpen(false);
+        else if (open.settings) setIsSettingsOpen(false);
+        else if (open.queue) setQueueOpen(false);
+        else return;
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
+      const findCombo = (e.ctrlKey || e.metaKey) && !e.altKey && e.code === 'KeyF';
+      const slash = e.key === '/' && !e.ctrlKey && !e.metaKey && !e.altKey && !typing;
+      if (findCombo || slash) {
+        const open = overlayStackRef.current;
+        if (open.np || open.plugins || open.settings) return;
+        e.preventDefault();
+        const input = searchInputRef.current;
+        if (input) {
+          input.focus();
+          input.select();
+        }
+      }
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, []);
+
+  useEffect(() => {
+    const onContext = (e: MouseEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target?.closest('input, textarea, [contenteditable="true"]')) return;
+      e.preventDefault();
+      const row = target?.closest<HTMLElement>('[data-ctx-track]');
+      const track = parseCtxTrackAttr(row?.dataset.ctxTrack);
+      if (track) {
+        e.stopPropagation();
+        const x = Math.min(e.clientX, window.innerWidth - 230);
+        const y = Math.min(e.clientY, window.innerHeight - 260);
+        setCtxMenu({ x, y, track });
+      } else {
+        setCtxMenu(null);
+      }
+    };
+    const onAuxClick = (e: MouseEvent) => {
+      if (e.button !== 2) return;
+      if ((e.target as HTMLElement | null)?.closest('[data-ctx-track]')) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    };
+    window.addEventListener('contextmenu', onContext, true);
+    window.addEventListener('auxclick', onAuxClick, true);
+    return () => {
+      window.removeEventListener('contextmenu', onContext, true);
+      window.removeEventListener('auxclick', onAuxClick, true);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!pluginManager.isEnabled('duck-on-voice')) {
+      stopDuckMonitor();
+      return;
+    }
+    startDuckMonitor(
+      () => volumeRef.current,
+      (v) => {
+        audio.volume = v;
+      }
+    );
+    return () => stopDuckMonitor();
+  }, [audio, pluginStates]);
+
+  useEffect(() => {
+    let unlistenTray: (() => void) | undefined;
+    let unlistenMini: (() => void) | undefined;
+    listen<string>('zenith-tray-action', (e) => {
+      const a = e.payload;
+      if (a === 'toggle-play') togglePlay();
+      else if (a === 'next') playNext();
+      else if (a === 'prev') playPrev();
+      else hotkeyActionRef.current?.(a);
+    }).then((fn) => {
+      unlistenTray = fn;
+    });
+    listen<string>('zenith-mini-action', (e) => {
+      const a = e.payload;
+      if (a === 'toggle-play') togglePlay();
+      else if (a === 'next') playNext();
+      else if (a === 'prev') playPrev();
+    }).then((fn) => {
+      unlistenMini = fn;
+    });
+    return () => {
+      unlistenTray?.();
+      unlistenMini?.();
+    };
+  }, [togglePlay, playNext, playPrev]);
+
+  useEffect(() => {
+    registerRoomStatusHandler(() => setRoomSyncTick((n) => n + 1));
+  }, []);
+
+  useEffect(() => {
+    if (!pluginManager.isEnabled('listening-room') || !isRoomHost() || !currentTrack) return;
+    lastRoomPushRef.current = Date.now();
+    void broadcastRoom({
+      trackId: currentTrack.id,
+      title: currentTrack.title,
+      artist: currentTrack.artist,
+      coverUrl: currentTrack.coverLarge || currentTrack.cover,
+      position: audio.currentTime,
+      isPlaying,
+      hostId: getRoomCode(),
+    }).catch((err) => console.debug('App', err));
+  }, [pluginStates['listening-room'], currentTrack?.id, isPlaying, roomSyncTick, audio]);
+
+  useEffect(() => {
+    bindFx(
+      audio,
+      Boolean(pluginStates['equalizer']),
+      Boolean(pluginStates['loudness-normalization'])
+    );
+  }, [audio, pluginStates]);
+
+  const remoteEnabled = Boolean(pluginStates['remote-control']);
+  const toggleSaveRef = useLatest(toggleSave);
+  const toggleShuffleRef = useLatest(toggleShuffle);
+  const cycleLoopRef = useLatest(cycleLoop);
+  const handleItemClickRef = useLatest(handleItemClick);
+  const langRef = useLatest(lang);
+  const remoteSnapRef = useLatest<() => void>(() => {
+    const q = queueRef.current;
+    const idx = queueIndexRef.current;
+    const start = q.length > 300 ? Math.max(0, Math.min(idx - 50, q.length - 300)) : 0;
+    const toRemote = (x: Track): RemoteTrack => ({
+      id: x.id,
+      title: x.title,
+      artist: x.artist,
+      cover: x.coverSmall || x.cover || '',
+    });
+    pushRemoteState({
+      track: currentTrack
+        ? { ...toRemote(currentTrack), cover: currentTrack.coverLarge || currentTrack.cover || '' }
+        : null,
+      isPlaying,
+      position: audio.currentTime || 0,
+      duration: Number.isFinite(audio.duration) ? audio.duration : 0,
+      volume,
+      muted: isMuted,
+      liked: currentTrack ? savedTracks.some((x) => x.id === currentTrack.id) : false,
+      shuffle: shuffleOn,
+      queue: q.slice(start, start + 300).map(toRemote),
+      queueOffset: start,
+      queueIndex: idx,
+      sleepLeft: getSleepEndsAt()
+        ? Math.max(0, Math.round((getSleepEndsAt() - Date.now()) / 1000))
+        : 0,
+    });
+  });
+  useEffect(() => {
+    if (!remoteEnabled) return;
+    const synced = lyrics?.synced?.map((l) => ({ time: l.time, text: l.text }));
+    pushRemoteLyrics(currentTrack?.id ?? null, synced, lyrics?.text);
+  }, [remoteEnabled, lyrics, currentTrack?.id]);
+  useEffect(() => {
+    if (remoteEnabled) remoteSnapRef.current();
+  }, [
+    remoteEnabled,
+    currentTrack,
+    isPlaying,
+    volume,
+    isMuted,
+    savedTracks,
+    shuffleOn,
+    queue,
+    queueIndex,
+  ]);
+  useEffect(() => {
+    if (!remoteEnabled) return;
+    const setVol = (v: number) => {
+      setVolume(v);
+      rampVolume(audio, v, pluginManager.isEnabled('smooth-volume'));
+      if (pluginManager.isEnabled('remember-volume')) saveRememberedVolume(v);
+      if (audio.muted && v > 0) {
+        audio.muted = false;
+        setIsMuted(false);
+      }
+    };
+    const asTrack = (r: RemoteTrack): Track => ({
+      id: r.id,
+      type: 'track',
+      title: r.title || 'Unknown',
+      artist: r.artist || '',
+      cover: r.cover,
+      coverSmall: r.cover,
+      coverLarge: r.cover,
+    });
+    const insertTrack = (t: Track, next: boolean) => {
+      const q = queueRef.current;
+      if (!q.length || !currentTrackIdRef.current) {
+        void handleItemClickRef.current(t);
+        return;
+      }
+      const at = next ? Math.min(q.length, queueIndexRef.current + 1) : q.length;
+      const nq = [...q.slice(0, at), t, ...q.slice(at)];
+      queueRef.current = nq;
+      setQueue(nq);
+    };
+    const handler = (c: RemoteCommand) => {
+      switch (c.cmd) {
+        case 'toggle':
+          void togglePlayRef.current();
+          break;
+        case 'play':
+          if (!isPlayingRef.current) void togglePlayRef.current();
+          break;
+        case 'pause':
+          if (isPlayingRef.current) void togglePlayRef.current();
+          break;
+        case 'next':
+          playNextRef.current();
+          break;
+        case 'prev':
+          playPrevRef.current();
+          break;
+        case 'seek':
+          seekToRef.current(Math.min(c.value, durationRef.current || c.value));
+          break;
+        case 'volume':
+          setVol(c.value);
+          break;
+        case 'mute':
+          toggleMuteRef.current();
+          break;
+        case 'like':
+          toggleSaveRef.current();
+          break;
+        case 'shuffle':
+          toggleShuffleRef.current();
+          break;
+        case 'loop':
+          cycleLoopRef.current();
+          break;
+        case 'jump':
+          void playByIndexRef.current?.(c.index);
+          break;
+        case 'sleep':
