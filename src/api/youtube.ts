@@ -2066,3 +2066,418 @@ async function getLyricsUncached(
       maybePlain(res);
     }
   }
+
+  if (plainFallback) return plainFallback;
+  return { provider: 'Auto', text: null, failures };
+}
+
+type TranslationBundle = (typeof translations)[Language];
+
+function extractFirstText(node: any): string | null {
+  if (!node) return null;
+  if (typeof node === 'string') return node.trim() || null;
+  if (Array.isArray(node)) {
+    for (const item of node) {
+      const text = extractFirstText(item);
+      if (text) return text;
+    }
+    return null;
+  }
+  if (typeof node !== 'object') return null;
+
+  if (typeof node.simpleText === 'string' && node.simpleText.trim()) return node.simpleText.trim();
+  if (typeof node.text === 'string' && node.text.trim()) return node.text.trim();
+  if (Array.isArray(node.runs)) {
+    const joined = node.runs
+      .map((run: any) => run?.text || '')
+      .join('')
+      .trim();
+    if (joined) return joined;
+  }
+
+  for (const value of Object.values(node)) {
+    const text = extractFirstText(value);
+    if (text) return text;
+  }
+
+  return null;
+}
+
+function parseVtt(text: string): LyricsLine[] {
+  const lines: LyricsLine[] = [];
+  const blocks = text.replace(/\r/g, '').split(/\n\n+/);
+  for (const block of blocks) {
+    const m = block.match(/(?:(\d{2}):)?(\d{2}):(\d{2})[.,](\d{3})\s*-->/);
+    if (!m) continue;
+    const hours = m[1] ? Number(m[1]) : 0;
+    const time = hours * 3600 + Number(m[2]) * 60 + Number(m[3]) + Number(m[4]) / 1000;
+    const payload = block
+      .split('\n')
+      .filter((l) => l && !l.includes('-->') && l !== 'WEBVTT' && !/^\d+$/.test(l.trim()))
+      .join(' ')
+      .replace(/<[^>]+>/g, '')
+      .replace(/&nbsp;/g, ' ')
+      .trim();
+    if (!payload || /^[♪♫*\-_.\s]+$/.test(payload)) continue;
+    lines.push({ time, text: payload });
+  }
+  return normalizeSynced(mergeCaptionPhrases(lines));
+}
+
+function mergeCaptionPhrases(lines: LyricsLine[]): LyricsLine[] {
+  if (lines.length < 10) return lines;
+  const gaps: number[] = [];
+  for (let i = 1; i < lines.length; i += 1) gaps.push(lines[i].time - lines[i - 1].time);
+  const median = [...gaps].sort((a, b) => a - b)[Math.floor(gaps.length / 2)] ?? 2;
+  if (median > 1.05) return lines;
+  const out: LyricsLine[] = [];
+  let buf = '';
+  let start = 0;
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i];
+    const nextGap = i + 1 < lines.length ? lines[i + 1].time - line.time : 99;
+    if (!buf) start = line.time;
+    buf = buf ? `${buf} ${line.text}` : line.text;
+    const long = buf.length >= 42 || buf.split(' ').length >= 8;
+    if (nextGap > 1.2 || long) {
+      out.push({ time: start, text: buf.replace(/\s+/g, ' ').trim() });
+      buf = '';
+    }
+  }
+  if (buf.trim()) out.push({ time: start, text: buf.replace(/\s+/g, ' ').trim() });
+  return out.length >= 4 ? out : lines;
+}
+
+function queryDuration(track: Track): number | undefined {
+  const d = track.durationSec;
+  return typeof d === 'number' && Number.isFinite(d) && d > 0 ? d : undefined;
+}
+
+function scoreMatch(
+  title: string,
+  artist: string,
+  candidateTitle: string,
+  candidateArtist: string,
+  durationSec?: number | null,
+  candidateDuration?: number | null
+): number {
+  return scoreLyricsMatch(
+    { title, artist, durationSec },
+    { title: candidateTitle, artist: candidateArtist, durationSec: candidateDuration }
+  );
+}
+
+function acceptMatch(
+  title: string,
+  artist: string,
+  candidateTitle: string,
+  candidateArtist: string,
+  score: number,
+  durationSec?: number | null,
+  candidateDuration?: number | null
+): boolean {
+  return isAcceptableLyricsMatch(
+    { title, artist, durationSec },
+    { title: candidateTitle, artist: candidateArtist, durationSec: candidateDuration },
+    score
+  );
+}
+
+export function youtubeTimedtextHeaders(videoId: string): Record<string, string> {
+  return {
+    Accept: 'text/vtt, text/plain, */*',
+    'Accept-Language': 'en-US,en;q=0.9,pl;q=0.8',
+    'User-Agent': LYRICS_BROWSER_UA,
+    Referer: `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}`,
+    Origin: 'https://www.youtube.com',
+  };
+}
+
+export function withVttFmt(url: string): string {
+  if (/[?&]fmt=/.test(url)) return url;
+  return `${url}${url.includes('?') ? '&' : '?'}fmt=vtt`;
+}
+
+export function captionTrackUrlsFromPlayer(data: unknown): string[] {
+  const urls: string[] = [];
+  const seen = new Set<string>();
+  const add = (raw: unknown) => {
+    if (typeof raw !== 'string' || !raw.startsWith('http')) return;
+    if (!/timedtext|caption/i.test(raw) && !/[?&](?:kind|lang|fmt|v)=/.test(raw)) return;
+    if (seen.has(raw)) return;
+    seen.add(raw);
+    urls.push(raw);
+  };
+  const walk = (node: unknown, depth: number) => {
+    if (!node || depth > 12 || urls.length >= 16) return;
+    if (Array.isArray(node)) {
+      for (const item of node) walk(item, depth + 1);
+      return;
+    }
+    if (typeof node !== 'object') return;
+    const rec = node as Record<string, unknown>;
+    add(rec.baseUrl);
+    if (Array.isArray(rec.captionTracks)) {
+      for (const track of rec.captionTracks) {
+        if (track && typeof track === 'object') add((track as { baseUrl?: unknown }).baseUrl);
+      }
+    }
+    for (const value of Object.values(rec)) walk(value, depth + 1);
+  };
+  walk(data, 0);
+  return urls;
+}
+
+async function fetchTimedtextVtt(url: string, videoId: string): Promise<LyricsLine[] | null> {
+  const headers = youtubeTimedtextHeaders(videoId);
+  try {
+    const cookie = await getYtmCookie();
+    if (cookie) headers.Cookie = cookie;
+  } catch (err) {
+    console.debug('youtube fetchTimedtextVtt', err);
+  }
+  const response = await fetch(withVttFmt(url), { method: 'GET', headers });
+  if (!response.ok) return null;
+  const raw = await response.text();
+  if (!raw || raw.length < 20 || !raw.includes('-->')) return null;
+  const synced = parseVtt(raw);
+  return synced.length >= 4 ? synced : null;
+}
+
+async function getYoutubeTimedtext(videoId: string, lang: Language): Promise<LyricsLine[] | null> {
+  if (!/^[A-Za-z0-9_-]{11}$/.test(videoId)) return null;
+  const langs = lang === 'pl' ? ['pl', 'en', 'en-US', 'en-GB'] : ['en', 'en-US', 'en-GB', 'pl'];
+  const kinds = ['', '&kind=asr'];
+  for (const trackLang of langs) {
+    for (const kind of kinds) {
+      try {
+        const url = `https://www.youtube.com/api/timedtext?v=${encodeURIComponent(videoId)}&fmt=vtt&lang=${trackLang}${kind}`;
+        const synced = await fetchTimedtextVtt(url, videoId);
+        if (synced) return synced;
+      } catch (err) {
+        console.debug('youtube getYoutubeTimedtext', err);
+      }
+    }
+  }
+  return null;
+}
+
+async function getYouTubeMusicLyrics(track: Track, lang: Language): Promise<LyricsResult | null> {
+  const timed = await getYoutubeTimedtext(track.id, lang);
+  if (timed?.length) return { provider: 'YouTube Music', text: null, synced: timed, matchScore: 3 };
+
+  const headers = await buildAuthHeaders(lang);
+  const response = await fetch(ytmUrl('next'), {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ ...buildClientContext(lang), videoId: track.id }),
+  });
+  if (!response.ok) throw new Error(`YouTube Music HTTP ${response.status}`);
+  const data = JSON.parse(await response.text());
+  for (const captionUrl of captionTrackUrlsFromPlayer(data)) {
+    try {
+      const fromPlayer = await fetchTimedtextVtt(captionUrl, track.id);
+      if (fromPlayer?.length) {
+        return { provider: 'YouTube Music', text: null, synced: fromPlayer, matchScore: 3 };
+      }
+    } catch (err) {
+      console.debug('youtube getYouTubeMusicLyrics', err);
+    }
+  }
+  const browseId = findLyricsBrowseId(data, lang);
+  if (!browseId) throw new Error('This video has no Lyrics tab on YouTube Music');
+  const browseLyrics = async () => {
+    const lyricsResponse = await fetch(ytmUrl('browse'), {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ ...buildClientContext(lang), browseId }),
+    });
+    if (!lyricsResponse.ok) throw new Error(`YouTube Music lyrics HTTP ${lyricsResponse.status}`);
+    const lyricsData = JSON.parse(await lyricsResponse.text());
+    return extractLyricsText(lyricsData);
+  };
+  let lyricsText = await browseLyrics();
+  if (!lyricsText) {
+    await new Promise((r) => setTimeout(r, 450));
+    lyricsText = await browseLyrics();
+  }
+  if (!lyricsText)
+    throw new Error('Lyrics tab exists but returned no text (possibly region-restricted)');
+  return { provider: 'YouTube Music', text: lyricsText };
+}
+
+function pickLrclibHit(
+  data: any[],
+  title: string,
+  artist: string,
+  duration?: number
+): { synced?: LyricsLine[]; plain?: LyricsResult; score: number } | null {
+  let best: { score: number; synced?: LyricsLine[]; plain?: LyricsResult } | null = null;
+  for (const item of data) {
+    if (item?.instrumental) continue;
+    const candTitle = String(item?.trackName || item?.name || '');
+    const candArtist = String(item?.artistName || item?.artist || '');
+    const candDuration = Number(item?.duration);
+    const durationSec =
+      Number.isFinite(candDuration) && candDuration > 0 ? candDuration : undefined;
+    const score = scoreMatch(title, artist, candTitle, candArtist, duration, durationSec);
+    if (!acceptMatch(title, artist, candTitle, candArtist, score, duration, durationSec)) {
+      continue;
+    }
+    if (item?.syncedLyrics) {
+      const synced = parseLrc(String(item.syncedLyrics));
+      if (
+        synced.length >= 2 &&
+        (!best ||
+          score > (best.score || 0) ||
+          (score === best.score && synced.length > (best.synced?.length || 0)))
+      ) {
+        best = { score, synced };
+      }
+    } else if (item?.plainLyrics && (!best || score > best.score || !best.synced)) {
+      if (!best || score > best.score) {
+        best = {
+          score,
+          plain: { provider: 'LRCLib', text: String(item.plainLyrics), matchScore: score },
+        };
+      }
+    }
+  }
+  return best;
+}
+
+async function getLrclibLyrics(track: Track): Promise<LyricsResult | null> {
+  const title = lyricsSearchTitle(track.title, track.artist);
+  const artist = lyricsSearchArtist(track.artist);
+  const attempts = [
+    `track_name=${encodeURIComponent(title)}&artist_name=${encodeURIComponent(artist)}`,
+    `q=${encodeURIComponent(`${title} ${artist}`)}`,
+    `track_name=${encodeURIComponent(title)}`,
+  ];
+  let lastErr: Error | null = null;
+  const fetched: any[][] = [];
+  const duration = queryDuration(track);
+
+  for (const qs of attempts) {
+    try {
+      const url = `https://lrclib.net/api/search?${qs}`;
+      const response = await fetch(url, { method: 'GET', headers: { Accept: 'application/json' } });
+      if (!response.ok) throw new Error(`LRCLib HTTP ${response.status}`);
+      const data = JSON.parse(await response.text());
+      if (!Array.isArray(data) || data.length === 0) {
+        lastErr = new Error('No entry in the LRCLib database for this title/artist');
+        continue;
+      }
+      fetched.push(data);
+      const hit = pickLrclibHit(data, title, artist, duration);
+      if (hit?.synced?.length) {
+        return { provider: 'LRCLib', text: null, synced: hit.synced, matchScore: hit.score };
+      }
+      if (hit?.plain) return hit.plain;
+    } catch (e) {
+      lastErr = e instanceof Error ? e : new Error(String(e));
+    }
+  }
+
+  if (duration != null) {
+    for (const data of fetched) {
+      const hit = pickLrclibHit(data, title, artist, undefined);
+      if (hit?.synced?.length) {
+        return { provider: 'LRCLib', text: null, synced: hit.synced, matchScore: hit.score };
+      }
+      if (hit?.plain) return hit.plain;
+    }
+  }
+  throw lastErr || new Error('LRCLib failed');
+}
+
+async function getLyricsOvh(track: Track): Promise<LyricsResult | null> {
+  const title = lyricsSearchTitle(track.title, track.artist);
+  const artist = lyricsSearchArtist(track.artist);
+  const url = `https://api.lyrics.ovh/v1/${encodeURIComponent(artist)}/${encodeURIComponent(title)}`;
+  const response = await fetch(url, { method: 'GET', headers: { Accept: 'application/json' } });
+  if (response.status === 404) throw new Error('Not in the Lyrics.ovh database');
+  if (!response.ok) throw new Error(`Lyrics.ovh HTTP ${response.status}`);
+  const data = JSON.parse(await response.text());
+  if (data?.lyrics) return { provider: 'Lyrics.ovh', text: String(data.lyrics) };
+  throw new Error(data?.error ? `Lyrics.ovh: ${data.error}` : 'Empty response from Lyrics.ovh');
+}
+
+async function getMusixmatchLyricsFor(track: Track): Promise<LyricsResult | null> {
+  const res = await getMusixmatchTrackLyrics({
+    title: lyricsSearchTitle(track.title, track.artist),
+    artist: lyricsCreditArtist(track.artist),
+    durationSec: queryDuration(track),
+  });
+  const base = { provider: 'Musixmatch', matchScore: res.matchScore, via: res.source };
+  if (res.synced?.length) return { ...base, text: null, synced: res.synced };
+  return { ...base, text: res.text };
+}
+
+const NAMED_ENTITIES: Record<string, string> = {
+  amp: '&',
+  lt: '<',
+  gt: '>',
+  quot: '"',
+  apos: "'",
+  nbsp: ' ',
+  hellip: '…',
+  mdash: '\u2014',
+  ndash: '–',
+  lsquo: '\u2018',
+  rsquo: '\u2019',
+  ldquo: '\u201C',
+  rdquo: '\u201D',
+};
+
+function decodeHtmlEntities(input: string): string {
+  return input
+    .replace(/&#x([0-9a-f]+);/gi, (_, hex) => String.fromCodePoint(parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (_, dec) => String.fromCodePoint(parseInt(dec, 10)))
+    .replace(/&([a-z]+);/gi, (m, name) => NAMED_ENTITIES[name.toLowerCase()] ?? m);
+}
+
+function stripHtml(input: string): string {
+  return decodeHtmlEntities(
+    input
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<\/p>/gi, '\n')
+      .replace(/<[^>]*>/g, '')
+  )
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+function cleanLyricsText(input: string): string {
+  const lines = input.split(/\r?\n/);
+  const filtered = lines.filter((line) => {
+    const t = line.trim();
+    if (!t) return false;
+    if (/contributors?/i.test(t)) return false;
+    if (/\blyrics\b/i.test(t) && t.length < 24) return false;
+    if (/embed/i.test(t)) return false;
+    if (/you might also like/i.test(t)) return false;
+    return true;
+  });
+  return filtered.join('\n');
+}
+
+const GENIUS_PRELOADED_STATE_RE = /__PRELOADED_STATE__ = JSON\.parse\('(.*?)'\);/;
+const GENIUS_PRELOAD_HTML_RE = /body":{"html":"(.*?)","children"/;
+
+function geniusHtmlToPlain(html: string): string {
+  const withBreaks = html
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>/gi, '\n')
+    .replace(/<\/div>/gi, '\n');
+  return cleanLyricsText(stripHtml(withBreaks));
+}
+
+async function getGeniusLyrics(track: Track): Promise<LyricsResult | null> {
+  const title = lyricsSearchTitle(track.title, track.artist);
+  const artist = lyricsSearchArtist(track.artist);
+  const query = new URLSearchParams({
+    q: `${title} ${artist}`.trim(),
+    page: '1',
+    per_page: '10',
+  });
