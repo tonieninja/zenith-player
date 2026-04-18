@@ -1,0 +1,86 @@
+{
+ "message": {
+  "header": {
+   "status_code": 200
+  },
+  "body": {
+   "macro_calls": {
+    "track.lyrics.get": {
+     "message": {
+      "header": {
+       "status_code": 200
+      },
+      "body": {
+       "lyrics": {
+        "lyrics_id": 42867807,
+        "restricted": 0,
+        "instrumental": 0,
+        "lyrics_body": "Pod górkę mam\nAle na to się pisałam, tak czy siak\nDo biegu, start\nSama drogę tę wybrałam, chciałam tak"
+       }
+      }
+     }
+    },
+    "track.subtitles.get": {
+     "message": {
+      "header": {
+       "status_code": 200,
+       "available": 4,
+       "instrumental": 0
+      },
+      "body": {
+       "subtitle_list": [
+        {
+         "subtitle": {
+          "subtitle_id": 31846057,
+          "subtitle_length": 200,
+          "subtitle_body": "[00:00.33] Pod górkę mam\n[00:03.07] Ale na to się pisałam, tak czy siak\n[00:07.57] Do biegu, start\n[00:10.35] Sama drogę tę wybrałam, chciałam tak"
+         }
+        }
+       ]
+      }
+     }
+    },
+    "matcher.track.get": {
+     "message": {
+      "header": {
+       "status_code": 200,
+       "confidence": 1000,
+       "mode": "search"
+      },
+      "body": {
+       "track": {
+        "track_id": 196398743,
+        "commontrack_id": 105546799,
+        "track_name": "Szampan",
+        "artist_name": "sanah",
+        "album_name": "Królowa dram",
+        "track_length": 200,
+        "has_lyrics": 1,
+        "has_subtitles": 1,
+        "has_richsync": 1,
+        "instrumental": 0,
+        "restricted": 0,
+        "track_isrc": "PLA281900037"
+       }
+      }
+     }
+    },
+    "track.richsync.get": {
+     "message": {
+      "header": {
+       "status_code": 200,
+       "available": 4
+      },
+      "body": {
+       "richsync": {
+        "richsync_id": 20147441,
+        "richsync_length": 195,
+        "richsync_body": "[{\"ts\":1.59,\"te\":3.178,\"l\":[{\"c\":\"Pod\",\"o\":0},{\"c\":\" \",\"o\":0.05},{\"c\":\"g\\u00f3rk\\u0119\",\"o\":0.06},{\"c\":\" \",\"o\":0.88},{\"c\":\"mam\",\"o\":1.05}],\"x\":\"Pod g\\u00f3rk\\u0119 mam\"},{\"ts\":3.96,\"te\":8.48,\"l\":[{\"c\":\"Ale\",\"o\":0},{\"c\":\" \",\"o\":0.176},{\"c\":\"na\",\"o\":0.235},{\"c\":\" \",\"o\":0.303},{\"c\":\"to\",\"o\":0.352},{\"c\":\" \",\"o\":0.577},{\"c\":\"si\\u0119\",\"o\":0.714},{\"c\":\" \",\"o\":1.077},{\"c\":\"pisa\\u0142am,\",\"o\":1.302},{\"c\":\" \",\"o\":2.408},{\"c\":\"tak\",\"o\":2.652},{\"c\":\" \",\"o\":3.171},{\"c\":\"czy\",\"o\":3.435},{\"c\":\" \",\"o\":3.876},{\"c\":\"siak\",\"o\":4.042}],\"x\":\"Ale na to si\\u0119 pisa\\u0142am, tak czy siak\"},{\"ts\":8.48,\"te\":9.983,\"l\":[{\"c\":\"Do\",\"o\":0},{\"c\":\" \",\"o\":0.04},{\"c\":\"biegu,\",\"o\":0.08},{\"c\":\" \",\"o\":0.48},{\"c\":\"start\",\"o\":0.76}],\"x\":\"Do biegu, start\"}]"
+       }
+      }
+     }
+    }
+   }
+  }
+ }
+}

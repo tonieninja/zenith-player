@@ -1,0 +1,70 @@
+{
+ "message": {
+  "header": {
+   "status_code": 200
+  },
+  "body": {
+   "macro_calls": {
+    "track.lyrics.get": {
+     "message": {
+      "header": {
+       "status_code": 200
+      },
+      "body": {
+       "lyrics": {
+        "lyrics_id": 38361808,
+        "restricted": 0,
+        "instrumental": 0,
+        "lyrics_body": "Like the legend of the phoenix\nAll ends with beginnings\nWhat keeps the planet spinning\nThe force from the beginning (huh, look)"
+       }
+      }
+     }
+    },
+    "track.subtitles.get": {
+     "message": {
+      "header": {
+       "status_code": 200,
+       "available": 0,
+       "instrumental": 0
+      },
+      "body": []
+     }
+    },
+    "matcher.track.get": {
+     "message": {
+      "header": {
+       "status_code": 200,
+       "confidence": 950,
+       "mode": "search"
+      },
+      "body": {
+       "track": {
+        "track_id": 309914404,
+        "commontrack_id": 19687322,
+        "track_name": "Get Lucky (feat. Pharrell Williams and Nile Rodgers)",
+        "artist_name": "Daft Punk feat. Pharrell Williams & Nile Rodgers",
+        "album_name": "Decade of Summer: The 10s",
+        "track_length": 370,
+        "has_lyrics": 1,
+        "has_subtitles": 1,
+        "has_richsync": 1,
+        "instrumental": 0,
+        "restricted": 1,
+        "track_isrc": "USQX91300108"
+       }
+      }
+     }
+    },
+    "track.richsync.get": {
+     "message": {
+      "header": {
+       "status_code": 404,
+       "available": 0
+      },
+      "body": {}
+     }
+    }
+   }
+  }
+ }
+}
