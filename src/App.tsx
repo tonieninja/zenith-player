@@ -3652,3 +3652,272 @@ export default function App() {
           void playByIndexRef.current?.(c.index);
           break;
         case 'sleep':
+          if (c.minutes > 0) {
+            setSleepTimerMinutes(c.minutes);
+            if (pluginManager.isEnabled('sleep-timer')) rearmSleepTimer();
+            else pluginManager.setEnabled('sleep-timer', true);
+          } else {
+            pluginManager.setEnabled('sleep-timer', false);
+          }
+          remoteSnapRef.current();
+          break;
+        case 'playTrack':
+          void handleItemClickRef.current(asTrack(c.track));
+          break;
+        case 'addTrack':
+          insertTrack(asTrack(c.track), false);
+          break;
+        case 'playNextTrack':
+          insertTrack(asTrack(c.track), true);
+          break;
+        case 'search':
+          searchMusic(c.query, langRef.current)
+            .then((sections) => {
+              const seen = new Set<string>();
+              const items: RemoteTrack[] = [];
+              for (const sec of sections)
+                for (const x of sec.items) {
+                  if (items.length >= 30) break;
+                  const playable = x.type === 'track' || /^[\w-]{11}$/.test(x.id);
+                  if (!playable || seen.has(x.id)) continue;
+                  seen.add(x.id);
+                  items.push({
+                    id: x.id,
+                    title: x.title,
+                    artist: x.artist,
+                    cover: x.coverSmall || x.cover || '',
+                  });
+                }
+              pushRemoteMessage({ type: 'search', req: c.req, items });
+            })
+            .catch(() => pushRemoteMessage({ type: 'search', req: c.req, items: [] }));
+          break;
+      }
+    };
+    registerRemotePusher(() => remoteSnapRef.current());
+    let cancelled = false;
+    startRemote(handler)
+      .then(() => {
+        if (!cancelled) remoteSnapRef.current();
+      })
+      .catch((e) => {
+        console.warn('[remote] start failed', e);
+        pushToast(`${translations[langRef.current].remoteError}: ${String(e)}`, 'error');
+      });
+    return () => {
+      cancelled = true;
+      registerRemotePusher(null);
+      void stopRemote();
+    };
+  }, [remoteEnabled, audio]);
+
+  useEffect(() => {
+    if (!pluginManager.isEnabled('listening-room')) {
+      unregisterRoomSyncHandler();
+      return;
+    }
+    registerRoomSyncHandler((state) => {
+      if (isRoomHost()) return;
+      let q = queueRef.current;
+      let idx = q.findIndex((t) => t.id === state.trackId);
+      if (idx < 0) {
+        const guestTrack: Track = {
+          id: state.trackId,
+          type: 'track',
+          title: state.title || 'Unknown',
+          artist: state.artist || 'Unknown',
+          cover: state.coverUrl || '',
+          coverSmall: state.coverUrl,
+          coverLarge: state.coverUrl,
+        };
+        q = [...q, guestTrack];
+        queueRef.current = q;
+        setQueue(q);
+        idx = q.length - 1;
+      }
+      if (idx >= 0 && idx !== queueIndexRef.current) void playByIndex(idx);
+
+      let targetPos = state.position;
+      if (state.sentAt && state.isPlaying) {
+        targetPos += Math.max(0, (Date.now() - state.sentAt) / 1000);
+      }
+      if (Math.abs(audio.currentTime - targetPos) > 1.25) seekTo(targetPos);
+
+      if (state.isPlaying && audio.paused) {
+        void audio.play().catch((err) => console.debug('App', err));
+      } else if (!state.isPlaying && !audio.paused) {
+        audio.pause();
+      }
+    });
+    return () => unregisterRoomSyncHandler();
+  }, [pluginStates, audio, playByIndex, seekTo]);
+
+  useEffect(() => {
+    registerDualSenseHandler((action) => {
+      if (!pluginManager.isEnabled('dualsense-pad')) return;
+      if (action === 'toggle-play') togglePlayRef.current();
+      else if (action === 'next') playNextRef.current();
+      else if (action === 'prev') playPrevRef.current();
+    });
+  }, []);
+
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    appWindow
+      .onFocusChanged(({ payload: focused }) => {
+        pluginManager.notifyAppFocus(focused);
+      })
+      .then((fn) => {
+        unlisten = fn;
+      });
+    return () => unlisten?.();
+  }, []);
+
+  useEffect(() => {
+    const unOcclude = installWindowOcclusionHandlers(() => {
+      audioRef.current?.releaseInactive();
+    });
+    const unMax = installMaximizeStateHandler(setIsMaximized);
+    return () => {
+      unOcclude();
+      unMax();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!currentTrack || !isPlaying) return;
+    const iv = window.setInterval(() => {
+      const { sentAt, sentPos } = presenceSyncRef.current;
+      const expected = sentPos + (Date.now() - sentAt) / 1000;
+      if (Math.abs(progressRef.current - expected) > 4) broadcastPlayback();
+    }, 3000);
+    return () => window.clearInterval(iv);
+  }, [currentTrack?.id, isPlaying, broadcastPlayback]);
+
+  useEffect(() => {
+    return () => {
+      pluginManager.notifyNowPlaying(null);
+      pluginManager.notifyTrackChange(null);
+    };
+  }, []);
+
+  useEffect(() => {
+    progressTimeElRef.current?.replaceChildren(
+      document.createTextNode(formatTime(progressRef.current))
+    );
+    const d = duration;
+    const label =
+      showRemaining && d > 0
+        ? `-${formatTime(Math.max(0, d - progressRef.current))}`
+        : formatTime(d);
+    durationTimeElRef.current?.replaceChildren(document.createTextNode(label));
+  }, [duration, showRemaining]);
+
+  useEffect(() => {
+    const idx = getActiveLyricIndex(
+      lyrics?.synced,
+      progressRef.current,
+      lyricsSyncOffsetRef.current
+    );
+    activeLyricLineRef.current = idx;
+    if (activeTabRef.current === 'player') {
+      setActiveLyricLine(idx);
+    }
+  }, [lyrics]);
+
+  useEffect(() => {
+    const onSyncOffset = () => {
+      lyricsSyncOffsetRef.current = getLyricsSyncOffset();
+      const synced = lyricsRef.current?.synced;
+      const t = progressRef.current;
+      const idx = synced?.length ? getActiveLyricIndex(synced, t, lyricsSyncOffsetRef.current) : -1;
+      activeLyricLineRef.current = idx;
+      setActiveLyricLine(idx);
+      if (!overlayPluginsOnRef.current) return;
+      const lyr = lyricsRef.current;
+      const m = overlayMetaRef.current;
+      void pushLyricsOverlay(
+        {
+          title: m.title,
+          artist: m.artist,
+          coverUrl: m.coverUrl,
+          trackId: m.trackId,
+          progress: t,
+          rate: audio.playbackRate,
+          activeLyricIndex: idx,
+          isPlaying: isPlayingRef.current,
+          synced: lyr?.synced,
+          text: lyr?.text,
+        },
+        { secondScreen: secondScreenLyricsRef.current, force: true }
+      );
+    };
+    window.addEventListener('zenith-lyrics-sync-changed', onSyncOffset);
+    return () => window.removeEventListener('zenith-lyrics-sync-changed', onSyncOffset);
+  }, []);
+
+  const lyricsRef = useLatest<LyricsResult | null>(lyrics);
+
+  useEffect(() => {
+    if (!isPlaying || !lyrics?.synced?.length) return;
+    let raf = 0;
+    let lastOverlayAt = 0;
+    const tick = () => {
+      const t = audio.currentTime;
+      const synced = lyricsRef.current?.synced;
+      const idx = synced?.length ? getActiveLyricIndex(synced, t, lyricsSyncOffsetRef.current) : -1;
+      if (idx !== activeLyricLineRef.current) {
+        activeLyricLineRef.current = idx;
+        if (activeTabRef.current === 'player' || overlayPluginsOnRef.current) {
+          setActiveLyricLine(idx);
+        }
+        if (overlayPluginsOnRef.current) {
+          lastOverlayAt = Date.now();
+          const lyr = lyricsRef.current;
+          const m = overlayMetaRef.current;
+          void pushLyricsOverlay(
+            {
+              title: m.title,
+              artist: m.artist,
+              coverUrl: m.coverUrl,
+              trackId: m.trackId,
+              progress: t,
+              rate: audio.playbackRate,
+              activeLyricIndex: idx,
+              isPlaying: true,
+              synced: lyr?.synced,
+              text: lyr?.text,
+            },
+            { secondScreen: secondScreenLyricsRef.current }
+          );
+        }
+      } else if (overlayPluginsOnRef.current && Date.now() - lastOverlayAt > 2200) {
+        lastOverlayAt = Date.now();
+        const lyr = lyricsRef.current;
+        const m = overlayMetaRef.current;
+        void pushLyricsOverlay(
+          {
+            title: m.title,
+            artist: m.artist,
+            coverUrl: m.coverUrl,
+            trackId: m.trackId,
+            progress: t,
+            rate: audio.playbackRate,
+            activeLyricIndex: idx,
+            isPlaying: true,
+            synced: lyr?.synced,
+            text: lyr?.text,
+          },
+          { secondScreen: secondScreenLyricsRef.current }
+        );
+      }
+      schedule();
+    };
+    let timer = 0;
+    const schedule = () => {
+      const visible =
+        !document.hidden && (activeTabRef.current === 'player' || overlayPluginsOnRef.current);
+      if (!visible) {
+        timer = window.setTimeout(tick, 400);
+        return;
+      }
