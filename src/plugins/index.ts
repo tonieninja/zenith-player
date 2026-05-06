@@ -33,3 +33,45 @@ import { statsTrackerPlugin } from './statsTracker';
 import { systemTrayPlugin } from './systemTray';
 import { webhookPlugin } from './webhook';
 import { windowTitlePlugin } from './windowTitle';
+import { NowPlayingInfo, PluginCategory, PLUGIN_CATEGORY_ORDER, ZenithPlugin } from './types';
+
+const STORAGE_KEY = 'zenith_plugins_enabled';
+
+export const PLUGIN_ORDER = [
+  'preload-next',
+  'queue-persist',
+  'remember-volume',
+  'crossfade',
+  'offline-downloads',
+  'sleep-timer',
+  'playback-speed',
+  'ab-loop',
+  'auto-pause-blur',
+  'equalizer',
+  'loudness-normalization',
+  'fade-on-pause',
+  'smooth-volume',
+  'duck-on-voice',
+  'smart-lyrics',
+  'lyrics-karaoke',
+  'lyrics-overlay',
+  'second-screen-lyrics',
+  'media-session',
+  'global-hotkeys',
+  'keyboard-shortcuts',
+  'remote-control',
+  'dualsense-pad',
+  'webhook',
+  'lastfm-scrobbler',
+  'discord-rpc',
+  'listening-room',
+  'zenith-stage',
+  'share-card',
+  'copy-track-link',
+  'system-tray',
+  'window-title',
+  'ambient-glow',
+  'mini-player',
+  'stats-tracker',
+  'listening-history',
+];
