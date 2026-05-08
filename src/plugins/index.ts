@@ -75,3 +75,31 @@ export const PLUGIN_ORDER = [
   'stats-tracker',
   'listening-history',
 ];
+
+function pluginRank(id: string): number {
+  const i = PLUGIN_ORDER.indexOf(id);
+  return i < 0 ? PLUGIN_ORDER.length : i;
+}
+
+export const AUX_WINDOW_PLUGINS: Record<string, string> = {
+  'lyrics-overlay': 'lyrics-overlay',
+  'second-screen-lyrics': 'lyrics-second',
+  'mini-player': 'mini-player',
+};
+
+type PluginListener = (states: Record<string, boolean>) => void;
+
+export const ALL_PLUGINS: ZenithPlugin[] = [
+  abLoopPlugin,
+  ambientGlowPlugin,
+  autoPauseBlurPlugin,
+  copyTrackLinkPlugin,
+  crossfadePlugin,
+  discordPresencePlugin,
+  dualSensePlugin,
+  duckOnVoicePlugin,
+  equalizerPlugin,
+  fadeOnPausePlugin,
+  globalHotkeysPlugin,
+  keyboardShortcutsPlugin,
+  listeningHistoryPlugin,
