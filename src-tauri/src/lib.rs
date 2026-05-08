@@ -345,3 +345,93 @@ static HOTKEY_LOCK: Mutex<()> = Mutex::new(());
 fn debug_log_enabled() -> bool {
     std::env::var_os("ZENITH_DEBUG").is_some()
 }
+
+pub(crate) fn show_main_window(app: &tauri::AppHandle) {
+    if ui_drop::ensure_main(app) {
+        return;
+    }
+    if let Some(win) = app.get_webview_window("main") {
+        wv2_mem::set_low(&win, false);
+        let _ = win.show();
+        let _ = win.unminimize();
+        let _ = win.set_focus();
+    }
+}
+
+#[cfg(target_os = "linux")]
+use mpris::mpris_update;
+
+#[cfg(not(target_os = "linux"))]
+use smtc::mpris_update;
+
+pub(crate) fn tray_action(app: &tauri::AppHandle, action: &str) {
+    if native_audio::is_headless() {
+        native_audio::headless::action(action);
+    } else {
+        let _ = app.emit("zenith-tray-action", action);
+    }
+}
+
+fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+    let play = MenuItem::with_id(app, "tray-play", "Play / Pause", true, None::<&str>)?;
+    let next = MenuItem::with_id(app, "tray-next", "Next track", true, None::<&str>)?;
+    let show = MenuItem::with_id(app, "tray-show", "Show Zenith", true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, "tray-quit", "Quit", true, None::<&str>)?;
+    let menu = Menu::with_items(app, &[&play, &next, &show, &quit])?;
+
+    let icon = app
+        .default_window_icon()
+        .cloned()
+        .ok_or("missing default window icon")?;
+
+    TrayIconBuilder::with_id("zenith-tray")
+        .icon(icon)
+        .menu(&menu)
+        .tooltip("Zenith Player")
+        .on_menu_event(|app, event| match event.id().as_ref() {
+            "tray-play" => tray_action(app, "toggle-play"),
+            "tray-next" => tray_action(app, "next"),
+            "tray-show" => show_main_window(app),
+            "tray-quit" => {
+                windows::graceful_shutdown(app);
+            }
+            _ => {}
+        })
+        .on_tray_icon_event(|tray, event| {
+            if let TrayIconEvent::Click {
+                button: MouseButton::Left,
+                button_state: MouseButtonState::Up,
+                ..
+            } = event
+            {
+                show_main_window(tray.app_handle());
+            }
+        })
+        .build(app)?;
+
+    app.manage(TrayMenu {
+        play,
+        next,
+        show,
+        quit,
+    });
+    TRAY_READY.store(true, Ordering::SeqCst);
+    Ok(())
+}
+
+#[tauri::command]
+fn set_tray_labels(
+    app: tauri::AppHandle,
+    play: String,
+    next: String,
+    show: String,
+    quit: String,
+) -> Result<(), String> {
+    if let Some(menu) = app.try_state::<TrayMenu>() {
+        menu.play.set_text(play).map_err(|e| e.to_string())?;
+        menu.next.set_text(next).map_err(|e| e.to_string())?;
+        menu.show.set_text(show).map_err(|e| e.to_string())?;
+        menu.quit.set_text(quit).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
