@@ -300,3 +300,373 @@ export function PluginsPanel({
       .then((i) => i && setRemoteInfo(i))
       .catch((e) => setRemoteErr(`${t.remoteError}: ${String(e)}`));
   };
+
+  const renderSettings = (id: string) => {
+    switch (id) {
+      case 'crossfade':
+        return (
+          <>
+            <div className="plugin-setting-row">
+              <div className="plugin-setting-label">
+                <span>{t.crossfadeDuration}</span>
+                <span className="plugin-desc">{t.crossfadeDurationDesc}</span>
+              </div>
+              <div className="crossfade-secs-control">
+                <input
+                  type="range"
+                  min={CROSSFADE_MIN_SECS}
+                  max={CROSSFADE_MAX_SECS}
+                  step={1}
+                  value={crossfadeSecs}
+                  onChange={(e) => {
+                    const s = Number(e.target.value);
+                    setCrossfadeSecs(s);
+                    saveCrossfadeSeconds(s);
+                  }}
+                />
+                <span className="crossfade-secs-value">{crossfadeSecs}s</span>
+              </div>
+            </div>
+            <div className="plugin-setting-row">
+              <div className="plugin-setting-label">
+                <span>{t.gaplessAlbums}</span>
+                <span className="plugin-desc">{t.gaplessAlbumsDesc}</span>
+              </div>
+              <button
+                role="switch"
+                aria-checked={gapless}
+                aria-label={t.gaplessAlbums}
+                type="button"
+                data-testid="gapless-toggle"
+                className={`plugin-toggle ${gapless ? 'on' : ''}`}
+                onClick={() => {
+                  const next = !gapless;
+                  setGapless(next);
+                  saveGaplessAlbums(next);
+                }}
+              >
+                <span className="plugin-toggle-knob" />
+              </button>
+            </div>
+          </>
+        );
+      case 'offline-downloads':
+        return <DownloadsSettings t={t} currentTrack={currentTrack} onPlayTrack={onPlayTrack} />;
+      case 'global-hotkeys':
+        return <HotkeySettings t={t} />;
+      case 'sleep-timer':
+        return (
+          <div className="plugin-setting-row">
+            <div className="plugin-setting-label">
+              <span>{t.sleepTimerDuration}</span>
+              <span className="plugin-desc">{t.sleepTimerDurationDesc}</span>
+            </div>
+            <Select
+              value={sleepMins}
+              ariaLabel={t.sleepTimerDuration}
+              options={SLEEP_TIMER_OPTIONS.map((m) => ({
+                value: m as number,
+                label: `${m} ${t.minutesShort}`,
+              }))}
+              onChange={(m) => {
+                setSleepMins(m);
+                setSleepTimerMinutes(m);
+                rearmSleepTimer();
+              }}
+            />
+          </div>
+        );
+      case 'playback-speed':
+        return (
+          <div className="plugin-setting-row">
+            <div className="plugin-setting-label">
+              <span>{t.playbackSpeed}</span>
+              <span className="plugin-desc">{t.playbackSpeedDesc}</span>
+            </div>
+            <Select
+              value={speedRate}
+              ariaLabel={t.playbackSpeed}
+              options={PLAYBACK_SPEEDS.map((r) => ({ value: r as number, label: `${r}×` }))}
+              onChange={(r) => {
+                setSpeedRate(r);
+                setPlaybackSpeed(r);
+                audio.playbackRate = r;
+              }}
+            />
+          </div>
+        );
+      case 'discord-rpc':
+        return (
+          <div className="plugin-setting-row">
+            <div className="plugin-setting-label">
+              <span>{t.discordAppId}</span>
+              <span className="plugin-desc">{t.discordAppIdDesc}</span>
+            </div>
+            <input
+              className="settings-text-input"
+              type="text"
+              inputMode="numeric"
+              placeholder="1514342633374486709"
+              value={discordClientId}
+              onChange={(e) => saveDiscordClientId(e.target.value)}
+              spellCheck={false}
+            />
+          </div>
+        );
+      case 'lyrics-overlay':
+        return (
+          <>
+            <div className="plugin-setting-row">
+              <div className="plugin-setting-label">
+                <span>{t.overlayFontSize}</span>
+                <span className="plugin-desc">{t.overlayFontSizeDesc}</span>
+              </div>
+              <Select<OverlayFontSize>
+                value={overlayFont}
+                ariaLabel={t.overlayFontSize}
+                options={[
+                  { value: 'auto', label: t.overlaySizeAuto },
+                  { value: 'sm', label: t.overlaySizeSm },
+                  { value: 'md', label: t.overlaySizeMd },
+                  { value: 'lg', label: t.overlaySizeLg },
+                  { value: 'xl', label: t.overlaySizeXl },
+                ]}
+                onChange={(v) => {
+                  setOverlayFont(v);
+                  setOverlayFontSize(v);
+                }}
+              />
+            </div>
+            <div className="plugin-setting-row">
+              <div className="plugin-setting-label">
+                <span>{t.overlayPosition}</span>
+                <span className="plugin-desc">{t.overlayPositionDesc}</span>
+              </div>
+              <Select<'bottom' | 'top' | 'center'>
+                value={overlayAlign}
+                ariaLabel={t.overlayPosition}
+                options={[
+                  { value: 'bottom', label: t.overlayPosBottom },
+                  { value: 'center', label: t.overlayPosCenter },
+                  { value: 'top', label: t.overlayPosTop },
+                ]}
+                onChange={(v) => {
+                  setOverlayAlignState(v);
+                  setOverlayAlign(v);
+                }}
+              />
+            </div>
+            <div className="plugin-setting-row">
+              <div className="plugin-setting-label">
+                <span>{t.overlayOpacity}</span>
+                <span className="plugin-desc">{t.overlayOpacityDesc}</span>
+              </div>
+              <div className="crossfade-secs-control">
+                <input
+                  type="range"
+                  min={0.45}
+                  max={0.95}
+                  step={0.01}
+                  value={overlayOpacity}
+                  onChange={(e) => {
+                    const v = Number(e.target.value);
+                    setOverlayOpacityState(v);
+                    setOverlayOpacity(v);
+                  }}
+                />
+                <span className="crossfade-secs-value">{Math.round(overlayOpacity * 100)}%</span>
+              </div>
+            </div>
+            <div className="plugin-setting-row">
+              <div className="plugin-setting-label">
+                <span>{t.overlayHideMeta}</span>
+                <span className="plugin-desc">{t.overlayHideMetaDesc}</span>
+              </div>
+              <button
+                role="switch"
+                aria-checked={overlayHideMeta}
+                aria-label={t.overlayHideMeta}
+                type="button"
+                className={`plugin-toggle ${overlayHideMeta ? 'on' : ''}`}
+                onClick={() => {
+                  const next = !overlayHideMeta;
+                  setOverlayHideMetaState(next);
+                  setOverlayHideMeta(next);
+                }}
+                aria-pressed={overlayHideMeta}
+              >
+                <span className="plugin-toggle-knob" />
+              </button>
+            </div>
+            <div className="plugin-setting-row plugin-setting-row--stacked">
+              <div className="plugin-setting-label">
+                <span>{t.lyricsSyncOffset}</span>
+                <span className="plugin-desc">{t.lyricsSyncOffsetDesc}</span>
+              </div>
+              <div className="crossfade-secs-control">
+                <input
+                  type="range"
+                  min={LYRICS_SYNC_OFFSET_MIN}
+                  max={LYRICS_SYNC_OFFSET_MAX}
+                  step={LYRICS_SYNC_OFFSET_STEP}
+                  value={lyricsSyncOffset}
+                  onChange={(e) => {
+                    const v = Number(e.target.value);
+                    setLyricsSyncOffsetState(v);
+                    setLyricsSyncOffset(v);
+                  }}
+                />
+                <span className="crossfade-secs-value">
+                  {lyricsSyncOffset > 0 ? '+' : ''}
+                  {lyricsSyncOffset} ms
+                </span>
+              </div>
+            </div>
+          </>
+        );
+      case 'preload-next':
+        return (
+          <div className="plugin-setting-row">
+            <div className="plugin-setting-label">
+              <span>{t.preloadDepth}</span>
+              <span className="plugin-desc">{t.preloadDepthDesc}</span>
+            </div>
+            <Select
+              value={preloadDepth}
+              ariaLabel={t.preloadDepth}
+              options={[1, 2, 3].map((n) => ({ value: n, label: String(n) }))}
+              onChange={(n) => {
+                setPreloadDepthState(n);
+                setPreloadDepth(n);
+              }}
+            />
+          </div>
+        );
+      case 'fade-on-pause':
+        return (
+          <div className="plugin-setting-row">
+            <div className="plugin-setting-label">
+              <span>{t.fadePauseMs}</span>
+              <span className="plugin-desc">{t.fadePauseDesc}</span>
+            </div>
+            <div className="crossfade-secs-control">
+              <input
+                type="range"
+                min={0}
+                max={600}
+                step={20}
+                value={fadeMs}
+                onChange={(e) => {
+                  const v = Number(e.target.value);
+                  setFadeMs(v);
+                  setFadePauseMs(v);
+                }}
+              />
+              <span className="crossfade-secs-value">{fadeMs}ms</span>
+            </div>
+          </div>
+        );
+      case 'webhook':
+        return (
+          <div className="plugin-setting-row">
+            <div className="plugin-setting-label">
+              <span>{t.webhookUrl}</span>
+              <span className="plugin-desc">{t.webhookUrlDesc}</span>
+            </div>
+            <input
+              className="settings-text-input"
+              type="url"
+              placeholder="https://discord.com/api/webhooks/..."
+              value={webhookUrl}
+              onChange={(e) => {
+                setWebhookUrlState(e.target.value);
+                setWebhookUrl(e.target.value);
+              }}
+              spellCheck={false}
+            />
+          </div>
+        );
+      case 'equalizer':
+        return (
+          <>
+            <div className="plugin-setting-row">
+              <div className="plugin-setting-label">
+                <span>{t.eqPreset}</span>
+              </div>
+              <Select
+                value={eqPreset}
+                ariaLabel={t.eqPreset}
+                options={[
+                  ...Object.keys(EQ_PRESETS).map((k) => ({
+                    value: k,
+                    label: (t as unknown as Record<string, string>)[`eqP_${k}`] ?? k,
+                  })),
+                  ...(eqPreset === 'custom' ? [{ value: 'custom', label: t.eqCustom }] : []),
+                ]}
+                onChange={(k) => {
+                  const b = EQ_PRESETS[k];
+                  if (!b) return;
+                  setEqPresetState(k);
+                  setEqBandsState([...b]);
+                  setEqBands([...b], k);
+                }}
+              />
+            </div>
+            {eqBands.map((g, i) => (
+              <div className="plugin-setting-row" key={EQ_LABELS[i]}>
+                <div className="plugin-setting-label">
+                  <span>{EQ_LABELS[i]} Hz</span>
+                </div>
+                <div className="crossfade-secs-control">
+                  <input
+                    type="range"
+                    min={EQ_MIN_DB}
+                    max={EQ_MAX_DB}
+                    step={1}
+                    value={g}
+                    aria-label={`${EQ_LABELS[i]} Hz`}
+                    onChange={(e) => {
+                      const next = [...eqBands];
+                      next[i] = Number(e.target.value);
+                      setEqBandsState(next);
+                      setEqPresetState('custom');
+                      setEqBands(next, 'custom');
+                    }}
+                  />
+                  <span className="crossfade-secs-value">{g > 0 ? `+${g}` : g} dB</span>
+                </div>
+              </div>
+            ))}
+          </>
+        );
+      case 'loudness-normalization':
+        return <p className="plugin-desc">{t.loudnessHint}</p>;
+      case 'lastfm-scrobbler':
+        return (
+          <>
+            {lfm?.user ? (
+              <div className="plugin-setting-row">
+                <div className="plugin-setting-label">
+                  <span>{t.lastfmConnectedAs.replace('{user}', lfm.user)}</span>
+                </div>
+                <button className="np-cancel-btn" onClick={() => lfmRun(lastfmLogout())}>
+                  {t.lastfmDisconnect}
+                </button>
+              </div>
+            ) : !lfm?.configured ? (
+              <>
+                <p className="plugin-desc">
+                  {t.lastfmKeysHint}{' '}
+                  <a
+                    href="#"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      void openUrl('https://www.last.fm/api/account/create').catch((err) =>
+                        console.debug('PluginsPanel renderSettings', err)
+                      );
+                    }}
+                  >
+                    last.fm/api/account/create
+                  </a>
+                </p>
+                <div className="plugin-setting-row">
