@@ -103,3 +103,33 @@ export const ALL_PLUGINS: ZenithPlugin[] = [
   globalHotkeysPlugin,
   keyboardShortcutsPlugin,
   listeningHistoryPlugin,
+  listeningRoomPlugin,
+  loudnessPlugin,
+  lastfmPlugin,
+  lyricsKaraokePlugin,
+  lyricsOverlayPlugin,
+  mediaSessionPlugin,
+  offlineDownloadsPlugin,
+  miniPlayerPlugin,
+  playbackSpeedPlugin,
+  preloadNextPlugin,
+  queuePersistPlugin,
+  rememberVolumePlugin,
+  remoteControlPlugin,
+  secondScreenLyricsPlugin,
+  shareCardPlugin,
+  sleepTimerPlugin,
+  smartLyricsPlugin,
+  smoothVolumePlugin,
+  statsTrackerPlugin,
+  systemTrayPlugin,
+  webhookPlugin,
+  windowTitlePlugin,
+  zenithStagePlugin,
+];
+
+function catchAsync(r: unknown, label: string) {
+  if (r && typeof (r as Promise<unknown>).then === 'function') {
+    (r as Promise<unknown>).catch((err) => console.warn(label, err));
+  }
+}
