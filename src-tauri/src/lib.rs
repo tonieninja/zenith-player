@@ -435,3 +435,104 @@ fn set_tray_labels(
     }
     Ok(())
 }
+
+#[tauri::command]
+fn set_close_to_tray(enabled: bool) -> bool {
+    CLOSE_TO_TRAY.store(enabled, Ordering::SeqCst);
+    enabled && TRAY_READY.load(Ordering::SeqCst)
+}
+
+#[tauri::command]
+fn tray_available() -> bool {
+    TRAY_READY.load(Ordering::SeqCst)
+}
+
+pub(crate) const HOTKEY_ACTIONS: [&str; 6] = [
+    "toggle-play",
+    "next",
+    "prev",
+    "volume-up",
+    "volume-down",
+    "like",
+];
+
+static HOTKEY_BINDINGS: Mutex<Vec<(String, String)>> = Mutex::new(Vec::new());
+static HOTKEY_LIVE: Mutex<Vec<(tauri_plugin_global_shortcut::Shortcut, String)>> =
+    Mutex::new(Vec::new());
+
+pub(crate) fn default_hotkey_bindings() -> Vec<(String, String)> {
+    vec![
+        ("toggle-play".into(), "Ctrl+Alt+Space".into()),
+        ("next".into(), "Ctrl+Alt+ArrowRight".into()),
+        ("prev".into(), "Ctrl+Alt+ArrowLeft".into()),
+        ("volume-up".into(), String::new()),
+        ("volume-down".into(), String::new()),
+        ("like".into(), String::new()),
+    ]
+}
+
+fn is_reserved_accelerator(acc: &str) -> bool {
+    let a = acc.trim().to_ascii_lowercase().replace(' ', "");
+    matches!(
+        a.as_str(),
+        "ctrl+keyc"
+            | "ctrl+keyv"
+            | "ctrl+keyx"
+            | "ctrl+keya"
+            | "ctrl+keyq"
+            | "ctrl+keyw"
+            | "cmd+keyc"
+            | "cmd+keyv"
+            | "cmd+keyx"
+            | "cmd+keya"
+            | "cmd+keyq"
+            | "cmd+keyw"
+            | "super+keyc"
+            | "super+keyv"
+            | "super+keyx"
+            | "super+keya"
+            | "commandorcontrol+keyc"
+            | "commandorcontrol+keyv"
+            | "commandorcontrol+keyx"
+            | "commandorcontrol+keya"
+            | "commandorcontrol+keyq"
+            | "commandorcontrol+keyw"
+    )
+}
+
+pub(crate) fn parse_accelerator(acc: &str) -> Option<tauri_plugin_global_shortcut::Shortcut> {
+    let acc = acc.trim();
+    if acc.is_empty() || is_reserved_accelerator(acc) {
+        return None;
+    }
+    acc.parse::<tauri_plugin_global_shortcut::Shortcut>().ok()
+}
+
+fn zenith_shortcuts() -> Vec<(tauri_plugin_global_shortcut::Shortcut, String)> {
+    use tauri_plugin_global_shortcut::{Code, Shortcut};
+    let bindings = {
+        let b = HOTKEY_BINDINGS.lock().unwrap_or_else(|e| e.into_inner());
+        if b.is_empty() {
+            default_hotkey_bindings()
+        } else {
+            b.clone()
+        }
+    };
+    let mut list: Vec<(Shortcut, String)> = Vec::new();
+    for (action, acc) in bindings {
+        if let Some(sc) = parse_accelerator(&acc) {
+            if !list.iter().any(|(s, _)| *s == sc) {
+                list.push((sc, action));
+            }
+        }
+    }
+    if !cfg!(target_os = "linux") {
+        list.push((
+            Shortcut::new(None, Code::MediaPlayPause),
+            "toggle-play".into(),
+        ));
+        list.push((Shortcut::new(None, Code::MediaTrackNext), "next".into()));
+        list.push((Shortcut::new(None, Code::MediaTrackPrevious), "prev".into()));
+    }
+    list
+}
