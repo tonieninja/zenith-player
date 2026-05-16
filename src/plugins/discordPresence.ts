@@ -1,0 +1,81 @@
+import { invoke } from '@tauri-apps/api/core';
+import { NowPlayingInfo, ZenithPlugin } from './types';
+
+const DEFAULT_CLIENT_ID = '1514342633374486709';
+
+const MIN_UPDATE_INTERVAL_MS = 4000;
+
+export function getDiscordClientId(): string {
+  try {
+    return localStorage.getItem('zenith_discord_client_id') || DEFAULT_CLIENT_ID;
+  } catch {
+    return DEFAULT_CLIENT_ID;
+  }
+}
+
+let lastSentKey = '';
+let lastSentAt = 0;
+let pendingTimer: ReturnType<typeof setTimeout> | null = null;
+
+function send(info: NowPlayingInfo) {
+  lastSentAt = Date.now();
+  invoke('discord_update_presence', {
+    payload: {
+      clientId: getDiscordClientId(),
+      title: info.title,
+      artist: info.artist,
+      duration: info.duration,
+      position: info.position,
+      isPlaying: info.isPlaying,
+      coverUrl: info.coverUrl || null,
+      trackUrl: `https://music.youtube.com/watch?v=${info.id}`,
+    },
+  }).catch((err) => {
+    console.warn('[plugin:discord-rpc]', err);
+  });
+}
+
+export const discordPresencePlugin: ZenithPlugin = {
+  id: 'discord-rpc',
+  name: 'Discord Rich Presence',
+  category: 'integrations',
+  description:
+    'Shows the currently playing track, artist, cover art and a live progress bar on your Discord profile.',
+  defaultEnabled: false,
+
+  onNowPlaying(info: NowPlayingInfo | null) {
+    if (pendingTimer) {
+      clearTimeout(pendingTimer);
+      pendingTimer = null;
+    }
+    if (!info) {
+      lastSentKey = '';
+      invoke('discord_clear_presence').catch((err) =>
+        console.debug('discordPresence onNowPlaying', err)
+      );
+      return;
+    }
+    const key = `${info.id}|${info.isPlaying}|${Math.round(info.duration)}`;
+    const elapsed = Date.now() - lastSentAt;
+    if (key !== lastSentKey || elapsed >= MIN_UPDATE_INTERVAL_MS) {
+      lastSentKey = key;
+      send(info);
+    } else {
+      const wait = MIN_UPDATE_INTERVAL_MS - elapsed;
+      pendingTimer = setTimeout(() => {
+        pendingTimer = null;
+        lastSentKey = key;
+        send({ ...info, position: info.position + wait / 1000 });
+      }, wait);
+    }
+  },
+
+  onDisable() {
+    if (pendingTimer) {
+      clearTimeout(pendingTimer);
+      pendingTimer = null;
+    }
+    lastSentKey = '';
+    invoke('discord_disconnect').catch((err) => console.debug('discordPresence onDisable', err));
+  },
+};

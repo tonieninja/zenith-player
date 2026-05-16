@@ -670,3 +670,339 @@ export function PluginsPanel({
                   </a>
                 </p>
                 <div className="plugin-setting-row">
+                  <div className="plugin-setting-label">
+                    <span>{t.lfmApiKey}</span>
+                  </div>
+                  <input
+                    className="settings-text-input"
+                    value={lfmKey}
+                    aria-label={t.lfmApiKey}
+                    onChange={(e) => setLfmKey(e.target.value)}
+                    spellCheck={false}
+                  />
+                </div>
+                <div className="plugin-setting-row">
+                  <div className="plugin-setting-label">
+                    <span>{t.lfmSecret}</span>
+                  </div>
+                  <input
+                    className="settings-text-input"
+                    type="password"
+                    value={lfmSecret}
+                    aria-label={t.lfmSecret}
+                    onChange={(e) => setLfmSecret(e.target.value)}
+                    spellCheck={false}
+                  />
+                </div>
+                <div className="plugin-setting-row">
+                  <span />
+                  <button
+                    className="np-cancel-btn"
+                    onClick={() => lfmRun(lastfmSetKeys(lfmKey, lfmSecret))}
+                  >
+                    {t.lastfmSave}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <div className="plugin-setting-row">
+                <div className="plugin-setting-label">
+                  <span>{lfm.pending ? t.lastfmFinishHint : t.lastfmConnectHint}</span>
+                </div>
+                {lfm.pending ? (
+                  <button className="np-cancel-btn" onClick={() => lfmRun(lastfmFinishAuth())}>
+                    {t.lastfmFinish}
+                  </button>
+                ) : (
+                  <button
+                    className="np-cancel-btn"
+                    onClick={() =>
+                      lfmRun(
+                        lastfmBeginAuth().then(async (url) => {
+                          await openUrl(url).catch((err) =>
+                            console.debug('PluginsPanel renderSettings', err)
+                          );
+                          return lastfmStatus();
+                        })
+                      )
+                    }
+                  >
+                    {t.lastfmConnect}
+                  </button>
+                )}
+              </div>
+            )}
+            {lfmErr && <p className="plugin-desc">{lfmErr}</p>}
+          </>
+        );
+      case 'remote-control':
+        return (
+          <>
+            <div className="plugin-setting-row">
+              <div className="plugin-setting-label">
+                <span>{t.remoteUrl}</span>
+                <span className="plugin-desc">{t.remoteUrlDesc}</span>
+              </div>
+              {remoteOn && remoteInfo?.url ? (
+                <span
+                  className="remote-url"
+                  style={{ userSelect: 'text', fontWeight: 600, textAlign: 'right' }}
+                >
+                  {remoteInfo.url}
+                  {remoteInfo.mdnsUrl && (
+                    <span className="plugin-desc" style={{ display: 'block', fontWeight: 400 }}>
+                      {remoteInfo.mdnsUrl}
+                    </span>
+                  )}
+                </span>
+              ) : (
+                <span className="plugin-desc">{remoteOn ? t.remoteStarting : '-'}</span>
+              )}
+            </div>
+            {remoteOn && fw?.windows && !fw.ruleOk && (
+              <div className="remote-fw-warn" role="alert" data-testid="remote-fw-warn">
+                <span>{fw.publicNetwork ? t.remoteFwPublic : t.remoteFwMissing}</span>
+                <button
+                  type="button"
+                  className="np-cancel-btn"
+                  disabled={fwBusy}
+                  onClick={async () => {
+                    setFwBusy(true);
+                    const ok = await allowThroughFirewall();
+                    setFwBusy(false);
+                    setFw(await getFirewallStatus());
+                    if (!ok) setFw((f) => (f ? { ...f, ruleOk: false } : f));
+                  }}
+                >
+                  {fwBusy ? t.remoteFwBusy : t.remoteFwFix}
+                </button>
+              </div>
+            )}
+            {remoteOn && remoteInfo?.qrSvg && (
+              <div
+                className="remote-qr"
+                data-testid="remote-qr"
+                role="img"
+                aria-label={t.remoteQrAlt}
+                dangerouslySetInnerHTML={{ __html: remoteInfo.qrSvg }}
+              />
+            )}
+            <div className="plugin-setting-row">
+              <div className="plugin-setting-label">
+                <span>{t.remotePairMode}</span>
+                <span className="plugin-desc">{t.remotePairModeDesc}</span>
+              </div>
+              <button
+                role="switch"
+                aria-checked={remotePair}
+                aria-label={t.remotePairMode}
+                type="button"
+                className={`plugin-toggle ${remotePair ? 'on' : ''}`}
+                onClick={() => {
+                  const next = !remotePair;
+                  setRemotePairState(next);
+                  setRemotePairMode(next);
+                  if (remoteOn)
+                    restartRemote()
+                      .then((i) => i && setRemoteInfo(i))
+                      .catch((e) => setRemoteErr(`${t.remoteError}: ${String(e)}`));
+                }}
+              >
+                <span className="plugin-toggle-knob" />
+              </button>
+            </div>
+            <div className="plugin-setting-row">
+              <div className="plugin-setting-label">
+                <span>{t.remotePort}</span>
+                <span className="plugin-desc">{t.remotePortDesc}</span>
+              </div>
+              <input
+                className="settings-text-input"
+                type="number"
+                min={1024}
+                max={65535}
+                style={{ maxWidth: 110 }}
+                value={remotePort}
+                onChange={(e) => setRemotePortState(e.target.value)}
+                onBlur={applyRemoteConfig}
+                onKeyDown={(e) => e.key === 'Enter' && applyRemoteConfig()}
+              />
+            </div>
+            <div className="plugin-setting-row">
+              <div className="plugin-setting-label">
+                <span>{t.remotePin}</span>
+                <span className="plugin-desc">{t.remotePinDesc}</span>
+              </div>
+              <input
+                className="settings-text-input"
+                type="text"
+                inputMode="numeric"
+                maxLength={32}
+                style={{ maxWidth: 140 }}
+                value={remotePin}
+                onChange={(e) => setRemotePinState(e.target.value)}
+                onBlur={applyRemoteConfig}
+                onKeyDown={(e) => e.key === 'Enter' && applyRemoteConfig()}
+                spellCheck={false}
+                autoComplete="off"
+              />
+            </div>
+            {remoteOn && remoteInfo && (
+              <div className="plugin-setting-row">
+                <div className="plugin-setting-label">
+                  <span>
+                    {t.remoteClients}: {remoteInfo.clients}
+                  </span>
+                  <span className="plugin-desc">
+                    {t.remotePaired}: {remoteInfo.pairedDevices}
+                  </span>
+                </div>
+                {remoteInfo.pairedDevices > 0 && (
+                  <button
+                    type="button"
+                    className="np-cancel-btn"
+                    onClick={() => void forgetRemoteDevices().then((i) => i && setRemoteInfo(i))}
+                  >
+                    {t.remoteForget}
+                  </button>
+                )}
+              </div>
+            )}
+            {remoteErr && <p className="plugin-desc">{remoteErr}</p>}
+            <p className="plugin-desc">{t.remoteFirewall}</p>
+          </>
+        );
+      case 'duck-on-voice':
+        return (
+          <>
+            <div className="plugin-setting-row">
+              <div className="plugin-setting-label">
+                <span>{t.duckLevel}</span>
+                <span className="plugin-desc">{t.duckLevelDesc}</span>
+              </div>
+              <div className="crossfade-secs-control">
+                <input
+                  type="range"
+                  min={0.05}
+                  max={0.5}
+                  step={0.05}
+                  value={duckLvl}
+                  onChange={(e) => {
+                    const v = Number(e.target.value);
+                    setDuckLvl(v);
+                    setDuckLevel(v);
+                  }}
+                />
+                <span className="crossfade-secs-value">{Math.round(duckLvl * 100)}%</span>
+              </div>
+            </div>
+            <div className="plugin-setting-row">
+              <div className="plugin-setting-label">
+                <span>{t.duckSensitivity}</span>
+                <span className="plugin-desc">{t.duckSensitivityDesc}</span>
+              </div>
+              <div className="crossfade-secs-control">
+                <input
+                  type="range"
+                  min={0.01}
+                  max={0.12}
+                  step={0.01}
+                  value={duckSens}
+                  onChange={(e) => {
+                    const v = Number(e.target.value);
+                    setDuckSens(v);
+                    setDuckSensitivity(v);
+                  }}
+                />
+                <span className="crossfade-secs-value">{Math.round(duckSens * 100)}%</span>
+              </div>
+            </div>
+          </>
+        );
+      case 'lyrics-karaoke':
+        return (
+          <>
+            <div className="plugin-setting-row">
+              <div className="plugin-setting-label">
+                <span>{t.karaokeMode}</span>
+                <span className="plugin-desc">{t.karaokeModeDesc}</span>
+              </div>
+              <button
+                role="switch"
+                aria-checked={karaoke}
+                aria-label={t.karaokeMode}
+                className={`plugin-toggle ${karaoke ? 'on' : ''}`}
+                onClick={() => {
+                  const next = !karaoke;
+                  setKaraoke(next);
+                  setKaraokeMode(next);
+                }}
+              >
+                <span className="plugin-toggle-knob" />
+              </button>
+            </div>
+            <div className="plugin-setting-row">
+              <div className="plugin-setting-label">
+                <span>{t.highContrastLyrics}</span>
+                <span className="plugin-desc">{t.highContrastLyricsDesc}</span>
+              </div>
+              <button
+                role="switch"
+                aria-checked={hiContrast}
+                aria-label={t.highContrastLyrics}
+                className={`plugin-toggle ${hiContrast ? 'on' : ''}`}
+                onClick={() => {
+                  const next = !hiContrast;
+                  setHiContrast(next);
+                  setHighContrastLyrics(next);
+                }}
+              >
+                <span className="plugin-toggle-knob" />
+              </button>
+            </div>
+          </>
+        );
+      case 'listening-room':
+        return (
+          <div className="plugin-setting-col">
+            <p className="plugin-desc">{t.roomWebRtcHint}</p>
+            {roomCode ? (
+              <>
+                <div className="room-code-display">
+                  {t.roomCode}: <strong>{roomCode}</strong>
+                </div>
+                <p className="plugin-desc">
+                  {t.roomPeers}: {peers}
+                </p>
+                <button
+                  className="np-create-btn"
+                  type="button"
+                  onClick={() =>
+                    leaveRoom().then(() => {
+                      setRoomCode('');
+                      setPeers(0);
+                      setRoomError('');
+                    })
+                  }
+                >
+                  {t.roomLeave}
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  className="np-create-btn"
+                  type="button"
+                  disabled={roomBusy}
+                  onClick={() => {
+                    setRoomBusy(true);
+                    setRoomError('');
+                    createRoom()
+                      .then((c) => {
+                        setRoomCode(c);
+                        setPeers(roomPeerCount());
+                      })
+                      .catch(() => setRoomError(t.roomCreateFailed))
+                      .finally(() => setRoomBusy(false));
+                  }}
+                >

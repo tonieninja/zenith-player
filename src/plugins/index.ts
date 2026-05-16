@@ -133,3 +133,41 @@ function catchAsync(r: unknown, label: string) {
     (r as Promise<unknown>).catch((err) => console.warn(label, err));
   }
 }
+
+class PluginManager {
+  readonly plugins: ZenithPlugin[];
+  private enabled: Record<string, boolean>;
+  private lastTrackId: string | null = null;
+  private listeners = new Set<PluginListener>();
+
+  constructor(plugins: ZenithPlugin[]) {
+    this.plugins = plugins;
+    this.enabled = {};
+    this.readStored();
+  }
+
+  private readStored() {
+    let stored: Record<string, boolean> = {};
+    try {
+      stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+    } catch {
+      stored = {};
+    }
+    for (const plugin of this.plugins) {
+      this.enabled[plugin.id] = stored[plugin.id] ?? plugin.defaultEnabled;
+    }
+    for (const id of Object.keys(AUX_WINDOW_PLUGINS)) this.enabled[id] = false;
+  }
+
+  reloadFromStorage() {
+    this.readStored();
+    this.persist();
+  }
+
+  private persist() {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(this.enabled));
+    } catch (err) {
+      console.debug('index persist', err);
+    }
+  }
