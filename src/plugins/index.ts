@@ -171,3 +171,37 @@ class PluginManager {
       console.debug('index persist', err);
     }
   }
+
+  subscribe(fn: PluginListener): () => void {
+    this.listeners.add(fn);
+    return () => {
+      this.listeners.delete(fn);
+    };
+  }
+
+  private emitChange() {
+    const snapshot = this.getStates();
+    for (const fn of this.listeners) {
+      try {
+        fn(snapshot);
+      } catch (err) {
+        console.debug('index emitChange', err);
+      }
+    }
+  }
+
+  markWindowClosed(label: string) {
+    const id = Object.keys(AUX_WINDOW_PLUGINS).find((k) => AUX_WINDOW_PLUGINS[k] === label);
+    if (!id || !this.enabled[id]) return;
+    this.enabled[id] = false;
+    this.persist();
+    this.emitChange();
+  }
+
+  isEnabled(id: string): boolean {
+    return Boolean(this.enabled[id]);
+  }
+
+  getStates(): Record<string, boolean> {
+    return { ...this.enabled };
+  }
