@@ -3921,3 +3921,270 @@ export default function App() {
         timer = window.setTimeout(tick, 400);
         return;
       }
+      const rate = audio.playbackRate > 0 ? audio.playbackRate : 1;
+      const wait =
+        (secondsUntilLyricChange(
+          lyricsRef.current?.synced,
+          audio.currentTime,
+          activeLyricLineRef.current,
+          lyricsSyncOffsetRef.current
+        ) /
+          rate) *
+          1000 -
+        40;
+      if (wait > 8) timer = window.setTimeout(tick, Math.min(wait, 250));
+      else raf = requestAnimationFrame(tick);
+    };
+    const kick = () => {
+      cancelAnimationFrame(raf);
+      window.clearTimeout(timer);
+      tick();
+    };
+    audio.addEventListener('seeked', kick);
+    audio.addEventListener('ratechange', kick);
+    schedule();
+    return () => {
+      audio.removeEventListener('seeked', kick);
+      audio.removeEventListener('ratechange', kick);
+      cancelAnimationFrame(raf);
+      window.clearTimeout(timer);
+    };
+  }, [isPlaying, lyrics, audio]);
+
+  useEffect(() => {
+    const overlayOn =
+      pluginStates['lyrics-overlay'] ||
+      pluginStates['second-screen-lyrics'] ||
+      pluginStates['lyrics-karaoke'];
+    if (!overlayOn || !currentTrack) return;
+    const m = overlayMetaRef.current;
+    const lyr = lyricsRef.current;
+    pushLyricsOverlay(
+      {
+        title: m.title,
+        artist: m.artist,
+        coverUrl: m.coverUrl,
+        trackId: m.trackId,
+        progress: progressRef.current,
+        activeLyricIndex: activeLyricLineRef.current,
+        isPlaying,
+        synced: lyr?.synced,
+        text: lyr?.text,
+      },
+      { secondScreen: secondScreenLyricsRef.current, force: true }
+    );
+  }, [isPlaying, pluginStates, currentTrack?.id]);
+
+  useEffect(() => {
+    if (!currentTrack) return;
+    const meta = overlayMetaRef.current;
+    const syncedLen = lyrics?.synced?.length ?? 0;
+    const textLen = lyrics?.text?.length ?? 0;
+    const changed =
+      meta.trackId !== currentTrack.id || meta.syncedLen !== syncedLen || meta.textLen !== textLen;
+    meta.trackId = currentTrack.id;
+    meta.title = currentTrack.title;
+    meta.artist = currentTrack.artist;
+    meta.coverUrl = currentTrack.coverLarge || currentTrack.cover;
+    meta.syncedLen = syncedLen;
+    meta.textLen = textLen;
+
+    const overlayOn =
+      pluginStates['lyrics-overlay'] ||
+      pluginStates['second-screen-lyrics'] ||
+      pluginStates['lyrics-karaoke'];
+    if (overlayOn && changed) {
+      pushLyricsOverlay(
+        {
+          title: currentTrack.title,
+          artist: currentTrack.artist,
+          coverUrl: meta.coverUrl,
+          trackId: currentTrack.id,
+          progress: progressRef.current,
+          activeLyricIndex: activeLyricLineRef.current,
+          isPlaying: isPlayingRef.current,
+          synced: lyrics?.synced,
+          text: lyrics?.text,
+        },
+        { secondScreen: Boolean(pluginStates['second-screen-lyrics']), force: true }
+      );
+    }
+    if (pluginStates['mini-player'] && changed) {
+      pushMiniPlayerState({
+        title: currentTrack.title,
+        artist: currentTrack.artist,
+        trackId: currentTrack.id,
+        coverUrl: currentTrack.coverSmall || currentTrack.cover,
+        progress: progressRef.current,
+        duration: durationRef.current,
+        isPlaying: isPlayingRef.current,
+      });
+    }
+  }, [pluginStates, currentTrack, lyrics, isPlaying]);
+
+  useEffect(() => {
+    const overlayOn =
+      pluginStates['lyrics-overlay'] ||
+      pluginStates['second-screen-lyrics'] ||
+      pluginStates['lyrics-karaoke'];
+    overlayPluginsOnRef.current = overlayOn;
+    secondScreenLyricsRef.current = Boolean(pluginStates['second-screen-lyrics']);
+    const miniOn = pluginStates['mini-player'];
+    if (!miniOn) return;
+
+    const send = () => {
+      const track = currentTrackIdRef.current;
+      if (!track) return;
+      const m = overlayMetaRef.current;
+      pushMiniPlayerState({
+        title: m.title,
+        artist: m.artist,
+        coverUrl: m.coverUrl,
+        trackId: m.trackId,
+        progress: audio.currentTime || progressRef.current,
+        duration: durationRef.current,
+        isPlaying: !audio.paused,
+        rate: audio.playbackRate,
+      });
+    };
+    const iv = setInterval(send, MINI_PLAYER_SYNC_MS);
+    const evs = ['play', 'playing', 'pause', 'seeked', 'ratechange'] as const;
+    evs.forEach((ev) => audio.addEventListener(ev, send));
+    return () => {
+      clearInterval(iv);
+      evs.forEach((ev) => audio.removeEventListener(ev, send));
+    };
+  }, [pluginStates, audio]);
+
+  useEffect(() => {
+    const pushOverlayNow = () => {
+      if (!overlayPluginsOnRef.current || !currentTrackIdRef.current) return;
+      const m = overlayMetaRef.current;
+      const lyr = lyricsRef.current;
+      void pushLyricsOverlay(
+        {
+          title: m.title,
+          artist: m.artist,
+          coverUrl: m.coverUrl,
+          trackId: m.trackId,
+          progress: progressRef.current,
+          activeLyricIndex: activeLyricLineRef.current,
+          isPlaying: isPlayingRef.current,
+          synced: lyr?.synced,
+          text: lyr?.text,
+        },
+        { secondScreen: secondScreenLyricsRef.current, force: true }
+      );
+    };
+    const pushMiniNow = () => {
+      if (!currentTrackIdRef.current) return;
+      const m = overlayMetaRef.current;
+      void pushMiniPlayerState({
+        title: m.title,
+        artist: m.artist,
+        coverUrl: m.coverUrl,
+        trackId: m.trackId,
+        progress: progressRef.current,
+        duration: durationRef.current,
+        isPlaying: isPlayingRef.current,
+      });
+    };
+    const unlisteners: Array<() => void> = [];
+    let disposed = false;
+    const keep = (fn: () => void) => {
+      if (disposed) fn();
+      else unlisteners.push(fn);
+    };
+    listen('zenith-overlay-ready', pushOverlayNow).then(keep);
+    listen('zenith-mini-ready', pushMiniNow).then(keep);
+    window.addEventListener(OVERLAY_SETTINGS_EVENT, pushOverlayNow);
+    return () => {
+      disposed = true;
+      unlisteners.forEach((fn) => fn());
+      window.removeEventListener(OVERLAY_SETTINGS_EVENT, pushOverlayNow);
+    };
+  }, []);
+
+  const handleShareCard = useCallback(async () => {
+    if (!currentTrack) return;
+    const ok = await copyShareCardToClipboard({
+      id: currentTrack.id,
+      title: currentTrack.title,
+      artist: currentTrack.artist,
+      duration,
+      position: progressRef.current,
+      isPlaying,
+      coverUrl: currentTrack.coverLarge || currentTrack.cover,
+    });
+    if (ok) setShareCardOk(true);
+    setTimeout(() => setShareCardOk(false), 2000);
+  }, [currentTrack, duration, isPlaying]);
+
+  const heroTrack = useMemo(
+    () =>
+      sections.length > 0 && sections[0].items.length > 0 && activeTab === 'search'
+        ? sections[0].items[0]
+        : null,
+    [sections, activeTab]
+  );
+
+  const upNextTracks = useMemo(
+    () => queue.slice(queueIndex + 1, queueIndex + 51),
+    [queue, queueIndex]
+  );
+  const isContentTab = activeTab !== 'player';
+  const typeLabel = (type: Track['type']) => {
+    switch (type) {
+      case 'track':
+        return t.typeTrack;
+      case 'album':
+        return t.typeAlbum;
+      case 'playlist':
+        return t.typePlaylist;
+      case 'artist':
+        return t.typeArtist;
+      case 'profile':
+        return t.typeProfile;
+      case 'podcast':
+        return t.typePodcast;
+      default:
+        return type;
+    }
+  };
+  const homeHeroTrack = useMemo(
+    () => (activeTab === 'home' ? (quickPicks[0] ?? homeSections[0]?.items[0] ?? null) : null),
+    [activeTab, quickPicks, homeSections]
+  );
+
+  useEffect(() => {
+    if (showSplash) return;
+    if (!shouldShowOnboarding()) return;
+    const t = window.setTimeout(() => setShowOnboarding(true), 600);
+    return () => window.clearTimeout(t);
+  }, [showSplash]);
+
+  useEffect(() => {
+    if (pluginStates['ambient-glow']) {
+      applyCoverTheme(currentTrack?.coverLarge || currentTrack?.cover);
+    } else {
+      resetCoverTheme();
+    }
+  }, [
+    currentTrack?.id,
+    currentTrack?.cover,
+    currentTrack?.coverLarge,
+    pluginStates['ambient-glow'],
+  ]);
+
+  const sectionRows = useMemo(
+    () =>
+      stableOrderSections(activeTab === 'home' ? homeSections : sections).map((section, idx) => (
+        <SectionRow
+          key={`${section.title}-${idx}`}
+          section={section}
+          sectionIndex={idx}
+          onItemClick={handleItemClick}
+        />
+      )),
+    [activeTab, homeSections, sections, handleItemClick]
+  );
