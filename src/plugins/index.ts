@@ -205,3 +205,45 @@ class PluginManager {
   getStates(): Record<string, boolean> {
     return { ...this.enabled };
   }
+
+  byCategory(): Record<PluginCategory, ZenithPlugin[]> {
+    const groups = Object.fromEntries(
+      PLUGIN_CATEGORY_ORDER.map((c) => [c, [] as ZenithPlugin[]])
+    ) as Record<PluginCategory, ZenithPlugin[]>;
+    for (const p of this.plugins) groups[p.category].push(p);
+    for (const c of PLUGIN_CATEGORY_ORDER)
+      groups[c].sort((a, b) => pluginRank(a.id) - pluginRank(b.id));
+    return groups;
+  }
+
+  setEnabled(id: string, on: boolean) {
+    if (this.enabled[id] === on) return;
+    this.enabled[id] = on;
+    this.persist();
+    const plugin = this.plugins.find((p) => p.id === id);
+    if (!plugin) return;
+    try {
+      const r: unknown = on ? plugin.onEnable?.() : plugin.onDisable?.();
+      catchAsync(r, `[plugins] ${id} toggle failed`);
+    } catch (err) {
+      console.warn(`[plugins] ${id} toggle failed`, err);
+    }
+
+    if (id === 'zenith-stage') {
+      for (const bundled of STAGE_BUNDLE) {
+        if (Boolean(this.enabled[bundled]) !== on) this.setEnabled(bundled, on);
+      }
+    }
+    this.emitChange();
+  }
+
+  private forEachEnabled(fn: (p: ZenithPlugin) => unknown) {
+    for (const plugin of this.plugins) {
+      if (!this.enabled[plugin.id]) continue;
+      try {
+        catchAsync(fn(plugin), `[plugins] ${plugin.id} hook failed`);
+      } catch (err) {
+        console.warn(`[plugins] ${plugin.id} hook failed`, err);
+      }
+    }
+  }
