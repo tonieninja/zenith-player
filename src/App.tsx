@@ -4188,3 +4188,274 @@ export default function App() {
       )),
     [activeTab, homeSections, sections, handleItemClick]
   );
+
+  return (
+    <div className="zenith-app">
+      <ToastHost lang={lang} />
+      {showOnboarding && (
+        <Suspense fallback={null}>
+          <Onboarding
+            lang={lang}
+            open={showOnboarding}
+            onClose={() => setShowOnboarding(false)}
+            onSignIn={() => void handleLogin()}
+            libAuthed={libAuthed}
+          />
+        </Suspense>
+      )}
+      {loginBusy && (
+        <div className="login-busy-overlay" aria-live="polite">
+          <div className="login-busy-card">
+            <span className="login-busy-spinner" aria-hidden />
+            {t.loginInProgress}
+            <button
+              type="button"
+              className="login-busy-cancel no-window-drag"
+              onClick={() => void cancelLogin()}
+            >
+              {t.loginCancel}
+            </button>
+          </div>
+        </div>
+      )}
+      {showSplash && (
+        <div className={`startup-splash ${splashLeaving ? 'leaving' : ''}`}>
+          <div className="startup-splash-title">Zenith</div>
+          <div className="startup-splash-subtitle">tonieninja</div>
+          <div className="startup-splash-progress" aria-hidden>
+            <div className="startup-splash-progress-track">
+              <div
+                className="startup-splash-progress-fill"
+                style={{
+                  width: prefetchTotal
+                    ? `${Math.round((prefetchDone / prefetchTotal) * 100)}%`
+                    : prefetchComplete
+                      ? '100%'
+                      : '0%',
+                }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+      <div className="global-glass-bg">
+        <div className={`glass-static-backdrop ${currentTrack ? 'has-track' : ''}`} />
+        <div className="glass-overlay-dark" />
+      </div>
+
+      <header
+        className="titlebar"
+        onPointerDown={(e) => {
+          if (e.button !== 0) return;
+          if ((e.target as HTMLElement).closest('.no-window-drag')) return;
+          e.preventDefault();
+          void appWindow.startDragging();
+        }}
+      >
+        <div className="titlebar-drag-spacer" aria-hidden="true" />
+        <div className="titlebar-center">
+          <div className="titlebar-search no-window-drag" data-tour="search">
+            <Search size={15} className="search-icon" />
+            <input
+              ref={searchInputRef}
+              type="text"
+              placeholder={t.searchPlaceholder}
+              aria-label={t.searchPlaceholder}
+              className="search-input"
+              value={searchQuery}
+              maxLength={MAX_SEARCH_LENGTH}
+              spellCheck={false}
+              onChange={(e) => {
+                const v = e.target.value;
+                if (v.length >= MAX_SEARCH_LENGTH && searchQuery.length < MAX_SEARCH_LENGTH) {
+                  pushToast(t.searchTooLong, 'info');
+                }
+                setSearchQuery(v.slice(0, MAX_SEARCH_LENGTH));
+              }}
+              onPaste={(e) => {
+                const pasted = e.clipboardData.getData('text');
+                if (pasted.length + searchQuery.length > MAX_SEARCH_LENGTH) {
+                  pushToast(t.searchTooLong, 'info');
+                }
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleSearch(searchQuery);
+                else if (e.key === 'Escape') {
+                  e.stopPropagation();
+                  if (searchQuery) setSearchQuery('');
+                  else e.currentTarget.blur();
+                }
+              }}
+            />
+          </div>
+        </div>
+        <div className="titlebar-actions">
+          <button
+            type="button"
+            className={`titlebar-pill-btn no-window-drag${libAuthed ? ' logged-in' : ''}${isOffline ? ' offline' : ''}`}
+            onClick={handleLogin}
+            title={
+              isOffline ? t.offlineHint : libAuthed ? (libAccount?.name ?? t.loggedIn) : t.login
+            }
+            data-tour="login"
+          >
+            <UserCircle size={17} />
+            <span className="hide-on-mobile titlebar-user-name">
+              {isOffline ? t.offlineBadge : libAuthed ? (libAccount?.name ?? t.loggedIn) : t.login}
+            </span>
+          </button>
+          {libAuthed && (
+            <button
+              type="button"
+              className="titlebar-pill-btn titlebar-logout-btn no-window-drag"
+              onClick={() => void handleLogout()}
+              title={t.logout}
+              aria-label={t.logout}
+            >
+              <LogOut size={16} />
+              <span className="hide-on-mobile">{t.logout}</span>
+            </button>
+          )}
+          <div className="titlebar-window-controls">
+            <button
+              type="button"
+              className="win-ctrl-btn no-window-drag"
+              aria-label={t.winMinimize}
+              title={t.winMinimize}
+              onClick={() => void appWindow.minimize()}
+            >
+              <Minus size={14} strokeWidth={2.25} />
+            </button>
+            <button
+              type="button"
+              className="win-ctrl-btn no-window-drag"
+              aria-label={isMaximized ? t.winRestore : t.winMaximize}
+              title={isMaximized ? t.winRestore : t.winMaximize}
+              onClick={() => void appWindow.toggleMaximize()}
+            >
+              {isMaximized ? (
+                <Maximize2 size={13} strokeWidth={2.25} />
+              ) : (
+                <Square size={12} strokeWidth={2.25} />
+              )}
+            </button>
+            <button
+              type="button"
+              className="win-ctrl-btn win-ctrl-close no-window-drag"
+              aria-label={t.winClose}
+              title={t.winClose}
+              onClick={() => void appWindow.close()}
+            >
+              <X size={15} strokeWidth={2.25} />
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <div className="app-main-layout">
+        <aside className="sidebar">
+          <div className="brand">
+            <span>ZENITH</span>
+          </div>
+          <nav className="nav-menu">
+            <div
+              className={`nav-item back-btn${activeTab === 'player' ? '' : ' is-placeholder'}`}
+              aria-hidden={activeTab !== 'player'}
+              onClick={() => {
+                if (activeTab === 'player') leavePlayer();
+              }}
+            >
+              <ChevronLeft size={22} />
+              <span>{t.back}</span>
+            </div>
+            <div
+              className={`nav-item ${activeTab === 'home' ? 'active' : ''}`}
+              onClick={() => loadHome()}
+              data-tour="home"
+            >
+              <Home size={22} />
+              <span>{t.home}</span>
+            </div>
+            <div
+              className={`nav-item ${activeTab === 'explore' ? 'active' : ''}`}
+              onClick={() => loadExplore()}
+            >
+              <Compass size={22} />
+              <span>{t.explore}</span>
+            </div>
+            <div
+              className={`nav-item ${activeTab === 'library' ? 'active' : ''}`}
+              onClick={() => navigateTo('library')}
+              data-tour="library"
+            >
+              <Library size={22} />
+              <span>{t.library}</span>
+            </div>
+          </nav>
+          <div className="playlists-section">
+            <span className="section-title">{t.playlistsTitle}</span>
+            {libAuthed && (
+              <div className="nav-item playlist-link pm-open-link" onClick={() => setPmOpen(true)}>
+                <ListMusic size={18} />
+                <span>{t.pmOpen}</span>
+              </div>
+            )}
+            <div
+              className={`nav-item playlist-link ${activeTab === 'mood' && activeMood === FAVORITES_ID ? 'active' : ''}`}
+              onClick={openFavorites}
+            >
+              <ListMusic size={18} />
+              <span>{t.favs}</span>
+            </div>
+            <div
+              className={`nav-item playlist-link ${activeTab === 'mood' && activeMood === 'workout' ? 'active' : ''}`}
+              onClick={() => openMoodById('workout')}
+            >
+              <ListMusic size={18} />
+              <span>{t.workout}</span>
+            </div>
+            <div
+              className={`nav-item playlist-link ${activeTab === 'mood' && activeMood === 'focus' ? 'active' : ''}`}
+              onClick={() => openMoodById('focus')}
+            >
+              <ListMusic size={18} />
+              <span>{t.nightCode}</span>
+            </div>
+            {(() => {
+              const renderPl = (pl: Track) => (
+                <div
+                  key={pl.id}
+                  className={`nav-item playlist-link user-playlist-link${
+                    activeTab === 'mood' && activeMood === browseMoodId(pl.id) ? ' active' : ''
+                  }`}
+                  onClick={() => {
+                    if (sidebarClickPlan(pl).kind === 'browse-page') {
+                      void openCollectionPage(pl);
+                      return;
+                    }
+                    void handleCollectionClick(pl);
+                  }}
+                  title={pl.title}
+                >
+                  <ListMusic size={18} />
+                  <span>{pl.title}</span>
+                  {
+                    <PopoverMenu
+                      ariaLabel={t.playlistActions}
+                      trigger={<MoreHorizontal size={16} />}
+                      items={[
+                        {
+                          key: 'folder',
+                          label: t.moveToFolder,
+                          onSelect: () => {
+                            setFdName('');
+                            setFdEdit({
+                              mode: 'move',
+                              plId: pl.id,
+                              target: plFolders.assign[pl.id] ?? '',
+                            });
+                          },
+                        },
+                        ...(!isEditablePlaylist(pl.id)
+                          ? []
+                          : [
