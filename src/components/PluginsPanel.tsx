@@ -1006,3 +1006,160 @@ export function PluginsPanel({
                       .finally(() => setRoomBusy(false));
                   }}
                 >
+                  {t.roomCreate}
+                </button>
+                <input
+                  className="settings-text-input"
+                  placeholder={t.roomJoinPlaceholder}
+                  value={joinInput}
+                  onChange={(e) => setJoinInput(e.target.value.toUpperCase())}
+                  maxLength={6}
+                />
+                <button
+                  className="np-create-btn"
+                  type="button"
+                  disabled={roomBusy}
+                  onClick={() => {
+                    setRoomBusy(true);
+                    setRoomError('');
+                    joinRoom(joinInput.trim())
+                      .then((ok) => {
+                        if (ok) {
+                          setRoomCode(joinInput.trim().toUpperCase());
+                          setPeers(roomPeerCount());
+                        } else setRoomError(t.roomJoinFailed);
+                      })
+                      .finally(() => setRoomBusy(false));
+                  }}
+                >
+                  {t.roomJoin}
+                </button>
+              </>
+            )}
+            {roomError ? <p className="plugin-desc">{roomError}</p> : null}
+          </div>
+        );
+      case 'stats-tracker': {
+        const hrs = Math.floor(listenStats.totalSeconds / 3600);
+        const mins = Math.floor((listenStats.totalSeconds % 3600) / 60);
+        const titles = new Map(history.map((h) => [h.id, `${h.title} - ${h.artist}`]));
+        const top = Object.entries(listenStats.trackPlays)
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 5);
+        return (
+          <div className="plugin-setting-col">
+            <div className="plugin-stats-grid">
+              <div className="plugin-stat">
+                <span className="plugin-stat-value">
+                  {hrs} h {mins} min
+                </span>
+                <span className="plugin-desc">{t.statsTotalTime}</span>
+              </div>
+              <div className="plugin-stat">
+                <span className="plugin-stat-value">{listenStats.sessions}</span>
+                <span className="plugin-desc">{t.statsTrackStarts}</span>
+              </div>
+            </div>
+            {top.length > 0 && (
+              <>
+                <span className="plugin-setting-subtitle">{t.statsTopTracks}</span>
+                <ol className="plugin-mini-list">
+                  {top.map(([id, minutes]) => (
+                    <li key={id}>
+                      <span className="plugin-mini-list-title">{titles.get(id) ?? id}</span>
+                      <span className="plugin-desc">
+                        {Math.max(1, Math.round(minutes))} {t.minutesShort}
+                      </span>
+                    </li>
+                  ))}
+                </ol>
+              </>
+            )}
+            <div>
+              <button
+                type="button"
+                className="np-cancel-btn"
+                onClick={() => {
+                  resetListenStats();
+                  setListenStats(getListenStats());
+                }}
+              >
+                {t.statsReset}
+              </button>
+            </div>
+          </div>
+        );
+      }
+      case 'listening-history':
+        return (
+          <div className="plugin-setting-col">
+            {history.length === 0 ? (
+              <p className="plugin-desc">{t.historyEmpty}</p>
+            ) : (
+              <ol className="plugin-mini-list">
+                {history.slice(0, 12).map((h) => (
+                  <li key={h.id}>
+                    <button
+                      type="button"
+                      className="plugin-mini-list-btn"
+                      disabled={!onPlayTrack}
+                      onClick={() =>
+                        onPlayTrack?.(
+                          {
+                            id: h.id,
+                            type: 'track',
+                            title: h.title,
+                            artist: h.artist,
+                            cover: h.cover || '',
+                            coverSmall: h.cover,
+                            coverLarge: h.cover,
+                          },
+                          history.map((x) => ({
+                            id: x.id,
+                            type: 'track' as const,
+                            title: x.title,
+                            artist: x.artist,
+                            cover: x.cover || '',
+                            coverSmall: x.cover,
+                            coverLarge: x.cover,
+                          }))
+                        )
+                      }
+                    >
+                      <span className="plugin-mini-list-title">{h.title}</span>
+                      <span className="plugin-desc">
+                        {h.artist} ·{' '}
+                        {new Date(h.playedAt).toLocaleString(lang === 'pl' ? 'pl-PL' : 'en-GB', {
+                          dateStyle: 'short',
+                          timeStyle: 'short',
+                        })}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ol>
+            )}
+            {history.length > 0 && (
+              <div>
+                <button
+                  type="button"
+                  className="np-cancel-btn"
+                  onClick={() => {
+                    clearListeningHistory();
+                    setHistory([]);
+                  }}
+                >
+                  {t.historyClear}
+                </button>
+              </div>
+            )}
+          </div>
+        );
+      case 'zenith-stage':
+        return <p className="plugin-desc">{t.stageHint}</p>;
+      case 'dualsense-pad':
+        return <p className="plugin-desc">{t.dualSenseHint}</p>;
+      default:
+        return <p className="plugin-no-settings">{t.pluginNoSettings}</p>;
+    }
+  };
