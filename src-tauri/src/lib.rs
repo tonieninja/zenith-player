@@ -536,3 +536,77 @@ fn zenith_shortcuts() -> Vec<(tauri_plugin_global_shortcut::Shortcut, String)> {
     }
     list
 }
+
+pub(crate) fn hotkey_action_for(
+    shortcut: &tauri_plugin_global_shortcut::Shortcut,
+) -> Option<String> {
+    let live = HOTKEY_LIVE.lock().unwrap_or_else(|e| e.into_inner());
+    live.iter()
+        .find(|(s, _)| s == shortcut)
+        .map(|(_, a)| a.clone())
+}
+
+fn apply_global_shortcuts(app: &tauri::AppHandle, enabled: bool) -> usize {
+    use tauri_plugin_global_shortcut::GlobalShortcutExt;
+    let _guard = HOTKEY_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let gs = app.global_shortcut();
+    let mut live = HOTKEY_LIVE.lock().unwrap_or_else(|e| e.into_inner());
+    for (sc, _) in live.drain(..) {
+        if gs.is_registered(sc) {
+            let _ = gs.unregister(sc);
+        }
+    }
+    if !enabled {
+        return 0;
+    }
+    for (shortcut, action) in zenith_shortcuts() {
+        match gs.register(shortcut) {
+            Ok(()) => live.push((shortcut, action)),
+            Err(e) => {
+                if debug_log_enabled() {
+                    eprintln!("[zenith] global shortcut {shortcut} unavailable: {e}");
+                }
+            }
+        }
+    }
+    live.len()
+}
+
+#[tauri::command]
+fn set_global_hotkey_bindings(
+    app: tauri::AppHandle,
+    bindings: std::collections::HashMap<String, String>,
+) -> Vec<String> {
+    let mut list = Vec::new();
+    let mut bad = Vec::new();
+    for a in HOTKEY_ACTIONS {
+        let acc = bindings.get(a).cloned().unwrap_or_default();
+        if !acc.trim().is_empty() && parse_accelerator(&acc).is_none() {
+            bad.push(a.to_string());
+        }
+        list.push((a.to_string(), acc));
+    }
+    *HOTKEY_BINDINGS.lock().unwrap_or_else(|e| e.into_inner()) = list;
+    apply_global_shortcuts(&app, GLOBAL_HOTKEYS_ON.load(Ordering::SeqCst));
+    let live = HOTKEY_LIVE.lock().unwrap_or_else(|e| e.into_inner());
+    for (a, acc) in bindings {
+        if let Some(sc) = parse_accelerator(&acc) {
+            if !live.iter().any(|(s, _)| *s == sc) && !bad.contains(&a) {
+                bad.push(a);
+            }
+        }
+    }
+    bad
+}
+
+#[tauri::command]
+fn set_global_hotkeys(app: tauri::AppHandle, enabled: bool) -> usize {
+    GLOBAL_HOTKEYS_ON.store(enabled, Ordering::SeqCst);
+    apply_global_shortcuts(&app, enabled)
+}
+
+#[tauri::command]
+async fn cover_cache_base() -> Result<String, String> {
+    stream_proxy::ensure_ready().await?;
+    stream_proxy::cover_base().ok_or_else(|| "proxy not ready".to_string())
+}
