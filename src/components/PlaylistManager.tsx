@@ -268,3 +268,293 @@ export function PlaylistManager({
       setBusy(false);
     }
   };
+
+  const entries = details?.entries ?? [];
+  const totalSec = entries.reduce((sum, e) => sum + (e.durationSec ?? 0), 0);
+  const selectedEntries = entries.filter((e) => selected.has(e.setVideoId || e.videoId));
+  const keyOf = (e: PlaylistEntry) => e.setVideoId || e.videoId;
+  const asTracks = (list: PlaylistEntry[]): Track[] =>
+    list.map((e) => ({
+      id: e.videoId,
+      type: 'track',
+      title: e.title,
+      artist: e.artist,
+      cover: e.cover,
+    }));
+
+  const saveDetails = () =>
+    run(async () => {
+      if (!active || !details) return;
+      const change: { title?: string; description?: string; privacy?: PlaylistPrivacy } = {};
+      if (form.title.trim() !== (details.title || active.title)) change.title = form.title;
+      if (form.description !== details.description) change.description = form.description;
+      if (details.privacy && form.privacy !== details.privacy) change.privacy = form.privacy;
+      if (!Object.keys(change).length) return;
+      await updatePlaylistDetails(active.id, change, lang);
+      setDetails({
+        ...details,
+        title: form.title.trim(),
+        description: form.description,
+        privacy: details.privacy ? form.privacy : null,
+      });
+      setLists(
+        (prev) =>
+          prev?.map((p) => (p.id === active.id ? { ...p, title: form.title.trim() } : p)) ?? prev
+      );
+      pushToast(t.pmSaved, 'success', 1800);
+      onChanged?.();
+    }, t.pmSaveFailed);
+
+  const createNew = () =>
+    run(async () => {
+      const raw = await createPlaylist(t.pmNewDefaultName, '', 'PRIVATE', lang);
+      if (!raw) throw new Error('no playlist id');
+      const id = raw.startsWith('VL') ? raw : `VL${raw}`;
+      pushToast(fill(t.pmCreated, { name: t.pmNewDefaultName }), 'success', 1800);
+      onChanged?.();
+      for (let i = 0; i < 4; i += 1) {
+        const fresh = await listAllPlaylists(lang, ownerName).catch(() => null);
+        if (fresh?.some((p) => samePlaylist(p.id, id))) {
+          setLists((prev) => preserveOwned(fresh, prev, [id]));
+          break;
+        }
+        if (i === 3) {
+          const stub: PlaylistSummary = {
+            id,
+            title: t.pmNewDefaultName,
+            subtitle: '',
+            cover: '',
+            count: 0,
+            kind: 'own',
+            editable: true,
+          };
+          setLists((prev) => [stub, ...preserveOwned(fresh ?? prev ?? [], prev)]);
+        }
+        await new Promise((r) => setTimeout(r, 800));
+      }
+      void openPlaylist(id);
+    });
+
+  const duplicate = () =>
+    run(async () => {
+      if (!active) return;
+      const name = fill(t.pmCopyOf, { name: active.title });
+      await createWithTracks(
+        name,
+        details?.description ?? '',
+        'PRIVATE',
+        entries.map((e) => e.videoId),
+        lang
+      );
+      pushToast(fill(t.pmDuplicated, { name }), 'success');
+      await refreshLists();
+      onChanged?.();
+    });
+
+  const mergeWith = (other: PlaylistSummary) =>
+    run(async () => {
+      if (!active) return;
+      const theirs = await loadPlaylistDetails(other.id, lang);
+      const name = fill(t.pmMergedName, { a: active.title, b: other.title }).slice(0, 150);
+      await createWithTracks(
+        name,
+        '',
+        'PRIVATE',
+        [...entries, ...theirs.entries].map((e) => e.videoId),
+        lang
+      );
+      pushToast(fill(t.pmMerged, { name }), 'success');
+      await refreshLists();
+      onChanged?.();
+    });
+
+  const doDelete = () =>
+    run(async () => {
+      if (!active) return;
+      await deletePlaylist(active.id, lang);
+      setConfirmDelete(false);
+      setActiveId(null);
+      setDetails(null);
+      setLists((prev) => prev?.filter((p) => p.id !== active.id) ?? prev);
+      pushToast(t.pmDeleted, 'success');
+      onChanged?.({ deletedId: active.id });
+    });
+
+  const removeSelected = () =>
+    run(async () => {
+      if (!active || !details || !selectedEntries.length) return;
+      await removeEntries(active.id, selectedEntries, lang);
+      const gone = new Set(selectedEntries.map(keyOf));
+      setDetails({ ...details, entries: entries.filter((e) => !gone.has(keyOf(e))) });
+      setSelected(new Set());
+      pushToast(fill(t.pmRemoved, { count: tracksLabel(gone.size, t) }), 'success');
+      onChanged?.();
+    });
+
+  const addSelectedTo = (target: PlaylistSummary) =>
+    run(async () => {
+      const ids = (selectedEntries.length ? selectedEntries : entries).map((e) => e.videoId);
+      if (!ids.length) return;
+      await addTracks(target.id, ids, lang);
+      pushToast(
+        fill(t.pmAdded, { count: tracksLabel(ids.length, t), name: target.title }),
+        'success'
+      );
+      onChanged?.();
+    });
+
+  const onDrop = (to: number) => {
+    const from = dragFrom;
+    setDragFrom(null);
+    setDragOver(null);
+    if (from === null || from === to || !active?.editable || !details) return;
+    const before = entries;
+    setDetails({ ...details, entries: reorder(entries, from, to) });
+    moveEntry(active.id, before, from, to, lang).catch(() => {
+      setDetails((d) => (d ? { ...d, entries: before } : d));
+      pushToast(t.pmMoveFailed, 'error');
+    });
+  };
+
+  const saveExport = (ext: 'csv' | 'json') =>
+    run(async () => {
+      if (!active) return;
+      const contents = ext === 'csv' ? toCsv(active.title, entries) : toJson(active.title, entries);
+      const path = await invoke<string>('save_playlist_export', {
+        name: active.title,
+        ext,
+        contents,
+      });
+      pushToast(fill(t.pmExportSaved, { path }), 'success', 6000);
+    });
+
+  const kinds: { id: PlaylistKind | 'all'; label: string }[] = [
+    { id: 'all', label: t.pmKindAll },
+    { id: 'own', label: t.pmKindOwn },
+    { id: 'saved', label: t.pmKindSaved },
+    { id: 'liked', label: t.pmKindLiked },
+    { id: 'generated', label: t.pmKindGenerated },
+  ];
+
+  return (
+    <ModalOverlay onClick={onClose} testId="playlist-manager-overlay">
+      <div
+        className="glass-modal-container pm-modal"
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-label={t.pmTitle}
+      >
+        <div className="modal-header-polished">
+          <h2>{t.pmTitle}</h2>
+          <X size={26} className="modal-close-icon" onClick={onClose} aria-label={t.pmCancel} />
+        </div>
+        <div className={`pm-body ${active ? 'has-active' : ''}`}>
+          <aside className="pm-side">
+            <div className="pm-search">
+              <Search size={15} />
+              <input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder={t.pmSearch}
+                aria-label={t.pmSearch}
+              />
+            </div>
+            <div className="pm-side-tools">
+              <Select<PlaylistSort>
+                value={sort}
+                onChange={setSort}
+                ariaLabel={t.pmSortDefault}
+                options={[
+                  { value: 'default', label: t.pmSortDefault },
+                  { value: 'title', label: t.pmSortTitle },
+                  { value: 'count', label: t.pmSortCount },
+                ]}
+              />
+              <button className="pm-btn pm-btn-accent" onClick={createNew} disabled={busy}>
+                <Plus size={15} /> {t.pmNew}
+              </button>
+            </div>
+            <div className="pm-chips" role="tablist">
+              {kinds.map((k) => (
+                <button
+                  key={k.id}
+                  role="tab"
+                  aria-selected={kind === k.id}
+                  className={`pm-chip ${kind === k.id ? 'on' : ''}`}
+                  onClick={() => setKind(k.id)}
+                >
+                  {k.label}
+                </button>
+              ))}
+            </div>
+            <div className="pm-list">
+              {lists === null ? (
+                <div className="pm-empty">{t.pmLoading}</div>
+              ) : shown.length === 0 ? (
+                <div className="pm-empty">{lists.length ? t.pmNoMatch : t.pmEmptyList}</div>
+              ) : (
+                shown.map((p) => (
+                  <button
+                    key={p.id}
+                    className={`pm-list-row ${p.id === activeId ? 'active' : ''}`}
+                    onClick={() => void openPlaylist(p.id)}
+                  >
+                    <PmCover className="pm-list-cover" src={p.cover} seed={p.title} kind={p.kind} />
+                    <span className="pm-list-text">
+                      <span className="pm-list-title">{p.title}</span>
+                      <span className="pm-list-sub">
+                        {p.count !== null ? tracksLabel(p.count, t) : p.subtitle}
+                      </span>
+                    </span>
+                    <span className={`pm-kind pm-kind-${p.kind}`}>
+                      {kinds.find((k) => k.id === p.kind)?.label}
+                    </span>
+                  </button>
+                ))
+              )}
+            </div>
+          </aside>
+
+          <section className="pm-main">
+            {!active ? (
+              <div className="pm-empty pm-empty-big">
+                <Music2 size={34} />
+                <span>{t.pmPick}</span>
+              </div>
+            ) : (
+              <>
+                <button className="pm-back" onClick={() => setActiveId(null)}>
+                  <ChevronLeft size={16} /> {t.pmBack}
+                </button>
+                <div className="pm-head">
+                  <PmCover
+                    className="pm-head-cover"
+                    src={active.cover}
+                    seed={active.title}
+                    kind={active.kind}
+                    size={40}
+                    mosaic={Array.from(new Set(entries.map((e) => e.cover)))}
+                  />
+                  <div className="pm-head-fields">
+                    <span className="pm-head-stats">
+                      {kinds.find((k) => k.id === active.kind)?.label}
+                      {' \u00b7 '}
+                      {detailState === 'loading' && !entries.length
+                        ? t.pmLoading
+                        : tracksLabel(entries.length || active.count || 0, t)}
+                      {totalSec > 0 && ` \u00b7 ${fmtTotal(totalSec)}`}
+                    </span>
+                    {active.editable ? (
+                      <>
+                        <label className="pm-field">
+                          <span>{t.pmName}</span>
+                          <input
+                            value={form.title}
+                            maxLength={150}
+                            onChange={(e) => setForm({ ...form, title: e.target.value })}
+                          />
+                        </label>
+                        <label className="pm-field">
+                          <span>{t.pmDescription}</span>
+                          <textarea
+                            rows={2}
