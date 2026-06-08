@@ -558,3 +558,270 @@ export function PlaylistManager({
                           <span>{t.pmDescription}</span>
                           <textarea
                             rows={2}
+                            maxLength={5000}
+                            value={form.description}
+                            onChange={(e) => setForm({ ...form, description: e.target.value })}
+                          />
+                        </label>
+                        <div className="pm-field-row">
+                          {details?.privacy && (
+                            <label className="pm-field pm-field-inline">
+                              <span>{t.pmPrivacy}</span>
+                              <Select<PlaylistPrivacy>
+                                value={form.privacy}
+                                onChange={(v) => setForm({ ...form, privacy: v })}
+                                ariaLabel={t.pmPrivacy}
+                                options={[
+                                  { value: 'PRIVATE', label: t.pmPrivate },
+                                  { value: 'UNLISTED', label: t.pmUnlisted },
+                                  { value: 'PUBLIC', label: t.pmPublic },
+                                ]}
+                              />
+                            </label>
+                          )}
+                          <button
+                            className="pm-btn pm-btn-accent"
+                            onClick={saveDetails}
+                            disabled={busy || !details || !form.title.trim()}
+                          >
+                            {t.pmSave}
+                          </button>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <h3 className="pm-head-title">{active.title}</h3>
+                        {details?.description && (
+                          <p className="pm-head-desc">{details.description}</p>
+                        )}
+                        <p className="pm-readonly">{t.pmReadOnly}</p>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                <div className="pm-actions">
+                  <button
+                    className="pm-btn"
+                    disabled={!entries.length}
+                    onClick={() => onPlay(asTracks(entries), 0, active.title)}
+                  >
+                    <Play size={15} /> {t.pmPlay}
+                  </button>
+                  <button className="pm-btn" disabled={busy || !entries.length} onClick={duplicate}>
+                    <Copy size={15} /> {t.pmDuplicate}
+                  </button>
+                  <PopoverMenu
+                    ariaLabel={t.pmMerge}
+                    triggerClassName="pm-btn"
+                    trigger={
+                      <>
+                        <GitMerge size={15} /> {t.pmMerge}
+                      </>
+                    }
+                    items={(lists ?? [])
+                      .filter((p) => p.id !== active.id)
+                      .map((p) => ({
+                        key: p.id,
+                        label: p.title,
+                        onSelect: () => void mergeWith(p),
+                      }))}
+                  />
+                  <PopoverMenu
+                    ariaLabel={t.pmExport}
+                    triggerClassName="pm-btn"
+                    trigger={
+                      <>
+                        <Download size={15} /> {t.pmExport}
+                      </>
+                    }
+                    items={[
+                      {
+                        key: 'csv',
+                        label: t.pmExportCsv,
+                        disabled: !entries.length,
+                        onSelect: () => void saveExport('csv'),
+                      },
+                      {
+                        key: 'json',
+                        label: t.pmExportJson,
+                        disabled: !entries.length,
+                        onSelect: () => void saveExport('json'),
+                      },
+                      {
+                        key: 'spotify',
+                        label: t.pmSpotify,
+                        disabled: !entries.length,
+                        onSelect: () => setSpotifyOpen(true),
+                      },
+                    ]}
+                  />
+                  {active.editable && (
+                    <button
+                      className="pm-btn pm-btn-danger"
+                      disabled={busy}
+                      onClick={() => setConfirmDelete(true)}
+                    >
+                      <Trash2 size={15} /> {t.pmDelete}
+                    </button>
+                  )}
+                </div>
+
+                {entries.length > 0 && (
+                  <div className="pm-selbar">
+                    <label className="pm-check">
+                      <input
+                        type="checkbox"
+                        checked={selected.size > 0 && selected.size === entries.length}
+                        onChange={(e) =>
+                          setSelected(e.target.checked ? new Set(entries.map(keyOf)) : new Set())
+                        }
+                      />
+                      {selected.size ? fill(t.pmSelected, { n: selected.size }) : t.pmSelectAll}
+                    </label>
+                    {selected.size > 0 && (
+                      <>
+                        <PopoverMenu
+                          ariaLabel={t.pmAddTo}
+                          triggerClassName="pm-btn pm-btn-small"
+                          trigger={
+                            <>
+                              <Plus size={14} /> {t.pmAddTo}
+                            </>
+                          }
+                          emptyLabel={t.ctxNoPlaylists}
+                          items={editableTargets.map((p) => ({
+                            key: p.id,
+                            label: p.title,
+                            onSelect: () => void addSelectedTo(p),
+                          }))}
+                        />
+                        {active.editable && (
+                          <button
+                            className="pm-btn pm-btn-small pm-btn-danger"
+                            disabled={busy}
+                            onClick={removeSelected}
+                          >
+                            <Trash2 size={14} /> {t.pmRemove}
+                          </button>
+                        )}
+                        <button
+                          className="pm-btn pm-btn-small"
+                          onClick={() => setSelected(new Set())}
+                        >
+                          {t.pmClearSelection}
+                        </button>
+                      </>
+                    )}
+                    {active.editable && <span className="pm-hint">{t.pmDragHint}</span>}
+                  </div>
+                )}
+
+                <div className="pm-tracks">
+                  {detailState === 'loading' && (
+                    <div className="pm-skeleton" aria-label={t.pmLoading}>
+                      {Array.from({ length: 8 }, (_, i) => (
+                        <span key={i} />
+                      ))}
+                    </div>
+                  )}
+                  {detailState === 'failed' && <div className="pm-empty">{t.pmLoadFailed}</div>}
+                  {detailState === 'idle' && details && entries.length === 0 && (
+                    <div className="pm-empty pm-empty-big">
+                      <ListMusic size={34} />
+                      <span>{t.pmEmptyTracks}</span>
+                    </div>
+                  )}
+                  {entries.map((e, i) => {
+                    const k = keyOf(e);
+                    const canDrag = active.editable && Boolean(e.setVideoId);
+                    return (
+                      <div
+                        key={`${k}-${i}`}
+                        className={`pm-track ${selected.has(k) ? 'sel' : ''} ${dragOver === i ? 'drop' : ''} ${dragFrom === i ? 'dragging' : ''}`}
+                        draggable={canDrag}
+                        onDragStart={(ev) => {
+                          setDragFrom(i);
+                          ev.dataTransfer.effectAllowed = 'move';
+                          ev.dataTransfer.setData('text/plain', String(i));
+                        }}
+                        onDragOver={(ev) => {
+                          if (dragFrom === null) return;
+                          ev.preventDefault();
+                          setDragOver(i);
+                        }}
+                        onDragEnd={() => {
+                          setDragFrom(null);
+                          setDragOver(null);
+                        }}
+                        onDrop={(ev) => {
+                          ev.preventDefault();
+                          onDrop(i);
+                        }}
+                        onDoubleClick={() => onPlay(asTracks(entries), i, active.title)}
+                      >
+                        {canDrag && <GripVertical size={15} className="pm-grip" />}
+                        <input
+                          type="checkbox"
+                          aria-label={e.title}
+                          checked={selected.has(k)}
+                          onChange={() =>
+                            setSelected((prev) => {
+                              const next = new Set(prev);
+                              if (next.has(k)) next.delete(k);
+                              else next.add(k);
+                              return next;
+                            })
+                          }
+                        />
+                        <span className="pm-track-n">{i + 1}</span>
+                        <PmCover
+                          className="pm-track-cover"
+                          src={e.cover}
+                          seed={e.title}
+                          size={14}
+                        />
+                        <span className="pm-track-text">
+                          <span className="pm-track-title">{e.title}</span>
+                          <span className="pm-track-artist">{e.artist}</span>
+                        </span>
+                        <span className="pm-track-album">{e.album}</span>
+                        <span className="pm-track-dur">{fmtDur(e.durationSec)}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+          </section>
+        </div>
+
+        {confirmDelete && active && (
+          <div className="pm-dialog-backdrop" onClick={() => setConfirmDelete(false)}>
+            <div className="pm-dialog" role="alertdialog" onClick={(e) => e.stopPropagation()}>
+              <p>{fill(t.pmDeleteConfirm, { name: active.title })}</p>
+              <div className="pm-dialog-actions">
+                <button className="pm-btn" onClick={() => setConfirmDelete(false)}>
+                  {t.pmCancel}
+                </button>
+                <button className="pm-btn pm-btn-danger" disabled={busy} onClick={doDelete}>
+                  {t.pmDeleteYes}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {spotifyOpen && active && (
+          <SpotifyExport
+            lang={lang}
+            name={active.title}
+            description={details?.description ?? ''}
+            entries={entries}
+            onClose={() => setSpotifyOpen(false)}
+          />
+        )}
+      </div>
+    </ModalOverlay>
+  );
+}
