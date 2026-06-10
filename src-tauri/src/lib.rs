@@ -610,3 +610,89 @@ async fn cover_cache_base() -> Result<String, String> {
     stream_proxy::ensure_ready().await?;
     stream_proxy::cover_base().ok_or_else(|| "proxy not ready".to_string())
 }
+
+#[cfg(not(target_os = "linux"))]
+fn install_edit_menu(app: &tauri::AppHandle) -> Result<(), String> {
+    use tauri::menu::{PredefinedMenuItem, Submenu};
+    let cut = PredefinedMenuItem::cut(app, None).map_err(|e| e.to_string())?;
+    let copy = PredefinedMenuItem::copy(app, None).map_err(|e| e.to_string())?;
+    let paste = PredefinedMenuItem::paste(app, None).map_err(|e| e.to_string())?;
+    let select_all = PredefinedMenuItem::select_all(app, None).map_err(|e| e.to_string())?;
+    let edit = Submenu::with_items(app, "Edit", true, &[&cut, &copy, &paste, &select_all])
+        .map_err(|e| e.to_string())?;
+    let menu = Menu::with_items(app, &[&edit]).map_err(|e| e.to_string())?;
+    app.set_menu(menu).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+    timeline::mark("app start");
+    win_proxy::init();
+    #[cfg(windows)]
+    if !webview2_check::ensure() {
+        return;
+    }
+    webview_tuning::early_init();
+    tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            if ui_drop::ensure_main(app) {
+                return;
+            }
+            if let Some(w) = app.get_webview_window("main") {
+                let _ = w.unminimize();
+                let _ = w.show();
+                let _ = w.set_focus();
+            }
+        }))
+        .plugin(tauri_plugin_http::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(
+            tauri_plugin_global_shortcut::Builder::new()
+                .with_handler(|app, shortcut, event| {
+                    use tauri_plugin_global_shortcut::ShortcutState;
+                    if event.state() != ShortcutState::Pressed {
+                        return;
+                    }
+                    let Some(action) = hotkey_action_for(shortcut) else {
+                        return;
+                    };
+                    tray_action(app, &action);
+                })
+                .build(),
+        )
+        .setup(|app| {
+            cover_cache::init(app.handle());
+            if let Ok(dir) = app.path().app_cache_dir() {
+                native_audio::set_spool_dir(dir.join("audio"));
+            }
+            downloads::init(app.handle());
+            #[cfg(not(target_os = "linux"))]
+            if let Err(e) = install_edit_menu(app.handle()) {
+                eprintln!("[zenith] edit menu unavailable: {e}");
+            }
+            if let Some(main) = app.get_webview_window("main") {
+                webview_tuning::tune(&main);
+            }
+            tauri::async_runtime::spawn(stream_proxy::start_background());
+            potoken::init(app.handle());
+            stream::init(app.handle());
+            let handle = app.handle().clone();
+            std::thread::spawn(move || {
+                crate::deps::hydrate(&handle);
+                let report = crate::deps::refresh_all(&handle);
+                eprintln!(
+                    "[Zenith] deps player={} innertube={} updated_it={}",
+                    report.player_version.as_deref().unwrap_or("-"),
+                    report.innertube_version.as_deref().unwrap_or("-"),
+                    report.innertube_updated
+                );
+            });
+            if let Err(e) = setup_tray(app) {
+                if debug_log_enabled() {
+                    eprintln!("[zenith] tray unavailable: {e}");
+                }
+            }
