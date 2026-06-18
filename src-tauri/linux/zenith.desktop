@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+Name={{name}}
+GenericName=Music Player
+GenericName[pl]=Odtwarzacz muzyki
+Comment=Music player with synced lyrics, crossfade and plugins
+Comment[pl]=Odtwarzacz muzyki z synchronizowanymi tekstami, crossfade i wtyczkami
+Exec={{exec}} %U
+Icon={{icon}}
+Terminal=false
+Categories=AudioVideo;Audio;Player;
+Keywords=music;player;lyrics;youtube;karaoke;muzyka;odtwarzacz;
+StartupWMClass=zenith-player
+StartupNotify=true
