@@ -696,3 +696,90 @@ pub fn run() {
                     eprintln!("[zenith] tray unavailable: {e}");
                 }
             }
+            apply_global_shortcuts(app.handle(), GLOBAL_HOTKEYS_ON.load(Ordering::SeqCst));
+            native_audio::init(app.handle());
+            wv2_mem::start_watch(app.handle());
+            Ok(())
+        })
+        .on_window_event(|window, event| match event {
+            WindowEvent::CloseRequested { api, .. } => {
+                if window.label() != "main" {
+                    return;
+                }
+                api.prevent_close();
+                if CLOSE_TO_TRAY.load(Ordering::SeqCst)
+                    && TRAY_READY.load(Ordering::SeqCst)
+                    && !windows::is_shutting_down()
+                {
+                    let _ = window.hide();
+                    if let Some(wv) = window.app_handle().get_webview_window("main") {
+                        wv2_mem::set_low(&wv, true);
+                    }
+                    let _ = window.emit_to("main", "zenith-hidden-to-tray", ());
+                    ui_drop::hidden(window.app_handle());
+                } else {
+                    windows::graceful_shutdown(window.app_handle());
+                }
+            }
+            WindowEvent::Resized(_) if window.label() == "main" => {
+                if let Some(wv) = window.app_handle().get_webview_window("main") {
+                    let hidden =
+                        wv.is_minimized().unwrap_or(false) || !wv.is_visible().unwrap_or(true);
+                    wv2_mem::set_low(&wv, hidden);
+                }
+            }
+            WindowEvent::Focused(true) if window.label() == "main" => {
+                if let Some(wv) = window.app_handle().get_webview_window("main") {
+                    if !wv.is_minimized().unwrap_or(false) {
+                        wv2_mem::set_low(&wv, false);
+                    }
+                }
+            }
+            WindowEvent::Moved(pos) => {
+                windows::remember_position(window.app_handle(), window.label(), *pos);
+            }
+            WindowEvent::Destroyed => {
+                let label = window.label().to_string();
+                if windows::AUX_WINDOW_LABELS.contains(&label.as_str())
+                    && !windows::is_shutting_down()
+                {
+                    let _ = window
+                        .app_handle()
+                        .emit_to("main", "zenith-aux-window-closed", label);
+                }
+            }
+            _ => {}
+        })
+        .invoke_handler(tauri::generate_handler![
+            mpris_update,
+            native_audio::zaudio_available,
+            native_audio::zaudio_duck,
+            native_audio::zaudio_cmd,
+            native_audio::zaudio_play,
+            native_audio::zaudio_wait_ready,
+            native_audio::zaudio_crossfade,
+            native_audio::zaudio_preroll,
+            native_audio::zaudio_tail,
+            native_audio::zaudio_plan,
+            native_audio::zaudio_attach,
+            cover_cache_base,
+            get_ytm_cookies,
+            spotify_auth::spotify_wait_for_code,
+            export_file::save_playlist_export,
+            post_webhook,
+            prefs::prefs_load,
+            prefs::prefs_save,
+            prefs::favorites_load,
+            prefs::favorites_save,
+            clear_ytm_auth,
+            clear_login_webview_data,
+            auth_store::persist_ytm_session,
+            auth_store::restore_ytm_session,
+            auth_store::clear_ytm_session_store,
+            auth_store::forget_ytm_session_file,
+            auth_store::sync_ytm_auth_to_main,
+            auth_store::capture_ytm_login_session,
+            open_google_login,
+            close_google_login,
+            finish_login_if_ready,
+            windows::open_lyrics_overlay,
