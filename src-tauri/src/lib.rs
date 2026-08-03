@@ -783,3 +783,71 @@ pub fn run() {
             close_google_login,
             finish_login_if_ready,
             windows::open_lyrics_overlay,
+            windows::open_lyrics_second_screen,
+            windows::open_mini_player,
+            windows::close_window,
+            windows::app_prepare_shutdown,
+            set_tray_labels,
+            set_close_to_tray,
+            tray_available,
+            set_global_hotkeys,
+            set_global_hotkey_bindings,
+            lastfm::lastfm_status,
+            lastfm::lastfm_set_keys,
+            lastfm::lastfm_begin_auth,
+            lastfm::lastfm_finish_auth,
+            lastfm::lastfm_logout,
+            lastfm::lastfm_now_playing,
+            lastfm::lastfm_scrobble,
+            remote::remote_start,
+            remote::remote_stop,
+            remote::remote_info,
+            remote::remote_forget_devices,
+            remote::remote_push,
+            remote::remote_firewall_status,
+            remote::remote_firewall_allow,
+            room::room_create,
+            room::room_join,
+            room::room_leave,
+            room::room_get_code,
+            room::room_get_port,
+            room::room_peer_count,
+            room::room_broadcast,
+            dualsense::dualsense_start,
+            dualsense::dualsense_stop,
+            dualsense::dualsense_set_led,
+            stream::get_stream_url,
+            downloads::downloads_list,
+            downloads::downloads_add,
+            downloads::downloads_delete,
+            downloads::downloads_clear,
+            stream::stream_last_failure,
+            stream::clear_stream_cache,
+            stream::search_videos,
+            stream::resolve_alternate_stream,
+            deps::refresh_playback_deps,
+            deps::get_innertube_config,
+            ytm_api::ytm_browse,
+            discord::discord_update_presence,
+            discord::discord_clear_presence,
+            discord::discord_disconnect
+        ])
+        .build(windows::with_user_webview_args(tauri::generate_context!()))
+        .expect("error while building tauri application")
+        .run(|app_handle, event| {
+            if let RunEvent::ExitRequested {
+                code: None, api, ..
+            } = &event
+            {
+                if native_audio::is_headless() && !windows::is_shutting_down() {
+                    api.prevent_exit();
+                    return;
+                }
+            }
+            if let RunEvent::Exit = event {
+                use tauri_plugin_global_shortcut::GlobalShortcutExt;
+                let _ = app_handle.global_shortcut().unregister_all();
+                windows::close_auxiliary_windows(app_handle);
+            }
+        });
+}

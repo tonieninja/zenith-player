@@ -1,0 +1,481 @@
+use std::fs;
+use std::sync::Mutex;
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+
+use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
+use sha1::{Digest, Sha1};
+use tauri::{AppHandle, Manager};
+
+const YTM_KEY_FALLBACK: &str = "AIzaSyC9XL3ZjWddXya6X74dJoCTL-WEYFDNX30";
+const YTM_BROWSE: &str = "https://music.youtube.com/youtubei/v1/browse";
+const YTM_HOME: &str = "https://music.youtube.com/";
+
+static COOKIE_CACHE: Mutex<Option<(String, Instant)>> = Mutex::new(None);
+const COOKIE_TTL: std::time::Duration = std::time::Duration::from_secs(120);
+
+#[derive(Serialize, Deserialize, Clone, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct InnertubeConfig {
+    pub client_version: String,
+    #[serde(default)]
+    pub api_key: String,
+}
+
+#[derive(Clone)]
+pub struct InnertubeRefresh {
+    pub client_version: String,
+    pub api_key: String,
+    pub updated: bool,
+}
+
+static INNERTUBE: Mutex<InnertubeConfig> = Mutex::new(InnertubeConfig {
+    client_version: String::new(),
+    api_key: String::new(),
+});
+
+fn date_client_version() -> String {
+    let secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let days = secs / 86400;
+    let mut y = 1970i32;
+    let mut rem = days as i32;
+    loop {
+        let diy = if y % 4 == 0 && (y % 100 != 0 || y % 400 == 0) {
+            366
+        } else {
+            365
+        };
+        if rem < diy {
+            break;
+        }
+        rem -= diy;
+        y += 1;
+    }
+    let leap = y % 4 == 0 && (y % 100 != 0 || y % 400 == 0);
+    let months = [
+        31,
+        if leap { 29 } else { 28 },
+        31,
+        30,
+        31,
+        30,
+        31,
+        31,
+        30,
+        31,
+        30,
+        31,
+    ];
+    let mut m = 1;
+    for dim in months {
+        if rem < dim {
+            break;
+        }
+        rem -= dim;
+        m += 1;
+    }
+    let d = rem + 1;
+    format!("1.{y:04}{m:02}{d:02}.01.00")
+}
+
+fn looks_like_client_version(s: &str) -> bool {
+    let s = s.trim();
+    if s.len() < 12 || !s.starts_with("1.") {
+        return false;
+    }
+    s.chars().all(|c| c.is_ascii_digit() || c == '.')
+}
+
+fn looks_like_api_key(s: &str) -> bool {
+    s.starts_with("AIza") && s.len() >= 20 && s.len() < 80
+}
+
+fn extract_quoted_field(html: &str, key: &str) -> Option<String> {
+    let needle = format!("\"{key}\"");
+    let i = html.find(&needle)?;
+    let rest = html[i + needle.len()..].trim_start();
+    let rest = rest.strip_prefix(':')?.trim_start();
+    let rest = rest.strip_prefix('"')?;
+    let end = rest.find('"')?;
+    let val = rest[..end].trim();
+    if val.is_empty() {
+        None
+    } else {
+        Some(val.to_string())
+    }
+}
+
+fn innertube_path(app: &AppHandle) -> Option<std::path::PathBuf> {
+    app.path()
+        .app_local_data_dir()
+        .ok()
+        .map(|d| d.join("innertube.json"))
+}
+
+fn store_innertube(cfg: InnertubeConfig) {
+    if let Ok(mut g) = INNERTUBE.lock() {
+        if !cfg.client_version.is_empty() {
+            g.client_version = cfg.client_version;
+        }
+        if !cfg.api_key.is_empty() {
+            g.api_key = cfg.api_key;
+        }
+    }
+}
+
+pub fn current_innertube() -> InnertubeConfig {
+    let mut cfg = INNERTUBE.lock().map(|g| g.clone()).unwrap_or_default();
+    if cfg.client_version.is_empty() {
+        cfg.client_version = date_client_version();
+    }
+    if cfg.api_key.is_empty() {
+        cfg.api_key = YTM_KEY_FALLBACK.to_string();
+    }
+    cfg
+}
+
+fn persist_innertube(app: &AppHandle, cfg: &InnertubeConfig) {
+    let Some(path) = innertube_path(app) else {
+        return;
+    };
+    if let Some(dir) = path.parent() {
+        let _ = fs::create_dir_all(dir);
+    }
+    if let Ok(json) = serde_json::to_string(cfg) {
+        let _ = fs::write(path, json);
+    }
+}
+
+pub fn hydrate_innertube(app: &AppHandle) {
+    let Some(path) = innertube_path(app) else {
+        return;
+    };
+    let Ok(raw) = fs::read_to_string(path) else {
+        return;
+    };
+    let Ok(cfg) = serde_json::from_str::<InnertubeConfig>(&raw) else {
+        return;
+    };
+    store_innertube(cfg);
+}
+
+fn scrape_innertube_html(html: &str) -> InnertubeConfig {
+    let mut cfg = InnertubeConfig::default();
+    if let Some(v) = extract_quoted_field(html, "INNERTUBE_CLIENT_VERSION") {
+        if looks_like_client_version(&v) {
+            cfg.client_version = v;
+        }
+    }
+    if cfg.client_version.is_empty() {
+        if let Some(v) = extract_quoted_field(html, "clientVersion") {
+            if looks_like_client_version(&v) {
+                cfg.client_version = v;
+            }
+        }
+    }
+    if let Some(k) = extract_quoted_field(html, "INNERTUBE_API_KEY") {
+        if looks_like_api_key(&k) {
+            cfg.api_key = k;
+        }
+    }
+    cfg
+}
+
+pub fn refresh_innertube(app: &AppHandle) -> InnertubeRefresh {
+    hydrate_innertube(app);
+    let before = current_innertube();
+    let fetched = (|| -> Option<InnertubeConfig> {
+        let client = reqwest::blocking::Client::builder()
+            .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
+            .timeout(Duration::from_secs(18))
+            .redirect(reqwest::redirect::Policy::limited(8))
+            .build()
+            .ok()?;
+        let html = client
+            .get(YTM_HOME)
+            .header("Accept-Language", "en-US,en;q=0.9")
+            .send()
+            .ok()?
+            .error_for_status()
+            .ok()?
+            .text()
+            .ok()?;
+        let scraped = scrape_innertube_html(&html);
+        if scraped.client_version.is_empty() && scraped.api_key.is_empty() {
+            None
+        } else {
+            Some(scraped)
+        }
+    })();
+
+    let mut updated = false;
+    if let Some(scraped) = fetched {
+        let mut next = before.clone();
+        if !scraped.client_version.is_empty() && scraped.client_version != before.client_version {
+            next.client_version = scraped.client_version;
+            updated = true;
+        }
+        if !scraped.api_key.is_empty() && scraped.api_key != before.api_key {
+            next.api_key = scraped.api_key;
+            updated = true;
+        }
+        if next.client_version.is_empty() {
+            next.client_version = date_client_version();
+        }
+        if next.api_key.is_empty() {
+            next.api_key = YTM_KEY_FALLBACK.to_string();
+        }
+        store_innertube(next.clone());
+        persist_innertube(app, &next);
+        if updated {
+            eprintln!("[Zenith] innertube client {} key ok", next.client_version);
+        }
+        return InnertubeRefresh {
+            client_version: next.client_version,
+            api_key: next.api_key,
+            updated,
+        };
+    }
+
+    InnertubeRefresh {
+        client_version: before.client_version,
+        api_key: before.api_key,
+        updated: false,
+    }
+}
+
+fn client_version() -> String {
+    current_innertube().client_version
+}
+
+fn innertube_api_key() -> String {
+    current_innertube().api_key
+}
+
+const MUSIC_HOST: &str = "music.youtube.com";
+const MUSIC_ORIGIN: &str = "https://music.youtube.com";
+
+fn now_secs() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
+
+fn sha1_hex(raw: &str) -> String {
+    let mut hasher = Sha1::new();
+    hasher.update(raw.as_bytes());
+    hasher
+        .finalize()
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
+}
+
+pub fn host_matches_cookie_domain(host: &str, domain: &str) -> bool {
+    let host = host.trim().trim_start_matches('.').to_ascii_lowercase();
+    let dom = domain.trim().trim_start_matches('.').to_ascii_lowercase();
+    if host.is_empty() || dom.is_empty() {
+        return false;
+    }
+    host == dom || host.ends_with(&format!(".{dom}"))
+}
+
+pub fn cookies_for_host<'a>(
+    cookies: &[(&'a str, &'a str, &'a str)],
+    host: &str,
+) -> Vec<(&'a str, &'a str)> {
+    use std::collections::HashMap;
+    let mut best: HashMap<&str, (usize, &str)> = HashMap::new();
+    for (name, value, domain) in cookies {
+        if name.is_empty() || value.is_empty() {
+            continue;
+        }
+        let spec = if domain.trim().is_empty() {
+            0
+        } else if host_matches_cookie_domain(host, domain) {
+            domain.trim().trim_start_matches('.').len()
+        } else {
+            continue;
+        };
+        match best.get(name) {
+            Some((prev, _)) if *prev > spec => {}
+            Some((prev, _)) if *prev == spec && spec > 0 => {}
+            _ => {
+                best.insert(*name, (spec, *value));
+            }
+        }
+    }
+    let mut pairs: Vec<(&str, &str)> = best.into_iter().map(|(n, (_, v))| (n, v)).collect();
+    pairs.sort_by(|a, b| a.0.cmp(b.0));
+    pairs
+}
+
+pub fn music_cookie_header(cookies: &[(&str, &str, &str)]) -> String {
+    cookies_for_host(cookies, MUSIC_HOST)
+        .into_iter()
+        .map(|(n, v)| format!("{n}={v}"))
+        .collect::<Vec<_>>()
+        .join("; ")
+}
+
+fn header_value<'a>(header: &'a str, name: &str) -> Option<&'a str> {
+    header.split(';').find_map(|part| {
+        let part = part.trim();
+        let (k, v) = part.split_once('=')?;
+        if k.trim() == name {
+            let v = v.trim();
+            if v.is_empty() {
+                None
+            } else {
+                Some(v)
+            }
+        } else {
+            None
+        }
+    })
+}
+
+pub fn sapisid_authorization(cookie: &str, origin: &str, ts: u64) -> String {
+    let mut parts = Vec::new();
+    if let Some(v) =
+        header_value(cookie, "SAPISID").or_else(|| header_value(cookie, "__Secure-3PAPISID"))
+    {
+        let hash = sha1_hex(&format!("{ts} {v} {origin}"));
+        parts.push(format!("SAPISIDHASH {ts}_{hash}"));
+    }
+    if let Some(v) = header_value(cookie, "__Secure-1PAPISID") {
+        let hash = sha1_hex(&format!("{ts} {v} {origin}"));
+        parts.push(format!("SAPISID1PHASH {ts}_{hash}"));
+    }
+    if let Some(v) = header_value(cookie, "__Secure-3PAPISID") {
+        let hash = sha1_hex(&format!("{ts} {v} {origin}"));
+        parts.push(format!("SAPISID3PHASH {ts}_{hash}"));
+    }
+    parts.join(" ")
+}
+
+fn auth_cookie_score(header: &str) -> u32 {
+    [
+        "SAPISID",
+        "__Secure-1PAPISID",
+        "__Secure-3PAPISID",
+        "__Secure-1PSID",
+        "__Secure-3PSID",
+        "SID",
+        "HSID",
+        "SSID",
+        "LOGIN_INFO",
+    ]
+    .into_iter()
+    .filter(|name| header_value(header, name).is_some())
+    .count() as u32
+}
+
+fn cookies_from_session_file(app: &AppHandle) -> String {
+    let Ok(dir) = app.path().app_data_dir() else {
+        return String::new();
+    };
+    let path = dir.join("ytm_session.json");
+    if !path.exists() {
+        return String::new();
+    }
+    let Ok((raw, _)) = crate::secret_store::read_session(&path) else {
+        return String::new();
+    };
+    #[derive(Deserialize)]
+    struct FileCookie {
+        name: String,
+        value: String,
+        #[serde(default)]
+        domain: Option<String>,
+    }
+    let Ok(list) = serde_json::from_str::<Vec<FileCookie>>(&raw) else {
+        return String::new();
+    };
+    let triples: Vec<(&str, &str, &str)> = list
+        .iter()
+        .map(|c| {
+            (
+                c.name.as_str(),
+                c.value.as_str(),
+                c.domain.as_deref().unwrap_or(""),
+            )
+        })
+        .collect();
+    music_cookie_header(&triples)
+}
+
+fn merge_cookie_headers(a: &str, b: &str) -> String {
+    use std::collections::HashMap;
+    let mut map: HashMap<&str, &str> = HashMap::new();
+    for header in [a, b] {
+        for part in header.split(';') {
+            let part = part.trim();
+            if let Some((k, v)) = part.split_once('=') {
+                let k = k.trim();
+                let v = v.trim();
+                if !k.is_empty() && !v.is_empty() {
+                    map.insert(k, v);
+                }
+            }
+        }
+    }
+    map.into_iter()
+        .map(|(k, v)| format!("{k}={v}"))
+        .collect::<Vec<_>>()
+        .join("; ")
+}
+
+fn resolve_cookies(app: &AppHandle) -> String {
+    let from_file = cookies_from_session_file(app);
+    let cached = if let Ok(guard) = COOKIE_CACHE.lock() {
+        guard.as_ref().map(|(c, _)| c.clone()).unwrap_or_default()
+    } else {
+        String::new()
+    };
+
+    if auth_cookie_score(&cached) > 0 {
+        return cached;
+    }
+    if auth_cookie_score(&from_file) > 0 {
+        warm_cookie_cache(from_file.clone());
+        return from_file;
+    }
+    let merged = merge_cookie_headers(&from_file, &cached);
+    if !merged.is_empty() {
+        return merged;
+    }
+
+    if let Ok(guard) = COOKIE_CACHE.lock() {
+        if let Some((cookie, at)) = guard.as_ref() {
+            if at.elapsed() < COOKIE_TTL && !cookie.is_empty() {
+                return cookie.clone();
+            }
+        }
+        if let Some((cookie, _)) = guard.as_ref() {
+            if !cookie.is_empty() {
+                return cookie.clone();
+            }
+        }
+    }
+    String::new()
+}
+
+pub fn warm_cookie_cache(cookie_header: String) {
+    let score = auth_cookie_score(&cookie_header);
+    if score == 0 {
+        return;
+    }
+    if let Ok(mut guard) = COOKIE_CACHE.lock() {
+        if let Some((existing, _)) = guard.as_ref() {
+            if auth_cookie_score(existing) > score {
+                return;
+            }
+        }
+        *guard = Some((cookie_header, Instant::now()));
+    }
+}
