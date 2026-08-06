@@ -4459,3 +4459,196 @@ export default function App() {
                         ...(!isEditablePlaylist(pl.id)
                           ? []
                           : [
+                              {
+                                key: 'rename',
+                                label: t.renamePlaylist,
+                                onSelect: () => {
+                                  setPlEditTitle(pl.title);
+                                  setPlEditError(false);
+                                  setPlEdit({ mode: 'rename', pl });
+                                },
+                              },
+                              {
+                                key: 'delete',
+                                label: t.deletePlaylist,
+                                danger: true,
+                                onSelect: () => {
+                                  setPlEditError(false);
+                                  setPlEdit({ mode: 'delete', pl });
+                                },
+                              },
+                            ]),
+                      ]}
+                    />
+                  }
+                </div>
+              );
+              const g = groupPlaylists(plFolders, userPlaylists);
+              return (
+                <>
+                  {plFolders.folders.map((f) => (
+                    <div key={f.id} className="playlist-folder">
+                      <div
+                        className="nav-item playlist-link user-playlist-link playlist-folder-head"
+                        onClick={() => updateFolders(toggleFolder(plFolders, f.id))}
+                        title={f.name}
+                      >
+                        {f.collapsed ? <Folder size={18} /> : <FolderOpen size={18} />}
+                        <span>{f.name}</span>
+                        <PopoverMenu
+                          ariaLabel={t.playlistActions}
+                          trigger={<MoreHorizontal size={16} />}
+                          items={[
+                            {
+                              key: 'rename',
+                              label: t.renameFolder,
+                              onSelect: () => {
+                                setFdName(f.name);
+                                setFdEdit({ mode: 'rename', folderId: f.id });
+                              },
+                            },
+                            {
+                              key: 'delete',
+                              label: t.deleteFolder,
+                              danger: true,
+                              onSelect: () => updateFolders(removeFolder(plFolders, f.id)),
+                            },
+                          ]}
+                        />
+                      </div>
+                      {!f.collapsed && (
+                        <div className="playlist-folder-items">
+                          {(g.byFolder.get(f.id) ?? []).map(renderPl)}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                  {g.root.map(renderPl)}
+                </>
+              );
+            })()}
+          </div>
+          <div className="sidebar-bottom-actions">
+            <button
+              type="button"
+              className="nav-item settings-link"
+              data-tour="plugins"
+              data-testid="open-plugins"
+              onPointerDown={(e) => {
+                if (e.button !== 0) return;
+                setIsSettingsOpen(false);
+                setIsPluginsOpen(true);
+              }}
+              onClick={() => {
+                setIsSettingsOpen(false);
+                setIsPluginsOpen(true);
+              }}
+            >
+              <Puzzle size={22} />
+              <span>{t.plugins}</span>
+            </button>
+            <button
+              type="button"
+              className="nav-item settings-link"
+              data-testid="open-settings"
+              onPointerDown={(e) => {
+                if (e.button !== 0) return;
+                setIsPluginsOpen(false);
+                setIsSettingsOpen(true);
+              }}
+              onClick={() => {
+                setIsPluginsOpen(false);
+                setIsSettingsOpen(true);
+              }}
+            >
+              <Settings size={22} />
+              <span>{t.settings}</span>
+            </button>
+          </div>
+        </aside>
+
+        <div className="main-column">
+          <main className="content-area">
+            {activeTab === 'player' && currentTrack && (
+              <div className="content-scrollable player-view">
+                <div className="player-view-inner">
+                  <div className="player-col-cover">
+                    <div
+                      className="player-view-cover-wrap"
+                      title={`${Math.round(volume * 100)}%`}
+                      onWheel={(e) => {
+                        e.preventDefault();
+                        const delta = e.deltaY > 0 ? -0.03 : 0.03;
+                        const next = Math.max(0, Math.min(1, volumeRef.current + delta));
+                        setVolume(next);
+                        volumeRef.current = next;
+                        if (!audio.isCrossfading) {
+                          rampVolume(audio, next, pluginManager.isEnabled('smooth-volume'));
+                        } else {
+                          audio.volume = next;
+                        }
+                        if (pluginManager.isEnabled('remember-volume')) saveRememberedVolume(next);
+                        setCoverVolHint(Math.round(next * 100));
+                        window.clearTimeout(coverVolHintTimer.current);
+                        coverVolHintTimer.current = window.setTimeout(
+                          () => setCoverVolHint(null),
+                          900
+                        );
+                      }}
+                    >
+                      <img
+                        loading="eager"
+                        decoding="async"
+                        alt=""
+                        className="player-view-cover"
+                        fetchPriority="high"
+                        {...coverAttrs(currentTrack, 'large')}
+                      />
+                      <div className={`cover-vol-badge ${coverVolHint !== null ? 'show' : ''}`}>
+                        {coverVolHint !== null
+                          ? `${coverVolHint}%`
+                          : `${Math.round(volume * 100)}%`}
+                      </div>
+                    </div>
+                    <div className="player-view-meta">
+                      <div className="player-view-label">{t.nowPlaying}</div>
+                      <h1 className="player-view-title">{currentTrack.title}</h1>
+                      <div className="player-view-artist">{currentTrack.artist}</div>
+                      {playingFrom && (
+                        <div className="player-view-from">
+                          {t.playingFrom} <strong>{playingFrom}</strong>
+                        </div>
+                      )}
+                      <div className="player-view-actions">
+                        {currentTrack && /^[\w-]{11}$/.test(currentTrack.id) && (
+                          <YtmRatingButtons
+                            rating={trackRating}
+                            onLike={toggleLike}
+                            onDislike={toggleDislike}
+                            likeLabel={t.likeTrack}
+                            dislikeLabel={t.dislikeTrack}
+                          />
+                        )}
+                        <button className="primary-action-btn" onClick={toggleSave}>
+                          {isSaved ? t.saved : t.save}
+                        </button>
+                        {libAuthed && /^[\w-]{11}$/.test(currentTrack.id) && (
+                          <PopoverMenu
+                            align="left"
+                            ariaLabel={t.addToPlaylist}
+                            triggerClassName="primary-action-btn"
+                            trigger={
+                              <>
+                                <ListPlus size={15} />
+                                <span>{t.addToPlaylist}</span>
+                              </>
+                            }
+                            emptyLabel={t.noEditablePlaylists}
+                            items={userPlaylists
+                              .filter((pl) => isEditablePlaylist(pl.id))
+                              .map((pl) => ({
+                                key: pl.id,
+                                label: pl.title,
+                                onSelect: () => void addCurrentToPlaylist(pl),
+                              }))}
+                          />
