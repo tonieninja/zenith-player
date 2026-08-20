@@ -4652,3 +4652,30 @@ export default function App() {
                                 onSelect: () => void addCurrentToPlaylist(pl),
                               }))}
                           />
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="player-col-upnext">
+                    <div className="player-view-section h-full">
+                      <div className="panel-tabs">
+                        <button
+                          className={`panel-tab ${panelTab === 'upnext' ? 'active' : ''}`}
+                          onClick={() => setPanelTab('upnext')}
+                        >
+                          {t.upNext}
+                        </button>
+                        <button
+                          className={`panel-tab ${panelTab === 'related' ? 'active' : ''}`}
+                          onClick={() => setPanelTab('related')}
+                        >
+                          {t.relatedTab}
+                        </button>
+                      </div>
+                      {panelTab === 'upnext' ? (
+                        <div className="up-next-list-full">
+                          {upNextTracks.length === 0 ? (
+                            <div className="up-next-empty">{t.upNextEmpty}</div>
+                          ) : (
+                            upNextTracks.map((track) => (
