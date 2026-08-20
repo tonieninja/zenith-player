@@ -2481,3 +2481,129 @@ async function getGeniusLyrics(track: Track): Promise<LyricsResult | null> {
     page: '1',
     per_page: '10',
   });
+
+  const searchUrls = [
+    `https://genius.com/api/search/song?${query}`,
+    `https://genius.com/api/search/multi?${query}`,
+    `https://genius.com/api/search?${query}`,
+  ];
+  let searchRes: Response | null = null;
+  let lastStatus = 0;
+  for (let attempt = 0; attempt < 3 && !searchRes; attempt += 1) {
+    if (attempt > 0) await new Promise((r) => setTimeout(r, 400 * attempt));
+    for (const url of searchUrls) {
+      const res = await fetch(url, { method: 'GET', headers: GENIUS_BROWSER_HEADERS });
+      lastStatus = res.status;
+      if (res.ok) {
+        searchRes = res;
+        break;
+      }
+      if (res.status !== 403 && res.status !== 429) {
+        throw new Error(geniusHttpError(res.status, 'search'));
+      }
+    }
+  }
+  if (!searchRes?.ok) throw new Error(geniusHttpError(lastStatus || 403, 'search'));
+
+  const data = JSON.parse(await searchRes.text());
+  const hits: any[] = [
+    ...((data?.response?.sections || []).flatMap((sec: any) => sec?.hits || []) as any[]),
+    ...(data?.response?.hits || []),
+  ].filter((h) => h && (h.type === 'song' || h.result));
+  if (!hits.length) throw new Error('No search result on Genius for this title/artist');
+
+  hits.sort((a, b) => {
+    const ra = a?.result;
+    const rb = b?.result;
+    const scoreA =
+      (ra?.title?.toLowerCase() === title.toLowerCase() ? 2 : 0) +
+      scoreMatch(title, artist, ra?.title || '', ra?.primary_artist?.name || '');
+    const scoreB =
+      (rb?.title?.toLowerCase() === title.toLowerCase() ? 2 : 0) +
+      scoreMatch(title, artist, rb?.title || '', rb?.primary_artist?.name || '');
+    return scoreB - scoreA;
+  });
+
+  const hit = hits[0]?.result;
+  const hitScore = scoreMatch(
+    title,
+    artist,
+    hit?.title || '',
+    hit?.primary_artist?.name || '',
+    queryDuration(track)
+  );
+  if (!hit?.path || hit?.primary_artist?.url === 'https://genius.com/artists/Deleted-artist') {
+    throw new Error('No usable Genius result for this title/artist');
+  }
+  if (
+    !acceptMatch(
+      title,
+      artist,
+      hit?.title || '',
+      hit?.primary_artist?.name || '',
+      hitScore,
+      queryDuration(track)
+    )
+  ) {
+    throw new Error('Genius search did not return a close enough title/artist match');
+  }
+
+  const pageRes = await fetch(`https://genius.com${hit.path}`, {
+    method: 'GET',
+    headers: { ...GENIUS_BROWSER_HEADERS, Accept: 'text/html,application/xhtml+xml' },
+  });
+  if (!pageRes.ok) throw new Error(geniusHttpError(pageRes.status, 'page'));
+  const html = await pageRes.text();
+
+  let preloadedRaw: string | undefined;
+  for (const m of html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/gi)) {
+    if (!m[1].includes('window.__PRELOADED_STATE__')) continue;
+    preloadedRaw = m[1].match(GENIUS_PRELOADED_STATE_RE)?.[1]?.replace(/\\"/g, '"');
+    if (preloadedRaw) break;
+  }
+
+  const lyricsHtml = preloadedRaw
+    ?.match(GENIUS_PRELOAD_HTML_RE)?.[1]
+    ?.replace(/\\\//g, '/')
+    ?.replace(/\\\\/g, '\\')
+    ?.replace(/\\n/g, '\n')
+    ?.replace(/\\'/g, "'")
+    ?.replace(/\\"/g, '"');
+
+  if (lyricsHtml) {
+    const lyrics = geniusHtmlToPlain(lyricsHtml);
+    if (lyrics.trim().toLowerCase().replace(/[[\]]/g, '') === 'instrumental') {
+      throw new Error('Genius marks this track as instrumental');
+    }
+    if (lyrics) return { provider: 'LyricsGenius', text: lyrics, matchScore: hitScore };
+  }
+
+  if (preloadedRaw && /lyricsPlaceholderReason.{1,5}unreleased/.test(preloadedRaw)) {
+    throw new Error('Genius marks this track as unreleased');
+  }
+
+  const blocks = Array.from(html.matchAll(/data-lyrics-container="true"[^>]*>([\s\S]*?)<\/div>/gi));
+  const parts = blocks.map((m) => cleanLyricsText(stripHtml(m[1]))).filter(Boolean);
+  if (parts.length)
+    return { provider: 'LyricsGenius', text: parts.join('\n'), matchScore: hitScore };
+
+  throw new Error('Genius page found but lyrics could not be extracted');
+}
+
+function cleanQueryTitle(title: string, artist?: string): string {
+  let t = title.trim();
+  const a = (artist || '').trim();
+  if (a) {
+    const escaped = a.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    t = t.replace(new RegExp(`^${escaped}\\s*[-–\u2014|:]+\\s+`, 'iu'), '');
+  }
+  t = t
+    .replace(
+      /\(*(official|lyric|lyrics|video|audio|hd|4k|mv|m\/v|visualiser|visualizer)[^)]*\)*/gi,
+      ''
+    )
+    .replace(/\[[^\]]*\]/g, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+  return t || title.trim();
+}
