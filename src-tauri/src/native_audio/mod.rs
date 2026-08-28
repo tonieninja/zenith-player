@@ -205,3 +205,212 @@ fn emit(e: &Engine, kind: &'static str, snap: Snapshot) {
         let _ = app.emit("zaudio", Ev { kind, snap });
     }
 }
+
+fn apply_volume(st: &State, i: usize) {
+    let d = &st.decks[i];
+    let v = if st.muted {
+        0.0
+    } else {
+        (st.master * st.duck * d.gain * d.norm * st.preamp).clamp(0.0, 1.0)
+    };
+    d.out.set_gain(v);
+}
+
+fn set_duck(f: f64) {
+    let Some(e) = engine() else { return };
+    let mut st = e.st.lock().unwrap_or_else(|p| p.into_inner());
+    if (st.duck - f).abs() < 1e-9 {
+        return;
+    }
+    st.duck = f;
+    apply_volume(&st, 0);
+    apply_volume(&st, 1);
+}
+
+fn set_playing(d: &Deck, on: bool) {
+    d.out.playing.store(on, Ordering::SeqCst);
+    if on {
+        output::wake();
+        let _ = d.tx.send(DecCmd::Wake);
+        kick();
+    }
+}
+
+fn clear_deck(d: &mut Deck) {
+    set_playing(d, false);
+    if let Some(b) = d.buf.take() {
+        b.cancel();
+    }
+    d.out.queue().flush();
+    d.out.set_pos(0.0);
+    d.out.starved.store(false, Ordering::SeqCst);
+    d.out.drained.store(false, Ordering::SeqCst);
+    let _ = d.tx.send(DecCmd::Stop);
+    d.src.clear();
+    d.ready = 0;
+    d.dur = None;
+    d.ended = false;
+    d.want_play = false;
+    d.buffering = false;
+    d.pending_seek = None;
+    d.errored = false;
+    d.last_t = 0.0;
+    d.gen = GEN.fetch_add(1, Ordering::SeqCst);
+}
+
+fn load_deck(d: &mut Deck, url: &str, rate: f64) {
+    clear_deck(d);
+    d.norm = 1.0;
+    d.loud_sum = 0.0;
+    d.loud_n = 0;
+    d.src = url.to_string();
+    let buf = source::open(url);
+    d.buf = Some(buf.clone());
+    let epoch = d.out.queue().epoch;
+    let _ = d.tx.send(DecCmd::Load {
+        buf,
+        gen: d.gen,
+        epoch,
+        rate,
+    });
+}
+
+fn do_seek(d: &mut Deck, t: f64, rate: f64) {
+    let t = t.max(0.0);
+    d.last_t = t;
+    d.ended = false;
+    if d.ready < 1 {
+        d.pending_seek = Some(t);
+        return;
+    }
+    d.pending_seek = None;
+    let epoch = d.out.queue().flush();
+    d.out.set_pos(t);
+    d.out.drained.store(false, Ordering::SeqCst);
+    let _ = d.tx.send(DecCmd::Seek { t, epoch, rate });
+}
+
+fn on_deck_event(i: usize, gen: u64, ev: DeckEv) {
+    let Some(e) = engine() else { return };
+    let mut st = e.st.lock().unwrap_or_else(|p| p.into_inner());
+    if st.decks[i].gen != gen {
+        return;
+    }
+    let is_active = st.active == i;
+    let rate = st.rate;
+    let norm_on = st.norm_on;
+    let mut out: Vec<&'static str> = Vec::new();
+    let mut norm_changed = false;
+    {
+        let d = &mut st.decks[i];
+        match ev {
+            DeckEv::Ready(dur) => {
+                if d.ready < 4 && !d.src.is_empty() {
+                    d.dur = dur;
+                    d.ready = 4;
+                    if let Some(t) = d.pending_seek.take() {
+                        if t > 0.05 {
+                            do_seek(d, t, rate);
+                        }
+                    }
+                    out.extend(["loadedmetadata", "durationchange", "canplay"]);
+                    if d.want_play && !d.buffering {
+                        set_playing(d, true);
+                    }
+                }
+            }
+            DeckEv::Duration(v) => {
+                d.dur = Some(v);
+                out.push("durationchange");
+            }
+            DeckEv::Level(db) => {
+                if norm_on && d.loud_n < dsp::NORM_BLOCKS && d.want_play {
+                    if let Some(g) = dsp::norm_update(&mut d.loud_sum, &mut d.loud_n, db) {
+                        let cur = 20.0 * d.norm.max(1e-4).log10();
+                        let next = cur + (g - cur).clamp(-1.0, 1.0);
+                        d.norm = 10f64.powf(next / 20.0);
+                        norm_changed = true;
+                    }
+                }
+            }
+            DeckEv::Error(msg) => {
+                if !d.src.is_empty() && !d.errored {
+                    eprintln!("[zaudio] deck{i} error: {msg}");
+                    d.errored = true;
+                    d.want_play = false;
+                    set_playing(d, false);
+                    out.push("error");
+                }
+            }
+        }
+    }
+    if norm_changed && st.norm_on && !st.fading {
+        apply_volume(&st, i);
+    }
+    if out.is_empty() || !is_active {
+        return;
+    }
+    let snap = snap_of(&st);
+    drop(st);
+    for k in out {
+        emit(e, k, snap.clone());
+    }
+}
+
+fn watch_decks(e: &Engine) {
+    let mut st = e.st.lock().unwrap_or_else(|p| p.into_inner());
+    let active = st.active;
+    let mut out: Vec<&'static str> = Vec::new();
+    let mut ended = false;
+    for i in 0..2 {
+        let d = &mut st.decks[i];
+        if d.out.drained.swap(false, Ordering::SeqCst) && !d.src.is_empty() && !d.ended {
+            d.last_t = pos_of(d);
+            d.ended = true;
+            d.want_play = false;
+            set_playing(d, false);
+            if i == active {
+                out.extend(["timeupdate", "pause", "ended"]);
+                ended = true;
+            }
+            continue;
+        }
+        if i != active || d.ready < 4 || !d.want_play {
+            continue;
+        }
+        let starved = d.out.starved.load(Ordering::SeqCst);
+        if starved && !d.buffering {
+            d.buffering = true;
+            out.push("waiting");
+        } else if d.buffering {
+            let q = d.out.queue();
+            let enough = q.eof || q.frames as f64 >= 0.3 * output::sample_rate() as f64;
+            drop(q);
+            if enough {
+                d.buffering = false;
+                d.out.starved.store(false, Ordering::SeqCst);
+                out.push("canplay");
+            }
+        }
+    }
+    if out.is_empty() {
+        return;
+    }
+    let snap = snap_of(&st);
+    drop(st);
+    for k in out {
+        emit(e, k, snap.clone());
+    }
+    if ended && HEADLESS.load(Ordering::SeqCst) {
+        std::thread::spawn(headless::on_ended);
+    }
+}
+
+pub fn ab_range(a: Option<f64>, b: Option<f64>) -> Option<(f64, f64)> {
+    match (a, b) {
+        (Some(a), Some(b)) if a.is_finite() && b.is_finite() && a >= 0.0 && b > a + 0.2 => {
+            Some((a, b))
+        }
+        _ => None,
+    }
+}
