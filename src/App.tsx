@@ -4871,3 +4871,195 @@ export default function App() {
                         </div>
                       )}
                       {libError && (
+                        <div className="library-error-banner">
+                          <span>{libError}</span>
+                          <button
+                            type="button"
+                            className="library-refresh-btn"
+                            onClick={refreshAuth}
+                          >
+                            <RefreshCw size={14} />
+                            {t.libraryRetry}
+                          </button>
+                        </div>
+                      )}
+                      <div className="library-chips-row">
+                        {LIBRARY_CATEGORIES.map((cat) => (
+                          <button
+                            key={cat.id}
+                            className={`library-chip ${libCategory === cat.id ? 'active' : ''}`}
+                            onClick={() => changeLibCategory(cat.id)}
+                          >
+                            {t[cat.labelKey]}
+                          </button>
+                        ))}
+                        <button
+                          className="library-newpl-btn"
+                          onClick={() => {
+                            setNpError(false);
+                            setNpOpen(true);
+                          }}
+                        >
+                          <Plus size={15} />
+                          {t.newPlaylist}
+                        </button>
+                      </div>
+                      {authBootstrapping || libLoading ? (
+                        <LibrarySkeleton />
+                      ) : libSections.length === 0 ? (
+                        <div className="empty-state-message">
+                          <h2>{t.noResults}</h2>
+                          <p>{t[LIB_EMPTY_KEYS[libCategory]]}</p>
+                          <div className="library-empty-actions">
+                            <button className="library-refresh-btn" onClick={refreshAuth}>
+                              <RefreshCw size={14} />
+                              {t.checkAgain}
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        libSections.map((section, sIdx) => (
+                          <section key={`${section.title}-${sIdx}`} className="library-section">
+                            {libSections.length > 1 && (
+                              <h3 className="library-section-title">{section.title}</h3>
+                            )}
+                            <WindowedList
+                              className="library-list"
+                              count={section.items.length}
+                              renderRow={(i) => {
+                                const item = section.items[i];
+                                return (
+                                  <button
+                                    key={item.id}
+                                    data-ctx-track={ctxTrackAttr(item)}
+                                    className={`search-result-row search-result-type-${item.type}`}
+                                    onClick={() =>
+                                      handleItemClick(item, section.title, section.items)
+                                    }
+                                  >
+                                    <div className="search-result-cover-wrap">
+                                      <img
+                                        alt=""
+                                        className="search-result-cover"
+                                        loading="lazy"
+                                        decoding="async"
+                                        {...coverAttrs(item)}
+                                      />
+                                      <div className="search-result-play-icon">
+                                        <Play size={14} fill="currentColor" />
+                                      </div>
+                                    </div>
+                                    <div className="search-result-meta">
+                                      <span className="search-result-title">{item.title}</span>
+                                      <span className="search-result-artist">{item.artist}</span>
+                                    </div>
+                                    <span className="search-result-badge">
+                                      {typeLabel(item.type)}
+                                    </span>
+                                  </button>
+                                );
+                              }}
+                            />
+                          </section>
+                        ))
+                      )}
+                    </div>
+                  )
+                ) : showFeedSkeleton ? (
+                  <FeedSkeleton />
+                ) : !tabHasFeedContent && activeTab !== 'moods_genres' ? (
+                  activeTab === 'mood' && activeMood === FAVORITES_ID ? (
+                    <div className="empty-state-message">
+                      <h2>{t.favsEmptyTitle}</h2>
+                      <p>{t.favsEmptyDesc}</p>
+                    </div>
+                  ) : activeTab === 'mood' && browseEmptyKind === 'episodes' ? (
+                    <div className="empty-state-message">
+                      {browseTitle && <h2 className="library-section-title">{browseTitle}</h2>}
+                      <h2>{t.episodesEmptyTitle}</h2>
+                      <p>{t.episodesEmptyDesc}</p>
+                    </div>
+                  ) : activeTab === 'mood' && browseEmptyKind === 'collection' ? (
+                    <div className="empty-state-message">
+                      {browseTitle && <h2 className="library-section-title">{browseTitle}</h2>}
+                      <h2>{t.collectionEmptyTitle}</h2>
+                      <p>{t.collectionEmptyDesc}</p>
+                    </div>
+                  ) : activeTab === 'search' ? (
+                    <div className="empty-state-message">
+                      <h2>{t.noResults}</h2>
+                      <p>{t.noResultsDesc}</p>
+                    </div>
+                  ) : (
+                    <div className="empty-state-message">
+                      <h2>{t.feedLoadFailedTitle}</h2>
+                      <p>{t.feedLoadFailedDesc}</p>
+                      <button
+                        type="button"
+                        className="primary-action-btn empty-state-retry"
+                        onClick={() => {
+                          const lastCollection = lastCollectionRef.current;
+                          if (activeTab === 'explore') loadExplore(lang);
+                          else if (
+                            activeTab === 'mood' &&
+                            lastCollection &&
+                            activeMood === browseMoodId(lastCollection.id)
+                          ) {
+                            void openCollectionPage(lastCollection);
+                          } else if (activeTab === 'mood' && isBrowseMood(activeMood)) {
+                            const id = browseIdFromMood(activeMood);
+                            if (id) {
+                              openBrowsePage({
+                                id,
+                                type: 'artist',
+                                title: browseTitle || '',
+                                artist: '',
+                                cover: '',
+                              });
+                            }
+                          } else if (activeTab === 'mood' && activeMood) openMoodById(activeMood);
+                          else loadHome(lang);
+                        }}
+                      >
+                        {t.retry}
+                      </button>
+                    </div>
+                  )
+                ) : (
+                  <>
+                    {(activeTab === 'home' ||
+                      (activeTab === 'mood' &&
+                        !isBrowseMood(activeMood) &&
+                        activeMood !== FAVORITES_ID)) && (
+                      <MoodChips
+                        activeCategory={activeMood}
+                        onCategoryClick={loadMood}
+                        lang={lang}
+                        t={t}
+                      />
+                    )}
+                    {activeTab === 'mood' &&
+                      browseTitle &&
+                      (isBrowseMood(activeMood) || activeMood === FAVORITES_ID) && (
+                        <h2 className="library-section-title">{browseTitle}</h2>
+                      )}
+
+                    {activeTab === 'home' && homeHeroTrack && (
+                      <FeedHero
+                        track={homeHeroTrack}
+                        eyebrow={t.featured}
+                        playLabel={t.play}
+                        onPlay={() =>
+                          handleItemClick(
+                            homeHeroTrack,
+                            t.quickPicks,
+                            quickPicks.length ? quickPicks : undefined
+                          )
+                        }
+                      />
+                    )}
+
+                    {activeTab === 'home' && (
+                      <QuickPicks tracks={quickPicks} onItemClick={handleItemClick} t={t} />
+                    )}
+
