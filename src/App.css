@@ -4393,3 +4393,248 @@ html.has-cover-theme .main-play-pause-circle {
   gap: 12px;
   flex-wrap: wrap;
 }
+
+.titlebar-pill-btn.logged-in .titlebar-user-name {
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@keyframes fadeOut {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+.glass-modal-container {
+  background: linear-gradient(160deg, #1c1e27 0%, #121319 100%);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  max-width: calc(100vw - 32px);
+  max-height: calc(100vh - 64px);
+}
+
+.modal-header-polished {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: #1b1d26;
+  border-radius: 18px 18px 0 0;
+}
+
+.modal-body-polished {
+  display: flex;
+  flex-direction: column;
+}
+
+.modal-body-polished > .settings-row-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 20px;
+  padding: 16px 0;
+  margin: 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.modal-body-polished > .settings-row-item:first-child {
+  border-top: none;
+  padding-top: 4px;
+}
+
+.modal-body-polished > .settings-row-item > .settings-account-info {
+  flex: 1 1 170px;
+  min-width: 0;
+}
+
+.modal-body-polished > .settings-row-item > button,
+.modal-body-polished > .settings-row-item > .language-selector-group {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.settings-action-btn {
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-primary);
+}
+
+.settings-action-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.settings-action-btn:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.settings-update-status {
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.settings-update-status.tone-success {
+  color: #8ee6a6;
+}
+
+.settings-update-status.tone-info {
+  color: var(--text-secondary);
+}
+
+.settings-update-status.tone-error {
+  color: #ff9d94;
+}
+
+.toast-host {
+  z-index: 20000;
+}
+
+.settings-select {
+  color-scheme: dark;
+  background-color: #23252f;
+  appearance: auto;
+}
+
+.settings-select option,
+.settings-select optgroup {
+  background-color: #1c1e27;
+  color: #f2f2f5;
+}
+
+.plugin-setting-row > .plugin-setting-label {
+  flex: 1 1 200px;
+}
+
+.plugin-setting-row > .crossfade-secs-control,
+.plugin-setting-row > .settings-select,
+.plugin-setting-row > .plugin-toggle {
+  flex: 0 0 auto;
+}
+
+.crossfade-secs-control input[type='range'] {
+  width: 170px;
+  min-width: 120px;
+}
+
+.crossfade-secs-value {
+  min-width: 64px;
+  white-space: nowrap;
+}
+
+.plugin-setting-row--stacked {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.plugin-setting-row--stacked > .plugin-setting-label {
+  flex: 0 0 auto;
+}
+
+.plugin-setting-row--stacked > .crossfade-secs-control {
+  width: 100%;
+}
+
+.plugin-setting-row--stacked > .crossfade-secs-control input[type='range'] {
+  flex: 1;
+  width: auto;
+}
+
+.plugin-setting-row > .settings-text-input {
+  flex: 1 1 200px;
+  max-width: 100%;
+}
+
+.nav-item {
+  border: 1px solid transparent;
+}
+
+.brand {
+  margin-bottom: 14px;
+}
+
+.nav-item.back-btn {
+  margin-bottom: 4px;
+}
+
+.nav-item.back-btn.is-placeholder {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.zenith-app,
+.app-main-layout,
+.sidebar,
+.main-column {
+  overflow: hidden;
+  overflow: clip;
+}
+
+.search-input:focus,
+.search-input:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
+.search-input::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+}
+
+.progress-time-text.remaining-toggle {
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: inherit;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.progress-time-text.remaining-toggle:hover {
+  color: var(--text-secondary, #d0d4de);
+}
+
+.progress-time-text.remaining-toggle:focus-visible {
+  outline-offset: 1px;
+  border-radius: 4px;
+}
+
+@media (max-width: 768px) {
+  .player-core-controls {
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+  .progress-bar-wrapper {
+    display: flex;
+    gap: 8px;
+    max-width: none;
+  }
+  .progress-time-text {
+    min-width: 32px;
+  }
+  .player-extra-controls-group {
+    display: flex;
+    gap: 10px;
+    flex-shrink: 0;
+  }
+  .player-extra-controls-group > .extra-icon-btn:not(.queue-toggle-btn):not(.lyrics-toggle-btn) {
+    display: none;
+  }
+  .volume-control-block .volume-bar-track {
+    width: 56px;
+  }
+  .volume-control-block .volume-pct {
+    display: none;
+  }
+  .player-now-playing-block {
+    max-width: 30%;
+  }
+  .nav-item.back-btn.is-placeholder {
+    display: flex;
+  }
+}

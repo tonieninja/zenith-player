@@ -4679,3 +4679,195 @@ export default function App() {
                             <div className="up-next-empty">{t.upNextEmpty}</div>
                           ) : (
                             upNextTracks.map((track) => (
+                              <UpNextItem
+                                key={track.id}
+                                track={track}
+                                onClick={() =>
+                                  handleItemClick(track, playingFrom || undefined, queue)
+                                }
+                              />
+                            ))
+                          )}
+                        </div>
+                      ) : (
+                        <div className="related-panel">
+                          {relatedLoading ? (
+                            <div className="up-next-empty">{t.loadingRelated}</div>
+                          ) : !related || (related.sections.length === 0 && !related.about) ? (
+                            <div className="up-next-empty">{t.relatedEmpty}</div>
+                          ) : (
+                            <>
+                              {related.sections.map((section, sIdx) => (
+                                <div key={`${section.title}-${sIdx}`} className="related-section">
+                                  <h5 className="related-section-title">{section.title}</h5>
+                                  <div className="related-section-items">
+                                    {section.items.slice(0, 8).map((item) => (
+                                      <button
+                                        key={item.id}
+                                        data-ctx-track={ctxTrackAttr(item)}
+                                        className={`up-next-item related-item-${item.type}`}
+                                        onClick={() =>
+                                          handleItemClick(item, section.title, section.items)
+                                        }
+                                      >
+                                        <img
+                                          loading="lazy"
+                                          decoding="async"
+                                          alt=""
+                                          className="up-next-cover"
+                                          {...coverAttrs(item, 'thumb')}
+                                        />
+                                        <div className="up-next-meta">
+                                          <span className="up-next-title">{item.title}</span>
+                                          <span className="up-next-artist">{item.artist}</span>
+                                        </div>
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+                              ))}
+                              {related.about && (
+                                <div className="related-section">
+                                  <h5 className="related-section-title">{t.aboutArtist}</h5>
+                                  <p className="related-about-text">{related.about}</p>
+                                </div>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="player-col-lyrics">
+                    <div className="player-view-section h-full">
+                      <div className="lyrics-panel-full">
+                        <div className="lyrics-provider-header">
+                          <button
+                            className="lyrics-provider-nav"
+                            onClick={() => cycleProvider(-1)}
+                            aria-label={t.lyricsPrevSource}
+                            title={t.lyricsPrevSource}
+                          >
+                            <ChevronLeft size={16} />
+                          </button>
+                          <div className="lyrics-provider-title">
+                            {lyricsLoading || !lyrics
+                              ? lyricsProvider === 'Auto'
+                                ? t.lyrics
+                                : lyricsProvider
+                              : lyrics.provider && lyrics.provider !== 'Auto'
+                                ? lyrics.provider
+                                : lyricsProvider === 'Auto'
+                                  ? t.lyrics
+                                  : lyricsProvider}
+                          </div>
+                          <button
+                            className="lyrics-provider-nav"
+                            onClick={() => cycleProvider(1)}
+                            aria-label={t.lyricsNextSource}
+                            title={t.lyricsNextSource}
+                          >
+                            <ChevronRight size={16} />
+                          </button>
+                        </div>
+                        <div className="lyrics-provider-dots">
+                          {lyricProviders.map((p, i) => (
+                            <span
+                              key={p}
+                              className={`lyrics-provider-dot ${i === providerIndex ? 'active' : ''}`}
+                            />
+                          ))}
+                        </div>
+                        <div className="lyrics-provider-list">
+                          {lyricProviders.map((p) => (
+                            <button
+                              key={p}
+                              className={`lyrics-provider-pill ${lyricsProvider === p ? 'active' : ''}`}
+                              onClick={() => setLyricsProvider(p)}
+                            >
+                              {p}
+                            </button>
+                          ))}
+                        </div>
+                        <div className="lyrics-text-content">
+                          {lyricsLoading ? (
+                            t.loadingLyrics
+                          ) : lyrics?.synced && lyrics.synced.length > 0 ? (
+                            <PlayerLyricsRail
+                              synced={lyrics.synced}
+                              onLineClick={seekTo}
+                              mode="full"
+                              className="synced-lyrics-rail--player"
+                              getProgress={getLyricProgress}
+                            />
+                          ) : lyrics?.text ? (
+                            lyrics.text
+                          ) : (
+                            <div className="lyrics-failures">
+                              <div className="lyrics-failures-title">{t.lyricsNotAvailable}</div>
+                              {lyrics?.failures && lyrics.failures.length > 0 && (
+                                <>
+                                  <div className="lyrics-failures-why">{t.lyricsWhyFailed}</div>
+                                  {lyrics.failures.map((f) => (
+                                    <div key={f.provider} className="lyrics-failure-row">
+                                      <span className="lyrics-failure-provider">{f.provider}</span>
+                                      <span className="lyrics-failure-reason">
+                                        {localizeLyricsReason(f.reason, lang)}
+                                      </span>
+                                    </div>
+                                  ))}
+                                </>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {isContentTab && (
+              <div className="content-scrollable">
+                {activeTab === 'library' ? (
+                  libAuthed === false ? (
+                    <div className="library-empty-view">
+                      <div className="library-empty-icon">
+                        <Library size={56} strokeWidth={1.2} />
+                      </div>
+                      <h2 className="library-empty-title">{t.libraryEmptyTitle}</h2>
+                      <p className="library-empty-desc">
+                        {sessionExpired ? t.sessionExpired : t.libraryEmptyDesc}
+                      </p>
+                      <button className="library-signin-btn" onClick={handleLogin}>
+                        {t.signIn}
+                      </button>
+                      <button className="library-refresh-btn" onClick={refreshAuth}>
+                        <RefreshCw size={14} />
+                        {t.checkAgain}
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="library-view">
+                      {libAccount && (
+                        <div className="library-account-banner">
+                          {libAccount.avatarUrl ? (
+                            <img
+                              src={libAccount.avatarUrl}
+                              alt=""
+                              className="library-account-avatar"
+                            />
+                          ) : (
+                            <div className="library-account-avatar placeholder">
+                              <UserCircle size={28} />
+                            </div>
+                          )}
+                          <div>
+                            <div className="library-account-name">{libAccount.name}</div>
+                            <div className="library-account-sub">{t.librarySignedInAs}</div>
+                          </div>
+                        </div>
+                      )}
+                      {libError && (
