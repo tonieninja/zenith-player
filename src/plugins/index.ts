@@ -247,3 +247,33 @@ class PluginManager {
       }
     }
   }
+
+  notifyNowPlaying(info: NowPlayingInfo | null) {
+    this.forEachEnabled((p) => p.onNowPlaying?.(info));
+  }
+
+  notifyTrackChange(info: NowPlayingInfo | null) {
+    const prev = this.lastTrackId;
+    const next = info?.id ?? null;
+    if (next !== prev) {
+      this.forEachEnabled((p) => p.onTrackChange?.(info, prev));
+      this.lastTrackId = next;
+    }
+  }
+
+  notifyPlayState(isPlaying: boolean) {
+    this.forEachEnabled((p) => p.onPlayStateChange?.(isPlaying));
+  }
+
+  notifySeek(position: number) {
+    this.forEachEnabled((p) => p.onSeek?.(position));
+  }
+
+  notifyAppFocus(focused: boolean) {
+    this.forEachEnabled((p) => p.onAppFocus?.(focused));
+  }
+}
+
+export const pluginManager = new PluginManager(ALL_PLUGINS);
+export type { NowPlayingInfo, ZenithPlugin, PluginCategory };
+export { PLUGIN_CATEGORY_LABELS, PLUGIN_CATEGORY_ORDER } from './types';
