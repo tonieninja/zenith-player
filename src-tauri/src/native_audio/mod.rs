@@ -513,3 +513,195 @@ pub enum Cmd {
     Load,
     Loop { a: Option<f64>, b: Option<f64> },
 }
+
+pub fn run_cmd(cmd: Cmd) -> Snapshot {
+    let Some(e) = engine() else {
+        return Snapshot::default();
+    };
+    let mut events: Vec<&'static str> = Vec::new();
+    {
+        let mut st = e.st.lock().unwrap_or_else(|p| p.into_inner());
+        let a = st.active;
+        let rate = st.rate;
+        match cmd {
+            Cmd::SetSrc { url } => {
+                st.ab = None;
+                cancel_fade(&mut st);
+                silence_other(&mut st);
+                load_deck(&mut st.decks[a], &url, rate);
+                apply_volume(&st, a);
+            }
+            Cmd::ClearSrc => {
+                st.ab = None;
+                cancel_fade(&mut st);
+                silence_other(&mut st);
+                clear_deck(&mut st.decks[a]);
+            }
+            Cmd::Pause => {
+                cancel_fade(&mut st);
+                silence_other(&mut st);
+                let d = &mut st.decks[a];
+                if d.want_play {
+                    d.last_t = pos_of(d);
+                    d.want_play = false;
+                    set_playing(d, false);
+                    events.push("pause");
+                }
+            }
+            Cmd::Seek { t } => {
+                do_seek(&mut st.decks[a], t, rate);
+                events.push("timeupdate");
+            }
+            Cmd::Volume { v } => {
+                st.master = v.clamp(0.0, 1.0);
+                if !st.fading {
+                    apply_volume(&st, a);
+                }
+            }
+            Cmd::Muted { m } => {
+                st.muted = m;
+                apply_volume(&st, 0);
+                apply_volume(&st, 1);
+            }
+            Cmd::Rate { r } => {
+                let r = r.clamp(0.25, 4.0);
+                let changed = (r - st.rate).abs() > 1e-6;
+                st.rate = r;
+                if changed {
+                    for i in 0..2 {
+                        let d = &mut st.decks[i];
+                        if d.ready >= 4 {
+                            let t = pos_of(d);
+                            do_seek(d, t, r);
+                        }
+                    }
+                }
+            }
+            Cmd::Eq { bands } => {
+                output::set_eq(&bands);
+                st.preamp = eq_preamp(&bands);
+                for i in 0..st.decks.len() {
+                    apply_volume(&st, i);
+                }
+            }
+            Cmd::Norm { on } => {
+                st.norm_on = on;
+                decode::NORM_ON.store(on, Ordering::SeqCst);
+                for i in 0..2 {
+                    if !on {
+                        st.decks[i].norm = 1.0;
+                    }
+                    if !st.fading {
+                        apply_volume(&st, i);
+                    }
+                }
+            }
+            Cmd::AbortAll => {
+                st.ab = None;
+                cancel_fade(&mut st);
+                for i in 0..2 {
+                    clear_deck(&mut st.decks[i]);
+                }
+                st.decks[1 - a].gain = 1.0;
+                apply_volume(&st, a);
+            }
+            Cmd::ReleaseInactive => {
+                if !st.fading {
+                    silence_other(&mut st);
+                }
+            }
+            Cmd::Loop { a: from, b: to } => {
+                st.ab = ab_range(from, to);
+                st.ab_hold_until = None;
+            }
+            Cmd::Load => {
+                let d = &mut st.decks[a];
+                if !d.src.is_empty() {
+                    let url = d.src.clone();
+                    let wp = d.want_play;
+                    load_deck(d, &url, rate);
+                    d.want_play = wp;
+                }
+            }
+        }
+    }
+    let snap = snapshot();
+    for k in events {
+        emit(e, k, snap.clone());
+    }
+    snap
+}
+
+pub async fn play() -> Result<Snapshot, String> {
+    let e = engine().ok_or("no engine")?;
+    let gen = {
+        let mut st = e.st.lock().unwrap_or_else(|p| p.into_inner());
+        let a = st.active;
+        let rate = st.rate;
+        apply_volume(&st, a);
+        let d = &mut st.decks[a];
+        if d.src.is_empty() {
+            return Err("NotSupportedError: no source".into());
+        }
+        if d.ended {
+            d.ended = false;
+            d.pending_seek = None;
+            d.ready = 4;
+            do_seek(d, 0.0, rate);
+        }
+        let was = d.want_play;
+        d.want_play = true;
+        if d.ready >= 4 && !d.buffering {
+            set_playing(d, true);
+        }
+        kick();
+        let g = d.gen;
+        drop(st);
+        if !was {
+            emit(e, "play", snapshot());
+        }
+        g
+    };
+    wait_for(gen, true, Duration::from_secs(14)).await?;
+    Ok(snapshot())
+}
+
+async fn wait_for(gen: u64, playing: bool, timeout: Duration) -> Result<(), String> {
+    let e = engine().ok_or("no engine")?;
+    let start = Instant::now();
+    loop {
+        {
+            let st = e.st.lock().unwrap_or_else(|p| p.into_inner());
+            let Some(d) = st.decks.iter().find(|d| d.gen == gen) else {
+                return Err("AbortError: superseded".into());
+            };
+            if d.errored {
+                return Err("decode error".into());
+            }
+            if d.ready >= 4 {
+                if !playing {
+                    return Ok(());
+                }
+                if !d.want_play {
+                    return Err("AbortError: paused".into());
+                }
+                if d.out.playing.load(Ordering::SeqCst) || d.buffering {
+                    return Ok(());
+                }
+            }
+        }
+        if start.elapsed() > timeout {
+            return Err("timeout".into());
+        }
+        tokio::time::sleep(Duration::from_millis(30)).await;
+    }
+}
+
+pub async fn wait_ready(timeout_ms: u64) -> bool {
+    let Some(gen) = with(|st| st.decks[st.active].gen) else {
+        return false;
+    };
+    wait_for(gen, false, Duration::from_millis(timeout_ms))
+        .await
+        .is_ok()
+}
