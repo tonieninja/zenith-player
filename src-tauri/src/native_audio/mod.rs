@@ -414,3 +414,102 @@ pub fn ab_range(a: Option<f64>, b: Option<f64>) -> Option<(f64, f64)> {
         _ => None,
     }
 }
+
+pub fn ab_jump(ab: Option<(f64, f64)>, t: f64) -> Option<f64> {
+    let (a, b) = ab?;
+    (t >= b - 0.03).then_some(a)
+}
+
+const TICK_MS: u64 = 50;
+const TICKS_PER_UPDATE: u32 = 5;
+
+fn busy(st: &State) -> bool {
+    st.fading || st.decks.iter().any(|d| d.want_play)
+}
+
+fn tick_loop() {
+    let Some(e) = engine() else { return };
+    let mut n: u32 = 0;
+    loop {
+        if !busy(&e.st.lock().unwrap_or_else(|p| p.into_inner())) {
+            std::thread::park_timeout(Duration::from_secs(60));
+            continue;
+        }
+        std::thread::sleep(Duration::from_millis(TICK_MS));
+        n = n.wrapping_add(1);
+        watch_decks(e);
+        let mut st = e.st.lock().unwrap_or_else(|p| p.into_inner());
+        let a = st.active;
+        let d = &st.decks[a];
+        if !d.want_play || d.ready < 4 || d.buffering {
+            continue;
+        }
+        let mut looped = None;
+        let held = st.ab_hold_until.is_some_and(|until| Instant::now() < until);
+        if st.ab.is_some() && !st.fading && !held {
+            if let Some(to) = ab_jump(st.ab, pos_of(d)) {
+                let rate = st.rate;
+                do_seek(&mut st.decks[a], to, rate);
+                st.ab_hold_until = Some(Instant::now() + Duration::from_millis(400));
+                looped = Some(to);
+            }
+        }
+        if looped.is_none() && n % TICKS_PER_UPDATE != 0 {
+            continue;
+        }
+        let mut snap = snap_of(&st);
+        drop(st);
+        if let Some(to) = looped {
+            snap.t = to;
+        }
+        emit(e, "timeupdate", snap.clone());
+        if HEADLESS.load(Ordering::SeqCst) {
+            headless::on_tick(&snap);
+        }
+    }
+}
+
+pub fn snapshot() -> Snapshot {
+    engine()
+        .map(|e| snap_of(&e.st.lock().unwrap_or_else(|p| p.into_inner())))
+        .unwrap_or_default()
+}
+
+fn with<R>(f: impl FnOnce(&mut State) -> R) -> Option<R> {
+    let e = engine()?;
+    let mut st = e.st.lock().unwrap_or_else(|p| p.into_inner());
+    Some(f(&mut st))
+}
+
+fn cancel_fade(st: &mut State) {
+    st.fade_token += 1;
+    st.fading = false;
+    let a = st.active;
+    st.decks[a].gain = 1.0;
+    apply_volume(st, a);
+}
+
+fn silence_other(st: &mut State) {
+    let o = 1 - st.active;
+    clear_deck(&mut st.decks[o]);
+    st.decks[o].gain = 0.0;
+    apply_volume(st, o);
+}
+
+#[derive(Deserialize)]
+#[serde(tag = "op", rename_all = "camelCase")]
+pub enum Cmd {
+    SetSrc { url: String },
+    ClearSrc,
+    Pause,
+    Seek { t: f64 },
+    Volume { v: f64 },
+    Muted { m: bool },
+    Rate { r: f64 },
+    Eq { bands: Vec<f64> },
+    Norm { on: bool },
+    AbortAll,
+    ReleaseInactive,
+    Load,
+    Loop { a: Option<f64>, b: Option<f64> },
+}
