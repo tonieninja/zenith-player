@@ -5,7 +5,7 @@
 # Zenith Player
 
 Desktop player for YouTube Music. Tauri 2 (Rust) with a React UI. Synced lyrics, gapless albums,
-crossfade, a 15-band EQ, offline downloads, a phone remote and a pile of plugins. No ads, no telemtry.
+crossfade, a 15-band EQ, offline downloads, a phone remote and a pile of plugins. No ads, no telemetry.
 
 <p align="center"><img src="docs/screenshots/tour.gif" width="760" alt="Zenith"></p>
 

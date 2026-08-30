@@ -12,7 +12,7 @@ used Zenith, your own choices stay exactly as they were.
 
 | Name                 | Id                  | On by default | What it does                                                                                                                                       |
 | -------------------- | ------------------- | ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Preload next         | `preload-next`      | yes           | Prefeches stream URLs for the next 1-3 tracks in the queue.                                                                                       |
+| Preload next         | `preload-next`      | yes           | Prefetches stream URLs for the next 1-3 tracks in the queue.                                                                                       |
 | Remember queue       | `queue-persist`     | yes           | Restores your queue, position and resumes playback when you reopen Zenith.                                                                         |
 | Remember volume      | `remember-volume`   | yes           | Restores your last volume level between sessions.                                                                                                  |
 | Crossfade            | `crossfade`         | no            | Equal-power blends between tracks near the end and on manual skips (2 to 12 s). Albums play gapless even when this is off (setting in the plugin). |
