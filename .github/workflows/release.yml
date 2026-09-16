@@ -13,8 +13,6 @@ permissions:
 jobs:
   windows:
     runs-on: windows-latest
-    outputs:
-      artifact-id: ${{ steps.upload-windows.outputs.artifact-id }}
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -23,73 +21,42 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: pnpm
       - uses: dtolnay/rust-toolchain@stable
       - name: Install frontend deps
         run: pnpm install --frozen-lockfile
       - name: Typecheck
         run: pnpm typecheck
-      - name: Import Authenticode PFX
-        if: ${{ secrets.ZENITH_CODESIGN_PFX_BASE64 != '' }}
+      - name: Import Authenticode PFX (optional)
         shell: pwsh
         env:
           ZENITH_CODESIGN_PFX_BASE64: ${{ secrets.ZENITH_CODESIGN_PFX_BASE64 }}
-        run: ./scripts/prepare-gha-signing.ps1
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:ZENITH_CODESIGN_PFX_BASE64)) {
+            Write-Host 'No ZENITH_CODESIGN_PFX_BASE64 - unsigned CI Windows build'
+            exit 0
+          }
+          ./scripts/prepare-gha-signing.ps1
       - name: Build Windows x64 + x86 (one NSIS, MSI, portable each)
+        shell: pwsh
         env:
-          ZENITH_SKIP_CODESIGN: ${{ secrets.ZENITH_CODESIGN_PFX_BASE64 == '' && '1' || '0' }}
+          ZENITH_CODESIGN_PFX_BASE64: ${{ secrets.ZENITH_CODESIGN_PFX_BASE64 }}
           ZENITH_CODESIGN_PASSWORD: ${{ secrets.ZENITH_CODESIGN_PASSWORD }}
           ZENITH_CODESIGN_THUMBPRINT: ${{ secrets.ZENITH_CODESIGN_THUMBPRINT }}
-        run: pnpm dist:win
-      - name: Azure Artifact Signing
-        if: ${{ secrets.SIGNPATH_API_TOKEN == '' && secrets.AZURE_CLIENT_ID != '' && secrets.AZURE_TENANT_ID != '' && secrets.AZURE_SUBSCRIPTION_ID != '' && secrets.AZURE_TRUSTED_SIGNING_ACCOUNT != '' && secrets.AZURE_TRUSTED_SIGNING_PROFILE != '' && secrets.AZURE_TRUSTED_SIGNING_ENDPOINT != '' }}
-        uses: azure/login@v2
-        with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-      - name: Sign with Azure Artifact Signing
-        if: ${{ secrets.SIGNPATH_API_TOKEN == '' && secrets.AZURE_CLIENT_ID != '' && secrets.AZURE_TRUSTED_SIGNING_ACCOUNT != '' && secrets.AZURE_TRUSTED_SIGNING_PROFILE != '' && secrets.AZURE_TRUSTED_SIGNING_ENDPOINT != '' }}
-        uses: azure/artifact-signing-action@v2
-        with:
-          endpoint: ${{ secrets.AZURE_TRUSTED_SIGNING_ENDPOINT }}
-          signing-account-name: ${{ secrets.AZURE_TRUSTED_SIGNING_ACCOUNT }}
-          certificate-profile-name: ${{ secrets.AZURE_TRUSTED_SIGNING_PROFILE }}
-          files-folder: dist-artifacts/windows
-          files-folder-filter: exe,dll,msi
-          files-folder-recurse: true
-          file-digest: SHA256
-          timestamp-rfc3161: http://timestamp.acs.microsoft.com
-          timestamp-digest: SHA256
-      - name: Rezip portable after extra signing
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:ZENITH_CODESIGN_PFX_BASE64) -and
+              [string]::IsNullOrWhiteSpace($env:ZENITH_CODESIGN_THUMBPRINT)) {
+            $env:ZENITH_SKIP_CODESIGN = '1'
+          }
+          pnpm dist:win
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Rezip portable
         shell: pwsh
         run: ./scripts/repack-windows-portable.ps1
       - name: Upload Windows artifacts
-        id: upload-windows
         uses: actions/upload-artifact@v4
         with:
           name: windows
           path: dist-artifacts/windows/*
-
-  sign-windows-signpath:
-    needs: windows
-    runs-on: ubuntu-latest
-    if: ${{ secrets.SIGNPATH_API_TOKEN != '' && vars.SIGNPATH_ORGANIZATION_ID != '' && vars.SIGNPATH_PROJECT_SLUG != '' && secrets.ZENITH_CODESIGN_PFX_BASE64 == '' }}
-    steps:
-      - name: Sign with SignPath (free OSS)
-        uses: signpath/github-action-submit-signing-request@v2
-        with:
-          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
-          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
-          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
-          signing-policy-slug: release-signing
-          github-artifact-id: ${{ needs.windows.outputs.artifact-id }}
-          wait-for-completion: true
-          output-artifact-directory: signed-windows
-      - uses: actions/upload-artifact@v4
-        with:
-          name: windows-signed
-          path: signed-windows/**
 
   macos:
     runs-on: macos-latest
@@ -101,7 +68,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: pnpm
       - uses: dtolnay/rust-toolchain@stable
       - name: Install frontend deps
         run: pnpm install --frozen-lockfile
@@ -139,14 +105,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: pnpm
       - uses: dtolnay/rust-toolchain@stable
       - name: Install Linux Tauri deps
         run: |
           sudo apt-get update
           sudo apt-get install -y \
             libwebkit2gtk-4.1-dev \
-            libappindicator3-dev \
             librsvg2-dev \
             patchelf \
             libudev-dev \
@@ -177,7 +141,7 @@ jobs:
           path: dist-artifacts/linux/*
 
   publish:
-    needs: [windows, macos, linux, sign-windows-signpath]
+    needs: [windows, macos, linux]
     if: ${{ always() && startsWith(github.ref, 'refs/tags/') && needs.windows.result == 'success' && needs.macos.result == 'success' && needs.linux.result == 'success' }}
     runs-on: ubuntu-latest
     steps:
@@ -185,12 +149,8 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
-      - name: Prefer SignPath-signed Windows bits
-        run: |
-          if [ -d artifacts/windows-signed ]; then
-            rm -rf artifacts/windows
-          fi
-          find artifacts -type f | sort
+      - name: List release files
+        run: find artifacts -type f | sort
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -203,9 +163,7 @@ jobs:
             YouTube's and Google's terms.
 
             Windows: prefer the NSIS installer. SmartScreen quietens after the
-            publisher builds reputation. Free OSS signing is SignPath Foundation
-            when that integration is enabled.
-
-            Free code signing provided by SignPath.io, certificate by SignPath Foundation.
+            publisher builds reputation. Optional SignPath / Azure signing can be
+            added later via repository secrets.
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
