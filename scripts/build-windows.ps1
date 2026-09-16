@@ -73,7 +73,12 @@ Get-ChildItem $outDir -Recurse -Include *.exe, *.msi -ErrorAction SilentlyContin
 
 Write-Host '== Windows artifacts (1 nsis + 1 msi + 1 portable per arch) =='
 Get-ChildItem $outDir | Format-Table Name, Length, LastWriteTime
-Get-ChildItem $outDir -Recurse -Include *.exe, *.msi | ForEach-Object {
-  $sig = Get-AuthenticodeSignature $_.FullName
-  Write-Host ("  {0}  {1}" -f $_.Name, $sig.Status)
+try {
+  Import-Module Microsoft.PowerShell.Security -ErrorAction Stop
+  Get-ChildItem $outDir -Recurse -Include *.exe, *.msi | ForEach-Object {
+    $sig = Get-AuthenticodeSignature $_.FullName
+    Write-Host ("  {0}  {1}" -f $_.Name, $sig.Status)
+  }
+} catch {
+  Write-Host 'Authenticode check skipped (module unavailable on this runner)'
 }
