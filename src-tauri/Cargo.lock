@@ -5981,7 +5981,7 @@ dependencies = [
  "axum",
  "discord-rich-presence",
  "futures-util",
- "getrandom 0.2.17",
+ "getrandom 0.4.2",
  "hidapi",
  "lazy_static",
  "reqwest 0.12.28",

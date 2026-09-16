@@ -33,7 +33,7 @@ tauri-plugin-http = { version = "2.5.9", features = ["unsafe-headers"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net"] }
 axum = { version = "0.8", features = ["ws"] }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream", "blocking", "json"] }
-getrandom = "0.2"
+getrandom = "0.4"
 sha1 = "0.10"
 futures-util = "0.3"
 discord-rich-presence = "0.2.5"
