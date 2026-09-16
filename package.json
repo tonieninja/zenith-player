@@ -4,9 +4,10 @@
   "version": "1.0.0",
   "license": "MIT",
   "description": "Independent desktop music player. Not affiliated with Google or YouTube.",
+  "packageManager": "pnpm@10.18.3",
   "engines": {
     "node": ">=20",
-    "pnpm": ">=9"
+    "pnpm": ">=10"
   },
   "type": "module",
   "scripts": {
