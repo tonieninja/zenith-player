@@ -1,0 +1,9 @@
+node_modules
+dist
+dist-ssr
+dist-artifacts
+certs
+src-tauri/target
+src-tauri/gen
+*.min.js
+pnpm-lock.yaml

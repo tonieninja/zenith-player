@@ -1,0 +1,33 @@
+name: Bug report
+description: Report a defect in Zenith
+title: '[bug] '
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Legal and trademark requests: open an issue titled `legal:` and see DISCLAIMER.md.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      placeholder: Steps, expected vs actual
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: OS
+      options: [Windows, macOS, Linux]
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Zenith version
+      placeholder: 1.0.0
+  - type: textarea
+    id: extra
+    attributes:
+      label: Logs
+      placeholder: Playback, sign-in, lyrics, search

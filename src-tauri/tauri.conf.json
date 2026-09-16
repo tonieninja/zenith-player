@@ -1,0 +1,98 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Zenith",
+  "version": "1.0.0",
+  "identifier": "com.zenithplayer.desktop",
+  "build": {
+    "beforeDevCommand": "pnpm dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "pnpm build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Zenith",
+        "width": 1280,
+        "height": 800,
+        "minWidth": 720,
+        "minHeight": 520,
+        "decorations": false,
+        "backgroundColor": "#171a22",
+        "additionalBrowserArgs": "--disable-features=BlockInsecurePrivateNetworkRequests,PrivateNetworkAccessSendPreflights,PrivateNetworkAccessRespectPreflightResults --enable-features=IntensiveWakeUpThrottling"
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self' ipc: http://ipc.localhost; connect-src 'self' ipc: http://ipc.localhost https: wss: ws: http://127.0.0.1:* http://localhost:*; img-src 'self' https: data: blob:; media-src 'self' https: blob: http://127.0.0.1:* http://localhost:*; style-src 'self' 'unsafe-inline'; script-src 'self'; font-src 'self' data:; worker-src 'self' blob:"
+    }
+  },
+  "bundle": {
+    "category": "Music",
+    "shortDescription": "Independent desktop music player. Not affiliated with Google or YouTube.",
+    "longDescription": "Zenith is an independent desktop music player (custom UI, synced lyrics, plugins). Catalog and playback use YouTube Music as a data source. The software is not affiliated with, endorsed by, or sponsored by Google or YouTube.",
+    "copyright": "Copyright © 2026 Zenith Player contributors",
+    "publisher": "Zenith Player",
+    "homepage": "https://github.com/tonieninja/zenith-player",
+    "license": "MIT",
+    "licenseFile": "../LICENSE",
+    "active": true,
+    "targets": ["nsis", "msi", "app", "dmg", "appimage", "deb"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "resources": {
+      "../LICENSE": "LICENSE",
+      "../DISCLAIMER.md": "DISCLAIMER.md",
+      "../NOTICE.md": "NOTICE.md"
+    },
+    "windows": {
+      "digestAlgorithm": "sha256",
+      "timestampUrl": "http://timestamp.digicert.com",
+      "tsp": true,
+      "signCommand": {
+        "cmd": "powershell",
+        "args": [
+          "-NoProfile",
+          "-ExecutionPolicy",
+          "Bypass",
+          "-File",
+          "../scripts/sign-windows.ps1",
+          "%1"
+        ]
+      },
+      "webviewInstallMode": {
+        "type": "embedBootstrapper",
+        "silent": true
+      },
+      "wix": {
+        "language": "en-US",
+        "upgradeCode": "c4e8a91b-2f6d-4b70-9e13-7a5c0d18f246"
+      },
+      "nsis": {
+        "installMode": "currentUser",
+        "displayLanguageSelector": false,
+        "compression": "lzma",
+        "languages": ["English", "Polish"],
+        "installerIcon": "icons/icon.ico",
+        "uninstallerIcon": "icons/icon.ico",
+        "startMenuFolder": "Zenith"
+      }
+    },
+    "macOS": {
+      "minimumSystemVersion": "11.0",
+      "hardenedRuntime": true
+    },
+    "linux": {
+      "appimage": {
+        "bundleMediaFramework": false
+      },
+      "deb": {
+        "depends": ["libwebkit2gtk-4.1-0", "libgtk-3-0", "libayatana-appindicator3-1"]
+      }
+    }
+  }
+}

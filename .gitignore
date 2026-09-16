@@ -1,0 +1,91 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+.vite
+.turbo
+coverage
+*.tsbuildinfo
+*.local
+
+# Rust / Tauri
+src-tauri/target/
+src-tauri/gen/
+src-tauri/WixTools/
+src-tauri/nsis/
+
+# Debug API dumps (local only)
+scripts/*.json
+
+# Never commit downloaded yt-dlp binaries
+src/scripts/yt-dlp.exe
+**/yt-dlp.exe
+**/yt-dlp
+
+# OS
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+*.bak
+*.tmp
+*.temp
+*~
+*.orig
+*.rej
+
+# Scratch dirs
+tmp/
+temp/
+.cache/
+.pnpm-store/
+_cert_work/
+
+# Local cert / tooling scratch
+certs/
+*.pfx
+*.p12
+*.pem
+*.key
+*.cer
+*.crt
+*.dmp
+dist-artifacts/
+
+# Secrets / env
+.env
+.env.*
+!.env.example
+
+# Accidental dumps / QA captures
+qa-*.png
+qa-*.json
+qa-*.html
+
+# Built binaries dropped in the repo root
+/Zenith.exe
+/zenith-player.exe
+*.app
+*.dmg
+*.AppImage
+*.deb
+*.msi

@@ -1,0 +1,21 @@
+name: Feature request
+description: Propose a change to Zenith
+title: '[feat] '
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The project does not accept media export (MP3/offline rip), YouTube or
+        Google branding, or features whose purpose is to bypass paid access.
+        See CONTRIBUTING.md.
+  - type: textarea
+    id: idea
+    attributes:
+      label: Proposal
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Rationale

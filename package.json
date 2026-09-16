@@ -1,0 +1,48 @@
+{
+  "name": "zenith-player",
+  "private": true,
+  "version": "1.0.0",
+  "license": "MIT",
+  "description": "Independent desktop music player. Not affiliated with Google or YouTube.",
+  "engines": {
+    "node": ">=20",
+    "pnpm": ">=9"
+  },
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "tauri": "tauri",
+    "format": "prettier --write \"src/**/*.{ts,tsx,css}\" \"*.{html,ts,json}\"",
+    "format:check": "prettier --check \"src/**/*.{ts,tsx,css}\" \"*.{html,ts,json}\"",
+    "typecheck": "tsc --noEmit",
+    "qa": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/qa-capture.ps1",
+    "qa:social": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/qa-social.ps1",
+    "qa:release": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/qa-release.ps1",
+    "codesign:dev": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/gen-dev-codesign-cert.ps1",
+    "codesign:trust": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/trust-local-publisher.ps1",
+    "dist": "pnpm tauri build",
+    "dist:win": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-windows.ps1",
+    "dist:linux": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-linux.ps1",
+    "clean:temp": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/clean-temp.ps1"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.11.0",
+    "@tauri-apps/plugin-clipboard-manager": "^2",
+    "@tauri-apps/plugin-http": "^2.5.9",
+    "@tauri-apps/plugin-opener": "^2",
+    "lucide-react": "^1.16.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2",
+    "@types/react": "^19.1.8",
+    "@types/react-dom": "^19.1.6",
+    "@vitejs/plugin-react": "^4.6.0",
+    "prettier": "^3.6.2",
+    "typescript": "~5.8.3",
+    "vite": "^7.0.4"
+  }
+}

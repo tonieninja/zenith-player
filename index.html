@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="pl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="
+        default-src 'self' tauri: asset: https://asset.localhost;
+        script-src  'self' 'unsafe-inline' tauri: asset: https://asset.localhost;
+        style-src   'self' 'unsafe-inline';
+        img-src     'self' data: blob: asset: tauri: https://asset.localhost
+              https://*.googleusercontent.com
+              https://*.ggpht.com
+              https://i.ytimg.com
+              https://*.ytimg.com
+              https://*.youtube.com
+              https://ui-avatars.com;
+        connect-src 'self' ipc: http://ipc.localhost
+                    http://127.0.0.1:* http://localhost:*
+                    https://music.youtube.com
+                    https://*.youtube.com
+                    https://*.googlevideo.com
+                    https://lrclib.net
+                    https://api.lyrics.ovh
+                    https://apic-desktop.musixmatch.com
+                    https://www.musixmatch.com
+                    https://*.mxmcdn.net
+                    https://api.genius.com
+                    https://genius.com
+                    https://api.github.com
+                    https://github.com;
+        media-src   'self' blob:
+                    http://127.0.0.1:* http://localhost:*
+                    https://*.googlevideo.com https://*.youtube.com;
+      "
+    />
+    <title>Zenith</title>
+    <meta
+      name="description"
+      content="Zenith Player, an independent desktop music player. Not affiliated with Google or YouTube."
+    />
+    <link rel="icon" type="image/png" href="/logo.png" />
+    <link rel="preconnect" href="https://lh3.googleusercontent.com" crossorigin />
+    <link rel="preconnect" href="https://yt3.ggpht.com" crossorigin />
+    <link rel="preconnect" href="https://i.ytimg.com" crossorigin />
+    <link rel="preconnect" href="https://music.youtube.com" />
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        background: #171a22;
+        color: #f6f7ff;
+        overflow: hidden;
+      }
+      #root:empty::after {
+        content: '';
+        position: fixed;
+        inset: 0;
+        background:
+          radial-gradient(circle at 50% 10%, rgba(255, 255, 255, 0.04), transparent 55%), #171a22;
+        display: block;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

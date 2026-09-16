@@ -1,0 +1,91 @@
+@font-face {
+  font-family: 'Outfit';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url('../assets/fonts/outfit-latin-ext-wght.woff2') format('woff2');
+  unicode-range:
+    U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329,
+    U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F,
+    U+A720-A7FF;
+}
+
+@font-face {
+  font-family: 'Outfit';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url('../assets/fonts/outfit-latin-wght.woff2') format('woff2');
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+.lyric-row,
+.lyrics-text-content,
+.overlay-plain {
+  font-family: Outfit, 'Segoe UI Variable Display', 'Segoe UI', sans-serif;
+  font-optical-sizing: auto;
+  font-synthesis: none;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+.lyric-karaoke {
+  position: relative;
+  display: block;
+  width: 100%;
+  --karaoke-p: 0%;
+}
+
+.lyric-karaoke-base,
+.lyric-karaoke-fill {
+  display: block;
+  width: 100%;
+  white-space: inherit;
+  word-wrap: break-word;
+  overflow-wrap: anywhere;
+}
+
+.lyric-karaoke-base {
+  color: rgba(255, 255, 255, 0.34);
+}
+
+.lyric-karaoke-fill {
+  position: absolute;
+  inset: 0;
+  color: #fff;
+  clip-path: inset(0 calc(100% - var(--karaoke-p, 0%)) 0 0);
+  pointer-events: none;
+  will-change: clip-path;
+  text-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.7),
+    0 0 22px rgba(255, 255, 255, 0.28);
+}
+
+@keyframes lyricLineBounce {
+  0% {
+    transform: translate3d(0, -16px, 0) scale(0.96);
+    opacity: 0.45;
+  }
+  58% {
+    transform: translate3d(0, 4px, 0) scale(1.05);
+    opacity: 1;
+  }
+  100% {
+    transform: translate3d(0, 0, 0) scale(1.04);
+    opacity: 1;
+  }
+}
+
+@keyframes lyricTextDrop {
+  0% {
+    transform: translateY(-11px);
+  }
+  62% {
+    transform: translateY(3px);
+  }
+  100% {
+    transform: translateY(0);
+  }
+}

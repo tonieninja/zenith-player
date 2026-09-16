@@ -1,0 +1,280 @@
+@import '../components/lyricsTypography.css';
+
+.overlay-root {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  padding: clamp(10px, 1.8vh, 16px) clamp(18px, 3.5vw, 28px) clamp(14px, 2.5vh, 22px);
+  box-sizing: border-box;
+  background: transparent;
+  overflow: hidden;
+  font-family:
+    Outfit,
+    'Segoe UI Variable Display',
+    'Segoe UI',
+    -apple-system,
+    BlinkMacSystemFont,
+    Roboto,
+    sans-serif;
+  user-select: none;
+  /* only the empty root is drag chrome, panel has to stay clickable */
+  /* jak to zdragujesz to nie klikniesz w teksty, uczylem sie na bledach */
+  -webkit-app-region: drag;
+}
+
+.overlay-panel,
+.overlay-lyrics-stage,
+.overlay-plain,
+.overlay-meta,
+.synced-lyrics-rail,
+.lyrics-triple-carousel {
+  -webkit-app-region: no-drag;
+}
+
+.overlay-root.align-top {
+  justify-content: flex-start;
+}
+
+.overlay-root.align-center {
+  justify-content: center;
+}
+
+.overlay-root.second-screen {
+  justify-content: center;
+  padding: clamp(16px, 3vh, 28px) clamp(20px, 4vw, 36px);
+}
+
+.overlay-panel {
+  position: relative;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: clamp(20px, 2.8vh, 32px) clamp(26px, 4.5vw, 44px);
+  border-radius: clamp(18px, 2.2vw, 26px);
+  overflow: visible;
+  isolation: isolate;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow:
+    0 20px 70px rgba(0, 0, 0, 0.62),
+    0 0 0 1px rgba(255, 255, 255, 0.06) inset,
+    0 0 48px rgba(90, 150, 255, 0.1);
+}
+
+.overlay-panel::after {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.28) 0%,
+    rgba(120, 175, 255, 0.2) 35%,
+    rgba(255, 255, 255, 0.06) 60%,
+    rgba(180, 140, 255, 0.12) 100%
+  );
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+  z-index: 2;
+  opacity: 0.85;
+}
+
+.overlay-panel::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background:
+    radial-gradient(ellipse 90% 60% at 50% 0%, rgba(120, 175, 255, 0.1), transparent 55%),
+    linear-gradient(
+      155deg,
+      rgba(20, 22, 34, var(--overlay-opacity, 0.92)) 0%,
+      rgba(8, 10, 18, var(--overlay-opacity, 0.95)) 100%
+    );
+  backdrop-filter: blur(42px) saturate(160%);
+  -webkit-backdrop-filter: blur(42px) saturate(160%);
+  z-index: 0;
+  pointer-events: none;
+}
+
+.overlay-lyrics-stage {
+  position: relative;
+  z-index: 1;
+  min-height: calc(clamp(54px, 7.5vh, 78px) * 3 + 12px);
+  width: 100%;
+}
+
+.overlay-panel > *:not(.overlay-beat) {
+  position: relative;
+  z-index: 1;
+}
+
+.overlay-root.high-contrast .overlay-panel::before {
+  background: rgba(0, 0, 0, 0.92);
+}
+
+.overlay-root.high-contrast .overlay-panel {
+  border-color: rgba(255, 255, 255, 0.22);
+}
+
+.overlay-root.lyrics-only .overlay-panel {
+  padding: clamp(22px, 3vh, 32px) clamp(28px, 5vw, 44px);
+}
+
+.overlay-meta {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: clamp(14px, 2vh, 20px);
+  padding-bottom: clamp(12px, 1.8vh, 16px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.overlay-cover {
+  width: clamp(40px, 5vw, 48px);
+  height: clamp(40px, 5vw, 48px);
+  border-radius: 10px;
+  object-fit: cover;
+  flex-shrink: 0;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+}
+
+.overlay-meta-text {
+  min-width: 0;
+  flex: 1;
+}
+
+.overlay-track-title {
+  font-size: clamp(12px, 1.4vw, 15px);
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.92);
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.overlay-track-artist {
+  font-size: clamp(11px, 1.2vw, 13px);
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.48);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 2px;
+}
+
+.overlay-root.high-contrast .synced-lyrics-rail .lyric-row.is-active .lyric-row-text {
+  -webkit-text-stroke: 0.5px rgba(0, 0, 0, 0.8);
+  text-shadow:
+    0 0 2px #000,
+    0 0 18px rgba(255, 255, 255, 0.3);
+}
+
+.overlay-root.karaoke .lyric-karaoke-fill {
+  text-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.9),
+    0 0 22px rgba(180, 210, 255, 0.55),
+    0 0 48px rgba(120, 175, 255, 0.28);
+}
+
+.overlay-root.karaoke .overlay-beat {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  background: radial-gradient(circle at 50% 70%, rgba(100, 160, 255, 0.14), transparent 65%);
+  animation: beatFlash 0.55s ease-out;
+}
+
+@keyframes beatFlash {
+  0% {
+    opacity: 0.45;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+.overlay-plain {
+  font-size: var(--font-size, 22px);
+  font-weight: 600;
+  line-height: 1.65;
+  color: rgba(255, 255, 255, 0.92);
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  overflow-wrap: anywhere;
+  max-height: min(55vh, 460px);
+  overflow-y: auto;
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.8);
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.overlay-idle {
+  text-align: center;
+  padding: 40px 24px;
+  color: rgba(255, 255, 255, 0.35);
+  font-size: clamp(12px, 1.4vw, 15px);
+  font-weight: 700;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+}
+
+.overlay-root.size-sm {
+  --font-size: clamp(18px, 2.6vw, 22px);
+}
+.overlay-root.size-md {
+  --font-size: clamp(24px, 3.2vw, 30px);
+}
+.overlay-root.size-lg {
+  --font-size: clamp(30px, 4vw, 38px);
+}
+.overlay-root.size-xl {
+  --font-size: clamp(34px, 4.8vw, 48px);
+}
+.overlay-root.size-auto {
+  --font-size: clamp(26px, 3.6vw, 40px);
+}
+
+.overlay-root.second-screen .overlay-meta {
+  justify-content: center;
+}
+
+.overlay-root.second-screen .overlay-panel {
+  max-width: min(1200px, 96%);
+  margin: 0 auto;
+  text-align: center;
+  padding: clamp(28px, 4vh, 48px) clamp(32px, 5vw, 64px);
+}
+
+.overlay-root.second-screen {
+  --font-size: clamp(42px, 6.2vw, 72px);
+}
+
+.overlay-root.second-screen.size-auto {
+  --font-size: clamp(44px, 6.5vw, 78px);
+}
+
+.overlay-root.second-screen .overlay-plain {
+  font-size: var(--font-size, 48px);
+  line-height: 1.45;
+  max-height: min(70vh, 720px);
+  text-align: center;
+}
+
+.overlay-root.second-screen .synced-lyrics-rail .lyric-row-text,
+.overlay-root.second-screen .lyrics-triple-carousel .lyric-row-text {
+  font-size: var(--font-size, 48px) !important;
+  line-height: 1.35;
+}

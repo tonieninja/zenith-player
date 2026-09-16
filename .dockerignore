@@ -1,0 +1,10 @@
+node_modules
+src-tauri/target
+src-tauri/gen
+dist
+dist-artifacts
+.git
+certs
+*.pfx
+.vite
+coverage

@@ -1,0 +1,47 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Capability for Zenith windows",
+  "windows": ["main", "google-login", "lyrics-overlay", "lyrics-second", "mini-player"],
+  "permissions": [
+    "core:default",
+    "core:window:default",
+    "core:window:allow-create",
+    "core:window:allow-close",
+    "core:window:allow-minimize",
+    "core:window:allow-maximize",
+    "core:window:allow-unmaximize",
+    "core:window:allow-toggle-maximize",
+    "core:window:allow-start-dragging",
+    "core:window:allow-set-focus",
+    "core:window:allow-show",
+    "core:webview:allow-create-webview-window",
+    "core:event:default",
+    "core:event:allow-emit",
+    "core:event:allow-listen",
+    "opener:default",
+    "global-shortcut:default",
+    "global-shortcut:allow-register",
+    "global-shortcut:allow-unregister",
+    "clipboard-manager:default",
+    "clipboard-manager:allow-write-image",
+    "clipboard-manager:allow-write-text",
+    {
+      "identifier": "http:default",
+      "allow": [
+        { "url": "https://*.youtube.com/*" },
+        { "url": "https://music.youtube.com/*" },
+        { "url": "https://*.googlevideo.com/*" },
+        { "url": "https://lrclib.net/*" },
+        { "url": "https://api.lyrics.ovh/*" },
+        { "url": "https://apic-desktop.musixmatch.com/*" },
+        { "url": "https://www.musixmatch.com/*" },
+        { "url": "https://s.mxmcdn.net/*" },
+        { "url": "https://genius.com/*" },
+        { "url": "https://api.genius.com/*" },
+        { "url": "https://api.github.com/*" },
+        { "url": "https://github.com/*" }
+      ]
+    }
+  ]
+}
