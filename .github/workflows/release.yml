@@ -53,7 +53,7 @@ jobs:
         shell: pwsh
         run: ./scripts/repack-windows-portable.ps1
       - name: Upload Windows artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: windows
           path: dist-artifacts/windows/*
@@ -90,7 +90,7 @@ jobs:
               "dist-artifacts/macos/Zenith-${VERSION}-macos-${TAG}.zip"
           fi
           ls -la dist-artifacts/macos
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: macos
           path: dist-artifacts/macos/*
@@ -135,7 +135,7 @@ jobs:
           cp -f "$DEB" "dist-artifacts/linux/Zenith_${VERSION}_amd64.deb"
           chmod +x "dist-artifacts/linux/Zenith_${VERSION}_amd64.AppImage"
           ls -la dist-artifacts/linux
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: linux-x64
           path: dist-artifacts/linux/*
