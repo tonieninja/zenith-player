@@ -261,3 +261,220 @@ pub fn set_param(u: &str, key: &str, value: &str) -> String {
     }
     parsed.to_string()
 }
+
+struct Candidate {
+    score: i32,
+    url: String,
+    sig: Option<(String, String)>,
+}
+
+fn candidates(data: &Value) -> Vec<Candidate> {
+    let mut formats: Vec<&Value> = Vec::new();
+    for ptr in ["/streamingData/adaptiveFormats", "/streamingData/formats"] {
+        if let Some(arr) = data.pointer(ptr).and_then(|v| v.as_array()) {
+            formats.extend(arr);
+        }
+    }
+    let mut out = Vec::new();
+    for audio_only in [true, false] {
+        for fmt in &formats {
+            if audio_only != is_audio_only_fmt(fmt) {
+                continue;
+            }
+            let score = format_score(fmt) - if audio_only { 0 } else { 1000 };
+            if format_score(fmt) <= 0 {
+                continue;
+            }
+            if let Some(u) = fmt.get("url").and_then(|v| v.as_str()) {
+                if is_progressive_url(u) {
+                    out.push(Candidate {
+                        score,
+                        url: u.to_string(),
+                        sig: None,
+                    });
+                }
+            } else if let Some(sc) = fmt.get("signatureCipher").and_then(|v| v.as_str()) {
+                if let Some((u, s, sp)) = parse_cipher(sc) {
+                    if is_progressive_url(&u) {
+                        out.push(Candidate {
+                            score,
+                            url: u,
+                            sig: Some((s, sp)),
+                        });
+                    }
+                }
+            }
+        }
+    }
+    out.sort_by_key(|c| std::cmp::Reverse(c.score));
+    out
+}
+
+fn is_progressive_url(url: &str) -> bool {
+    let u = url.to_ascii_lowercase();
+    if u.is_empty() {
+        return false;
+    }
+    if u.contains(".m3u8") || u.contains("manifest/hls") || u.contains("/sabr/") {
+        return false;
+    }
+    if u.contains("manifest/dash") || u.contains("mime=text") {
+        return false;
+    }
+    u.starts_with("https://") || u.starts_with("http://")
+}
+
+fn format_score(fmt: &Value) -> i32 {
+    let itag = fmt.get("itag").and_then(|v| v.as_i64()).unwrap_or(0);
+    let mime = fmt
+        .get("mimeType")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    if crate::native_audio::available() {
+        match itag {
+            251 => return 120,
+            250 => return 115,
+            249 => return 112,
+            _ => {}
+        }
+    }
+    match itag {
+        141 => 110,
+        140 => 100,
+        251 => 90,
+        250 => 80,
+        249 => 70,
+        139 => 60,
+        18 => 50,
+        _ => {
+            if mime.starts_with("audio/mp4") {
+                85
+            } else if mime.contains("mp4a") {
+                82
+            } else if mime.starts_with("audio/webm") || mime.contains("opus") {
+                75
+            } else if mime.starts_with("audio/") {
+                40
+            } else if mime.contains("audio/mp4") || mime.contains("mp4a") {
+                45
+            } else {
+                0
+            }
+        }
+    }
+}
+
+fn is_audio_only_fmt(fmt: &Value) -> bool {
+    let mime = fmt
+        .get("mimeType")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    mime.starts_with("audio/")
+}
+
+#[cfg(test)]
+fn pick_audio_url(data: &Value) -> Option<String> {
+    candidates(data)
+        .into_iter()
+        .find(|c| c.sig.is_none())
+        .map(|c| c.url)
+}
+
+fn playable(data: &Value) -> bool {
+    let status = data
+        .pointer("/playabilityStatus/status")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    status.is_empty() || status.eq_ignore_ascii_case("ok")
+}
+
+fn now_secs() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
+
+const EMBED_URL: &str = "https://www.reddit.com/";
+
+pub fn request_body(
+    video_id: &str,
+    spec: &ClientSpec,
+    visitor: Option<&str>,
+    sts: Option<u64>,
+) -> Value {
+    let mut client_obj = json!({
+        "clientName": spec.name,
+        "clientVersion": spec.version,
+        "hl": "en",
+        "gl": "US",
+        "timeZone": "UTC",
+        "utcOffsetMinutes": 0,
+        "userAgent": spec.user_agent,
+    });
+    if let (Some(map), Some(dst)) = (
+        (spec.extra)().as_object().cloned(),
+        client_obj.as_object_mut(),
+    ) {
+        for (k, v) in map {
+            dst.insert(k, v);
+        }
+    }
+    if let (Some(vd), Some(dst)) = (visitor, client_obj.as_object_mut()) {
+        dst.insert("visitorData".into(), Value::String(vd.to_string()));
+    }
+    let mut playback = json!({ "html5Preference": "HTML5_PREF_WANTS" });
+    if let Some(sts) = sts {
+        playback["signatureTimestamp"] = json!(sts);
+    }
+    let mut context = json!({ "client": client_obj });
+    if spec.name == "WEB_EMBEDDED_PLAYER" {
+        context["thirdParty"] = json!({ "embedUrl": EMBED_URL });
+    }
+    json!({
+        "context": context,
+        "videoId": video_id,
+        "contentCheckOk": true,
+        "racyCheckOk": true,
+        "playbackContext": { "contentPlaybackContext": playback },
+    })
+}
+
+fn json_str_field(html: &str, key: &str) -> Option<String> {
+    let at = html.find(&format!("\"{key}\":\""))? + key.len() + 4;
+    let rest = &html[at..];
+    let v = &rest[..rest.find('"')?];
+    (!v.is_empty()).then(|| v.to_string())
+}
+
+struct Embed {
+    ctx: String,
+    flags: String,
+    version: Option<String>,
+    visitor: Option<String>,
+}
+
+async fn embed_tokens(video_id: &str, user_agent: &str) -> Option<Embed> {
+    let http = reqwest::Client::builder()
+        .timeout(Duration::from_secs(8))
+        .user_agent(user_agent)
+        .build()
+        .ok()?;
+    let html = http
+        .get(format!("https://www.youtube.com/embed/{video_id}?html5=1"))
+        .header("Referer", EMBED_URL)
+        .send()
+        .await
+        .ok()?
+        .text()
+        .await
+        .ok()?;
+    Some(Embed {
+        ctx: json_str_field(&html, "embeddedPlayerEncryptedContext")?,
+        flags: json_str_field(&html, "encryptedHostFlags")?,
+        version: json_str_field(&html, "INNERTUBE_CLIENT_VERSION"),
+        visitor: json_str_field(&html, "VISITOR_DATA"),
+    })
+}
