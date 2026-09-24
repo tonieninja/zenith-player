@@ -478,3 +478,259 @@ async fn embed_tokens(video_id: &str, user_agent: &str) -> Option<Embed> {
         visitor: json_str_field(&html, "VISITOR_DATA"),
     })
 }
+
+async fn player_request(
+    video_id: &str,
+    spec: &ClientSpec,
+    visitor: Option<&str>,
+    sts: Option<u64>,
+    auth: Option<&Auth>,
+) -> Option<Value> {
+    let embed = if spec.name == "WEB_EMBEDDED_PLAYER" {
+        Some(embed_tokens(video_id, spec.user_agent).await?)
+    } else {
+        None
+    };
+    let visitor = embed
+        .as_ref()
+        .and_then(|e| e.visitor.as_deref())
+        .or(visitor);
+    let version = embed
+        .as_ref()
+        .and_then(|e| e.version.as_deref())
+        .unwrap_or(spec.version);
+    let mut body = request_body(video_id, spec, visitor, sts);
+    if let Some(e) = &embed {
+        body["context"]["client"]["clientVersion"] = json!(version);
+        body["context"]["thirdParty"]["embeddedPlayerContext"] = json!({
+            "embeddedPlayerEncryptedContext": e.ctx,
+            "ancestorOriginsSupported": false,
+        });
+        body["playbackContext"]["contentPlaybackContext"]["encryptedHostFlags"] = json!(e.flags);
+    }
+    let http = reqwest::Client::builder()
+        .timeout(Duration::from_secs(10))
+        .user_agent(spec.user_agent)
+        .build()
+        .ok()?;
+    let origin = format!("https://{}", spec.host);
+    let url = if spec.name == "VISIONOS" {
+        format!("{PLAYER_URL}?prettyPrint=false&key={ANDROID_KEY}")
+    } else {
+        format!("https://{}/youtubei/v1/player?prettyPrint=false", spec.host)
+    };
+    let mut req = http
+        .post(&url)
+        .header("Content-Type", "application/json")
+        .header("Origin", origin.as_str())
+        .header("X-YouTube-Client-Name", spec.client_id.to_string())
+        .header("X-YouTube-Client-Version", version);
+    if let Some(vd) = visitor {
+        req = req.header("X-Goog-Visitor-Id", vd);
+    }
+    if let Some(a) = auth.filter(|_| spec.cookies) {
+        let authz = crate::ytm_api::sapisid_authorization(&a.cookie, &origin, now_secs());
+        req = req
+            .header("Cookie", a.cookie.as_str())
+            .header("X-Goog-AuthUser", "0")
+            .header("X-Origin", origin.as_str());
+        if !authz.is_empty() {
+            req = req.header("Authorization", authz);
+        }
+    }
+    let res = req.json(&body).send().await.ok()?;
+    if !res.status().is_success() {
+        eprintln!(
+            "[Zenith] innertube {} {} http {}",
+            spec.name,
+            video_id,
+            res.status().as_u16()
+        );
+        return None;
+    }
+    res.json().await.ok()
+}
+
+async fn finish_url(
+    c: &Candidate,
+    player: Option<&crate::player_js::Player>,
+    pot: Option<&str>,
+) -> Option<String> {
+    let mut url = c.url.clone();
+    let n = query_param(&url, "n");
+    if c.sig.is_some() || n.is_some() {
+        let p = player?;
+        let sig_in: Vec<String> = c.sig.iter().map(|(s, _)| s.clone()).collect();
+        let n_in: Vec<String> = n.iter().cloned().collect();
+        let solved = match crate::player_js::solve(&p.id, n_in, sig_in).await {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("[Zenith] js challenge failed: {e}");
+                return None;
+            }
+        };
+        if let Some((s, sp)) = &c.sig {
+            url = set_param(&url, sp, solved.sig.get(s)?);
+        }
+        if let Some(n) = &n {
+            url = set_param(&url, "n", solved.n.get(n)?);
+        }
+    }
+    if let Some(t) = pot {
+        url = set_param(&url, "pot", t);
+    }
+    Some(url)
+}
+
+pub async fn client_once(
+    video_id: &str,
+    client: Client,
+    visitor: Option<&str>,
+    auth: Option<&Auth>,
+) -> Option<DirectAudio> {
+    let spec = spec(client);
+    let auth = auth.filter(|_| spec.cookies);
+    let player = if spec.needs_js {
+        Some(crate::player_js::current().await?)
+    } else {
+        None
+    };
+    let pot = if spec.needs_pot {
+        let binding = match auth {
+            Some(a) => a.data_sync_id.clone().or_else(|| visitor.map(String::from)),
+            None => visitor.map(String::from),
+        }?;
+        crate::potoken::want();
+        Some(crate::potoken::mint(&binding).await?)
+    } else {
+        None
+    };
+    let data = player_request(
+        video_id,
+        &spec,
+        visitor,
+        player.as_ref().and_then(|p| p.sts),
+        auth,
+    )
+    .await?;
+    let status = data
+        .pointer("/playabilityStatus/status")
+        .and_then(|v| v.as_str())
+        .unwrap_or("?");
+    if is_bot_check(&data) && auth.is_none() && client == Client::Visionos {
+        mark_bot_blocked();
+    }
+    if !playable(&data) {
+        let why = data
+            .pointer("/playabilityStatus/errorCode")
+            .or_else(|| data.pointer("/playabilityStatus/reason"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        eprintln!(
+            "[Zenith] innertube {} {}: {} {}",
+            spec.name, video_id, status, why
+        );
+        return None;
+    }
+    let list = candidates(&data);
+    if list.is_empty() {
+        eprintln!(
+            "[Zenith] innertube {} {} playable but no progressive audio",
+            spec.name, video_id
+        );
+        return None;
+    }
+    for c in list.iter().take(3) {
+        let Some(url) = finish_url(c, player.as_ref(), pot.as_deref()).await else {
+            continue;
+        };
+        if url_reachable(&url, spec.user_agent).await {
+            eprintln!("[Zenith] innertube {} ok for {}", spec.name, video_id);
+            return Some(DirectAudio {
+                url,
+                user_agent: spec.user_agent.to_string(),
+            });
+        }
+        eprintln!(
+            "[Zenith] innertube {} url dead (403?) for {}",
+            spec.name, video_id
+        );
+    }
+    None
+}
+
+pub async fn resolve_with(
+    video_id: &str,
+    clients: &[Client],
+    auth: Option<&Auth>,
+) -> Option<(DirectAudio, Client)> {
+    let visitor = visitor_data().await;
+    for c in clients {
+        if let Some(got) = client_once(video_id, *c, visitor.as_deref(), auth).await {
+            return Some((got, *c));
+        }
+    }
+    None
+}
+
+pub async fn url_reachable(url: &str, user_agent: &str) -> bool {
+    for wait in [0u64, 700, 1800] {
+        tokio::time::sleep(Duration::from_millis(wait)).await;
+        match probe(url, user_agent).await {
+            Some(true) => return true,
+            Some(false) => continue,
+            None => return false,
+        }
+    }
+    false
+}
+
+async fn probe(url: &str, user_agent: &str) -> Option<bool> {
+    let http = reqwest::Client::builder()
+        .timeout(Duration::from_secs(8))
+        .user_agent(user_agent)
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .ok()?;
+    let mut at = url.to_string();
+    for _ in 0..4 {
+        let r = http
+            .get(&at)
+            .header("Range", "bytes=0-98303")
+            .header("Referer", "https://www.youtube.com/")
+            .header("Origin", "https://www.youtube.com")
+            .send()
+            .await
+            .ok()?;
+        let code = r.status().as_u16();
+        if code == 200 || code == 206 {
+            return Some(true);
+        }
+        let next = r
+            .headers()
+            .get("location")
+            .and_then(|l| l.to_str().ok())
+            .map(String::from);
+        match next {
+            Some(n) if r.status().is_redirection() => at = n,
+            _ if code == 403 => return Some(false),
+            _ => {
+                eprintln!("[Zenith] stream probe http {code}");
+                return None;
+            }
+        }
+    }
+    None
+}
+
+pub async fn fetch_direct_audio(video_id: &str) -> Option<DirectAudio> {
+    if bot_blocked() {
+        eprintln!(
+            "[Zenith] innertube skipped for {} (bot check cooldown)",
+            video_id
+        );
+        return None;
+    }
+    let visitor = visitor_data().await;
+    client_once(video_id, Client::Visionos, visitor.as_deref(), None).await
+}
