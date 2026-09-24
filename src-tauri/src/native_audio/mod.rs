@@ -896,3 +896,299 @@ pub fn set_headless(on: bool) {
         headless::began();
     }
 }
+
+pub mod headless {
+    use super::*;
+
+    #[derive(Default)]
+    struct H {
+        plan: Value,
+        played: Vec<Value>,
+        moved: bool,
+        fade_started_for: Option<usize>,
+        prefetched_for: Option<usize>,
+        busy: bool,
+    }
+    static H_: Mutex<Option<H>> = Mutex::new(None);
+
+    fn h<R>(f: impl FnOnce(&mut H) -> R) -> R {
+        let mut g = H_.lock().unwrap_or_else(|p| p.into_inner());
+        f(g.get_or_insert_with(H::default))
+    }
+
+    pub fn set_plan(plan: Value) {
+        h(|h| {
+            h.plan = plan;
+            h.fade_started_for = None;
+            h.prefetched_for = None;
+        });
+    }
+
+    pub fn began() {
+        h(|h| {
+            h.played.clear();
+            h.moved = false;
+            h.fade_started_for = None;
+            h.prefetched_for = None;
+        });
+        save_state();
+    }
+
+    fn queue_len(p: &Value) -> usize {
+        p["queue"].as_array().map(|a| a.len()).unwrap_or(0)
+    }
+    fn index(p: &Value) -> usize {
+        p["index"].as_u64().unwrap_or(0) as usize
+    }
+    fn loop_mode(p: &Value) -> String {
+        p["loopMode"].as_str().unwrap_or("off").to_string()
+    }
+    fn next_index(p: &Value) -> Option<usize> {
+        let n = queue_len(p);
+        let i = index(p);
+        if i + 1 < n {
+            Some(i + 1)
+        } else if loop_mode(p) == "all" && n > 0 {
+            Some(0)
+        } else {
+            None
+        }
+    }
+    fn prev_index(p: &Value) -> Option<usize> {
+        let n = queue_len(p);
+        let i = index(p);
+        if i > 0 {
+            Some(i - 1)
+        } else if loop_mode(p) == "all" && n > 0 {
+            Some(n - 1)
+        } else {
+            None
+        }
+    }
+    fn track_id(p: &Value, i: usize) -> Option<String> {
+        p["queue"][i]["id"].as_str().map(String::from)
+    }
+
+    async fn resolve(id: &str) -> Option<String> {
+        let e = engine()?;
+        crate::stream::get_stream_url(e.app.clone()?, id.to_string(), None)
+            .await
+            .ok()
+            .flatten()
+    }
+
+    fn mark_started(i: usize) {
+        eprintln!("[zaudio] headless: started queue index {i}");
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0);
+        h(|h| {
+            h.plan["index"] = Value::from(i as u64);
+            h.moved = true;
+            let id = h.plan["queue"][i]["id"].clone();
+            h.played
+                .push(serde_json::json!({ "index": i, "id": id, "at": now }));
+            h.fade_started_for = None;
+            h.prefetched_for = None;
+        });
+        save_state();
+        discord_presence(true);
+    }
+
+    async fn start_index(i: usize, fade: f64) {
+        let Some(id) = h(|h| track_id(&h.plan, i)) else {
+            return;
+        };
+        let mut url = resolve(&id).await;
+        if url.is_none() {
+            url = resolve(&id).await;
+        }
+        let Some(url) = url else {
+            eprintln!("[zaudio] headless: no stream for {id}, skipping");
+            if let Some(n) = h(|h| {
+                h.plan["index"] = Value::from(i as u64);
+                next_index(&h.plan)
+            }) {
+                if n != i {
+                    Box::pin(start_index(n, 0.0)).await;
+                }
+            }
+            return;
+        };
+        if fade > 0.0 && crossfade(url.clone(), fade).await.is_ok() {
+            mark_started(i);
+            return;
+        }
+        run_cmd(Cmd::SetSrc { url });
+        if play().await.is_ok() {
+            mark_started(i);
+        }
+    }
+
+    fn spawn_once(f: impl std::future::Future<Output = ()> + Send + 'static) {
+        if h(|h| std::mem::replace(&mut h.busy, true)) {
+            return;
+        }
+        tauri::async_runtime::spawn(async move {
+            f.await;
+            h(|h| h.busy = false);
+        });
+    }
+
+    pub fn on_tick(s: &Snapshot) {
+        let Some(d) = s.d else { return };
+        let remaining = d - s.t;
+        let (cf, loop_one, next, fade_for, pre_for) = h(|h| {
+            (
+                h.plan["crossfade"].as_f64().unwrap_or(0.0),
+                loop_mode(&h.plan) == "one",
+                next_index(&h.plan),
+                h.fade_started_for,
+                h.prefetched_for,
+            )
+        });
+        let Some(next) = next else { return };
+        if loop_one {
+            return;
+        }
+        if remaining < cf + 20.0 && pre_for != Some(next) {
+            h(|h| h.prefetched_for = Some(next));
+            if let Some(id) = h(|h| track_id(&h.plan, next)) {
+                tauri::async_runtime::spawn(async move {
+                    let _ = resolve(&id).await;
+                });
+            }
+        }
+        if cf > 0.0
+            && !s.crossfading
+            && remaining <= cf
+            && remaining > 0.35
+            && fade_for != Some(next)
+        {
+            h(|h| h.fade_started_for = Some(next));
+            spawn_once(start_index(next, remaining.max(1.0)));
+        }
+    }
+
+    pub fn on_ended() {
+        let (loop_one, next) = h(|h| (loop_mode(&h.plan) == "one", next_index(&h.plan)));
+        if loop_one {
+            run_cmd(Cmd::Seek { t: 0.0 });
+            tauri::async_runtime::spawn(async {
+                let _ = play().await;
+            });
+            return;
+        }
+        match next {
+            Some(n) => spawn_once(start_index(n, 0.0)),
+            None => {
+                save_state();
+                discord_presence(false);
+            }
+        }
+    }
+
+    pub fn action(action: &str) {
+        match action {
+            "toggle-play" => {
+                if snapshot().paused {
+                    tauri::async_runtime::spawn(async {
+                        if !snapshot().has_source {
+                            let i = h(|h| index(&h.plan));
+                            start_index(i, 0.0).await;
+                        } else {
+                            let _ = play().await;
+                        }
+                        save_state();
+                        discord_presence(true);
+                    });
+                } else {
+                    run_cmd(Cmd::Pause);
+                    save_state();
+                    discord_presence(false);
+                }
+            }
+            "next" => {
+                if let Some(n) = h(|h| next_index(&h.plan)) {
+                    let cf = h(|h| h.plan["crossfade"].as_f64().unwrap_or(0.0));
+                    spawn_once(start_index(n, if snapshot().has_source { cf } else { 0.0 }));
+                }
+            }
+            "prev" => {
+                if snapshot().t > 3.0 {
+                    run_cmd(Cmd::Seek { t: 0.0 });
+                } else if let Some(p) = h(|h| prev_index(&h.plan)) {
+                    let cf = h(|h| h.plan["crossfade"].as_f64().unwrap_or(0.0));
+                    spawn_once(start_index(p, if snapshot().has_source { cf } else { 0.0 }));
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn discord_presence(playing: bool) {
+        let (cid, track) = h(|h| {
+            (
+                h.plan["discordClientId"].as_str().map(String::from),
+                h.plan["queue"][index(&h.plan)].clone(),
+            )
+        });
+        let Some(client_id) = cid else { return };
+        let s = snapshot();
+        let payload = crate::discord::PresencePayload {
+            client_id,
+            title: track["title"].as_str().unwrap_or("").to_string(),
+            artist: track["artist"].as_str().unwrap_or("").to_string(),
+            duration: s.d.unwrap_or(0.0),
+            position: s.t,
+            is_playing: playing && !s.paused,
+            cover_url: track["cover"].as_str().map(String::from),
+            track_url: track["id"]
+                .as_str()
+                .map(|id| format!("https://music.youtube.com/watch?v={id}")),
+        };
+        std::thread::spawn(move || {
+            let _ = crate::discord::discord_update_presence(payload);
+        });
+    }
+
+    fn state_path() -> Option<std::path::PathBuf> {
+        let e = engine()?;
+        let dir = e.app.as_ref()?.path().app_data_dir().ok()?;
+        let _ = std::fs::create_dir_all(&dir);
+        Some(dir.join("headless_state.json"))
+    }
+
+    pub fn save_state() {
+        let Some(p) = state_path() else { return };
+        let s = snapshot();
+        let v = h(|h| {
+            serde_json::json!({
+                "plan": h.plan,
+                "progress": s.t,
+                "wasPlaying": !s.paused,
+                "moved": h.moved,
+                "savedAt": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0),
+            })
+        });
+        let _ = std::fs::write(p, v.to_string());
+    }
+
+    pub fn take_restore(s: Snapshot) -> Value {
+        let disk = state_path()
+            .and_then(|p| std::fs::read_to_string(p).ok())
+            .and_then(|t| serde_json::from_str::<Value>(&t).ok())
+            .unwrap_or(Value::Null);
+
+        h(|h| {
+            serde_json::json!({
+                "plan": h.plan,
+                "played": std::mem::take(&mut h.played),
+                "moved": std::mem::replace(&mut h.moved, false),
+                "snap": s,
+                "disk": disk,
+            })
+        })
+    }
+}
