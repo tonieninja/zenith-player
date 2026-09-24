@@ -705,3 +705,194 @@ pub async fn wait_ready(timeout_ms: u64) -> bool {
         .await
         .is_ok()
 }
+
+pub async fn crossfade(url: String, seconds: f64) -> Result<Snapshot, String> {
+    let e = engine().ok_or("no engine")?;
+    let (token, gen, from_audible) = {
+        let mut st = e.st.lock().unwrap_or_else(|p| p.into_inner());
+        st.ab = None;
+        st.fade_token += 1;
+        st.fading = false;
+        let token = st.fade_token;
+        let a = st.active;
+        let o = 1 - a;
+        let rate = st.rate;
+        let prerolled = st.decks[o].src == url && !st.decks[o].errored && st.decks[o].ready >= 1;
+        if !prerolled {
+            silence_other(&mut st);
+        }
+        let from_audible = st.decks[a].want_play && !st.decks[a].src.is_empty();
+        if !prerolled {
+            load_deck(&mut st.decks[o], &url, rate);
+        }
+        st.decks[o].gain = 0.0;
+        apply_volume(&st, o);
+        (token, st.decks[o].gen, from_audible)
+    };
+    let tok_ok = |e: &Engine| e.st.lock().unwrap_or_else(|p| p.into_inner()).fade_token == token;
+    let fail = |e: &Engine, msg: String| {
+        let mut st = e.st.lock().unwrap_or_else(|p| p.into_inner());
+        if st.fade_token == token {
+            silence_other(&mut st);
+        }
+        msg
+    };
+    if let Err(m) = wait_for(gen, false, Duration::from_secs(14)).await {
+        return Err(fail(e, if tok_ok(e) { m } else { "superseded".into() }));
+    }
+    if !tok_ok(e) {
+        return Err("superseded".into());
+    }
+    {
+        let mut st = e.st.lock().unwrap_or_else(|p| p.into_inner());
+        let o = 1 - st.active;
+        st.decks[o].want_play = true;
+        set_playing(&st.decks[o], true);
+    }
+    if let Err(m) = wait_for(gen, true, Duration::from_secs(14)).await {
+        return Err(fail(e, m));
+    }
+    if !tok_ok(e) {
+        return Err("superseded".into());
+    }
+    {
+        let mut st = e.st.lock().unwrap_or_else(|p| p.into_inner());
+        st.active = 1 - st.active;
+        st.fading = true;
+    }
+    kick();
+    emit(e, "durationchange", snapshot());
+    let dur = (seconds * 1000.0).max(180.0);
+    std::thread::spawn(move || {
+        let started = Instant::now();
+        loop {
+            let t = (started.elapsed().as_secs_f64() * 1000.0 / dur).min(1.0);
+            let mut st = e.st.lock().unwrap_or_else(|p| p.into_inner());
+            if st.fade_token != token {
+                let f = 1 - st.active;
+                if st.decks[f].gen != gen {
+                    clear_deck(&mut st.decks[f]);
+                }
+                return;
+            }
+            let to = st.active;
+            let from = 1 - to;
+            st.decks[to].gain = (t * std::f64::consts::FRAC_PI_2).sin();
+            apply_volume(&st, to);
+            if from_audible {
+                st.decks[from].gain = (t * std::f64::consts::FRAC_PI_2).cos();
+                apply_volume(&st, from);
+            }
+            if t >= 1.0 {
+                st.fading = false;
+                clear_deck(&mut st.decks[from]);
+                st.decks[to].gain = 1.0;
+                apply_volume(&st, to);
+                return;
+            }
+            drop(st);
+            std::thread::sleep(Duration::from_millis(16));
+        }
+    });
+    Ok(snapshot())
+}
+
+#[tauri::command]
+pub fn zaudio_available() -> bool {
+    available()
+}
+
+#[tauri::command]
+pub fn zaudio_duck(on: bool, level: f64, sensitivity: f64) -> Result<(), String> {
+    if !on {
+        duck::stop();
+        return Ok(());
+    }
+    if !available() {
+        return Err("no engine".into());
+    }
+    duck::configure(level, sensitivity);
+    duck::start()
+}
+
+#[tauri::command]
+pub fn zaudio_cmd(cmd: Cmd) -> Snapshot {
+    run_cmd(cmd)
+}
+
+#[tauri::command]
+pub async fn zaudio_play() -> Result<Snapshot, String> {
+    play().await
+}
+
+#[tauri::command]
+pub async fn zaudio_wait_ready(timeout_ms: u64) -> bool {
+    wait_ready(timeout_ms).await
+}
+
+#[tauri::command]
+pub fn zaudio_preroll(url: String) -> bool {
+    preroll(&url)
+}
+
+pub fn preroll(url: &str) -> bool {
+    let Some(e) = engine() else { return false };
+    let mut st = e.st.lock().unwrap_or_else(|p| p.into_inner());
+    if st.fading || url.is_empty() {
+        return false;
+    }
+    let o = 1 - st.active;
+    if st.decks[o].src == url && !st.decks[o].errored {
+        return true;
+    }
+    let rate = st.rate;
+    load_deck(&mut st.decks[o], url, rate);
+    st.decks[o].want_play = false;
+    st.decks[o].gain = 0.0;
+    apply_volume(&st, o);
+    true
+}
+
+#[tauri::command]
+pub async fn zaudio_tail(url: String, d: f64) -> Option<f64> {
+    if url.is_empty() || !d.is_finite() || d < 30.0 {
+        return None;
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        let buf = source::open(&url);
+        let r = decode::audible_end(buf.clone(), d);
+        buf.cancel();
+        r.ok().flatten()
+    })
+    .await
+    .ok()
+    .flatten()
+}
+
+#[tauri::command]
+pub async fn zaudio_crossfade(url: String, seconds: f64) -> Result<Snapshot, String> {
+    crossfade(url, seconds).await
+}
+
+#[tauri::command]
+pub fn zaudio_plan(plan: Value) {
+    headless::set_plan(plan);
+}
+
+#[tauri::command]
+pub fn zaudio_attach(app: AppHandle) -> Value {
+    HEADLESS.store(false, Ordering::SeqCst);
+    let _ = app;
+    headless::take_restore(snapshot())
+}
+
+pub fn is_headless() -> bool {
+    HEADLESS.load(Ordering::SeqCst)
+}
+
+pub fn set_headless(on: bool) {
+    HEADLESS.store(on, Ordering::SeqCst);
+    if on {
+        headless::began();
+    }
+}
