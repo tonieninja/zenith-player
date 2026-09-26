@@ -479,3 +479,466 @@ pub fn warm_cookie_cache(cookie_header: String) {
         *guard = Some((cookie_header, Instant::now()));
     }
 }
+
+static COOKIE_COLLECT_LOCK: Mutex<()> = Mutex::new(());
+
+pub fn refresh_cookie_cache_from_webview(app: &AppHandle) {
+    let _guard = match COOKIE_COLLECT_LOCK.lock() {
+        Ok(g) => g,
+        Err(e) => e.into_inner(),
+    };
+    let cookie = collect_cookies_sync(app);
+    warm_cookie_cache(cookie);
+}
+
+fn collect_cookies_sync(app: &AppHandle) -> String {
+    let (tx, rx) = std::sync::mpsc::channel::<String>();
+    let handle = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        let urls: Vec<tauri::Url> = [
+            "https://music.youtube.com/",
+            "https://www.youtube.com/",
+            "https://youtube.com/",
+            "https://accounts.google.com/",
+            "https://www.google.com/",
+        ]
+        .iter()
+        .filter_map(|s| s.parse().ok())
+        .collect();
+        let mut best_auth = String::new();
+        let mut best_other = String::new();
+        let mut login_auth = String::new();
+        for (label, webview) in handle.webview_windows() {
+            if label == crate::potoken::LABEL {
+                continue;
+            }
+            let mut triples: Vec<(String, String, String)> = Vec::new();
+            let take = |c: tauri::webview::Cookie<'_>, into: &mut Vec<(String, String, String)>| {
+                into.push((
+                    c.name().to_string(),
+                    c.value().to_string(),
+                    c.domain().unwrap_or("").to_string(),
+                ));
+            };
+            if let Ok(all) = webview.cookies() {
+                for c in all {
+                    take(c, &mut triples);
+                }
+            }
+            if triples.is_empty() {
+                for url in &urls {
+                    if let Ok(cookies) = webview.cookies_for_url(url.clone()) {
+                        for c in cookies {
+                            take(c, &mut triples);
+                        }
+                    }
+                }
+            }
+            if triples.is_empty() {
+                continue;
+            }
+            let refs: Vec<(&str, &str, &str)> = triples
+                .iter()
+                .map(|(n, v, d)| (n.as_str(), v.as_str(), d.as_str()))
+                .collect();
+            let joined = music_cookie_header(&refs);
+            let has_auth = auth_cookie_score(&joined) > 0;
+            if has_auth {
+                if label == "google-login"
+                    && auth_cookie_score(&joined) >= auth_cookie_score(&login_auth)
+                {
+                    login_auth = joined.clone();
+                }
+                if auth_cookie_score(&joined) >= auth_cookie_score(&best_auth) {
+                    best_auth = joined;
+                }
+            } else if joined.len() > best_other.len() {
+                best_other = joined;
+            }
+        }
+        let best = if !login_auth.is_empty() {
+            login_auth
+        } else if !best_auth.is_empty() {
+            best_auth
+        } else {
+            best_other
+        };
+        let _ = tx.send(best);
+    });
+    rx.recv_timeout(std::time::Duration::from_millis(2000))
+        .unwrap_or_default()
+}
+
+fn runs_text(node: &Value) -> String {
+    if let Some(runs) = node.get("runs").and_then(|r| r.as_array()) {
+        return runs
+            .iter()
+            .filter_map(|r| r.get("text").and_then(|t| t.as_str()))
+            .collect::<String>();
+    }
+    node.get("simpleText")
+        .and_then(|t| t.as_str())
+        .unwrap_or("")
+        .to_string()
+}
+
+fn parse_clock_duration(text: &str) -> Option<f64> {
+    let raw = text.trim();
+    let parts: Vec<&str> = raw.split(':').collect();
+    if parts.len() != 2 && parts.len() != 3 {
+        return None;
+    }
+    if !raw.chars().all(|c| c.is_ascii_digit() || c == ':') {
+        return None;
+    }
+    if parts[0].is_empty() || parts.iter().skip(1).any(|p| p.len() != 2) {
+        return None;
+    }
+    let nums: Option<Vec<f64>> = parts.iter().map(|p| p.parse::<f64>().ok()).collect();
+    let nums = nums?;
+    if nums.iter().any(|n| !n.is_finite()) {
+        return None;
+    }
+    let sec = if nums.len() == 2 {
+        nums[0] * 60.0 + nums[1]
+    } else {
+        nums[0] * 3600.0 + nums[1] * 60.0 + nums[2]
+    };
+    if sec > 0.0 {
+        Some(sec)
+    } else {
+        None
+    }
+}
+
+fn first_text(node: &Value) -> Option<String> {
+    let text = runs_text(node);
+    if text.is_empty() {
+        None
+    } else {
+        Some(text)
+    }
+}
+
+fn extract_duration_sec(r: &Value) -> Option<f64> {
+    let paths = [
+        "/lengthText",
+        "/fixedColumns/0/musicResponsiveListItemFixedColumnRenderer/text",
+        "/fixedColumns/1/musicResponsiveListItemFixedColumnRenderer/text",
+        "/thumbnailOverlays/0/thumbnailOverlayTimeStatusRenderer/text",
+        "/thumbnailOverlays/1/thumbnailOverlayTimeStatusRenderer/text",
+    ];
+    for path in paths {
+        if let Some(text) = r.pointer(path).and_then(first_text) {
+            if let Some(sec) = parse_clock_duration(&text) {
+                return Some(sec);
+            }
+        }
+    }
+    None
+}
+
+fn with_duration(mut item: Value, r: &Value) -> Value {
+    if let Some(sec) = extract_duration_sec(r) {
+        item["durationSec"] = json!(sec);
+    }
+    item
+}
+
+fn best_thumb(thumbs: &Value) -> String {
+    let Some(arr) = thumbs.as_array() else {
+        return String::new();
+    };
+    arr.iter()
+        .rev()
+        .find_map(|t| t.get("url").and_then(|u| u.as_str()).map(|s| s.to_string()))
+        .unwrap_or_default()
+}
+
+fn item_from_two_row(r: &Value) -> Option<Value> {
+    let video_id = r
+        .pointer("/playlistItemData/videoId")
+        .or_else(|| r.pointer("/navigationEndpoint/watchEndpoint/videoId"))
+        .and_then(|v| v.as_str());
+    let browse_id = r
+        .pointer("/navigationEndpoint/browseEndpoint/browseId")
+        .and_then(|v| v.as_str());
+    let id = video_id.or(browse_id)?;
+    let title = runs_text(r.get("title").unwrap_or(&Value::Null));
+    if title.is_empty() {
+        return None;
+    }
+    let artist = runs_text(r.get("subtitle").unwrap_or(&Value::Null));
+    let cover = best_thumb(
+        r.pointer("/thumbnailRenderer/musicThumbnailRenderer/thumbnail/thumbnails")
+            .unwrap_or(&Value::Null),
+    );
+    let kind = if video_id.is_some() {
+        "track"
+    } else if id.starts_with("VL") || id.starts_with("PL") || id.starts_with("MPSP") {
+        "playlist"
+    } else if id.starts_with("UC") {
+        "artist"
+    } else {
+        "album"
+    };
+    Some(with_duration(
+        json!({
+            "id": id,
+            "type": kind,
+            "title": title,
+            "artist": if artist.is_empty() { "Various" } else { artist.as_str() },
+            "cover": cover,
+            "coverSmall": cover,
+            "coverLarge": cover,
+        }),
+        r,
+    ))
+}
+
+fn item_from_responsive(r: &Value) -> Option<Value> {
+    let video_id = r
+        .pointer("/playlistItemData/videoId")
+        .or_else(|| r.pointer("/flexColumns/0/musicResponsiveListItemFlexColumnRenderer/text/runs/0/navigationEndpoint/watchEndpoint/videoId"))
+        .or_else(|| r.pointer("/navigationEndpoint/watchEndpoint/videoId"))
+        .and_then(|v| v.as_str());
+    let browse_id = r
+        .pointer("/navigationEndpoint/browseEndpoint/browseId")
+        .or_else(|| r.pointer("/flexColumns/0/musicResponsiveListItemFlexColumnRenderer/text/runs/0/navigationEndpoint/browseEndpoint/browseId"))
+        .and_then(|v| v.as_str());
+    let id = video_id.or(browse_id)?;
+    let title = r
+        .pointer("/flexColumns/0/musicResponsiveListItemFlexColumnRenderer/text")
+        .map(runs_text)
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| runs_text(r.get("title").unwrap_or(&Value::Null)));
+    if title.is_empty() {
+        return None;
+    }
+    let artist = r
+        .pointer("/flexColumns/1/musicResponsiveListItemFlexColumnRenderer/text")
+        .map(runs_text)
+        .unwrap_or_default();
+    let cover = best_thumb(
+        r.pointer("/thumbnail/musicThumbnailRenderer/thumbnail/thumbnails")
+            .or_else(|| r.pointer("/thumbnailRenderer/musicThumbnailRenderer/thumbnail/thumbnails"))
+            .unwrap_or(&Value::Null),
+    );
+    let kind = if video_id.is_some() {
+        "track"
+    } else if id.starts_with("VL") || id.starts_with("PL") || id.starts_with("MPSP") {
+        "playlist"
+    } else if id.starts_with("UC") {
+        "artist"
+    } else {
+        "album"
+    };
+    Some(with_duration(
+        json!({
+            "id": id,
+            "type": kind,
+            "title": title,
+            "artist": if artist.is_empty() { "Various" } else { artist.as_str() },
+            "cover": cover,
+            "coverSmall": cover,
+            "coverLarge": cover,
+        }),
+        r,
+    ))
+}
+
+fn push_shelf(title: String, contents: &Value, out: &mut Vec<Value>) {
+    let Some(arr) = contents.as_array() else {
+        return;
+    };
+    let mut items = Vec::new();
+    for c in arr {
+        if let Some(r) = c.get("musicTwoRowItemRenderer") {
+            if let Some(item) = item_from_two_row(r) {
+                items.push(item);
+            }
+        } else if let Some(r) = c.get("musicResponsiveListItemRenderer") {
+            if let Some(item) = item_from_responsive(r).or_else(|| item_from_two_row(r)) {
+                items.push(item);
+            }
+        } else if let Some(r) = c.get("richItemRenderer") {
+            let inner = r.get("content").unwrap_or(r);
+            if let Some(two) = inner.get("musicTwoRowItemRenderer") {
+                if let Some(item) = item_from_two_row(two) {
+                    items.push(item);
+                }
+            } else if let Some(resp) = inner.get("musicResponsiveListItemRenderer") {
+                if let Some(item) = item_from_responsive(resp).or_else(|| item_from_two_row(resp)) {
+                    items.push(item);
+                }
+            }
+        }
+    }
+    if !items.is_empty() {
+        out.push(json!({ "title": title, "items": items }));
+    }
+}
+
+fn walk_carousels(node: &Value, out: &mut Vec<Value>) {
+    match node {
+        Value::Array(arr) => {
+            for v in arr {
+                walk_carousels(v, out);
+            }
+        }
+        Value::Object(map) => {
+            if let Some(carousel) = map.get("musicCarouselShelfRenderer") {
+                let title = carousel
+                    .pointer("/header/musicCarouselShelfBasicHeaderRenderer/title")
+                    .map(runs_text)
+                    .filter(|s| !s.is_empty())
+                    .or_else(|| carousel.get("title").map(runs_text))
+                    .unwrap_or_else(|| "Section".into());
+                push_shelf(title, carousel.get("contents").unwrap_or(&Value::Null), out);
+            }
+            if let Some(shelf) = map.get("musicShelfRenderer") {
+                let title = shelf
+                    .get("title")
+                    .map(runs_text)
+                    .filter(|s| !s.is_empty())
+                    .unwrap_or_else(|| "Section".into());
+                push_shelf(title, shelf.get("contents").unwrap_or(&Value::Null), out);
+            }
+            if let Some(shelf) = map.get("musicPlaylistShelfRenderer") {
+                let title = shelf
+                    .get("title")
+                    .map(runs_text)
+                    .filter(|s| !s.is_empty())
+                    .unwrap_or_else(|| "Playlists".into());
+                push_shelf(title, shelf.get("contents").unwrap_or(&Value::Null), out);
+            }
+            if let Some(grid) = map.get("musicGridRenderer") {
+                let title = grid
+                    .pointer("/header/musicHeaderRenderer/title")
+                    .map(runs_text)
+                    .filter(|s| !s.is_empty())
+                    .unwrap_or_else(|| "Section".into());
+                push_shelf(title, grid.get("contents").unwrap_or(&Value::Null), out);
+            }
+            if let Some(grid) = map.get("gridRenderer") {
+                let title = grid
+                    .pointer("/header/gridHeaderRenderer/title")
+                    .map(runs_text)
+                    .filter(|s| !s.is_empty())
+                    .unwrap_or_else(|| "Section".into());
+                push_shelf(title, grid.get("items").unwrap_or(&Value::Null), out);
+            }
+            for v in map.values() {
+                walk_carousels(v, out);
+            }
+        }
+        _ => {}
+    }
+}
+
+pub fn resolve_cookies_public(app: &AppHandle) -> String {
+    resolve_cookies(app)
+}
+
+pub fn clear_cookie_cache() {
+    if let Ok(mut guard) = COOKIE_CACHE.lock() {
+        *guard = None;
+    }
+}
+
+#[tauri::command]
+pub async fn ytm_browse(
+    app: AppHandle,
+    browse_id: String,
+    hl: String,
+    gl: String,
+    params: Option<String>,
+) -> Result<String, String> {
+    hydrate_innertube(&app);
+    let cookie = resolve_cookies(&app);
+    let version = client_version();
+    let mut body = json!({
+        "context": {
+            "client": {
+                "clientName": "WEB_REMIX",
+                "clientVersion": version,
+                "hl": hl,
+                "gl": gl,
+            }
+        },
+        "browseId": browse_id,
+    });
+    if let Some(params) = params.filter(|p| !p.trim().is_empty()) {
+        body["params"] = json!(params);
+    }
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(12))
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let url = format!("{YTM_BROWSE}?prettyPrint=false&key={}", innertube_api_key());
+    let mut req = client
+        .post(&url)
+        .header("Content-Type", "application/json")
+        .header("Origin", "https://music.youtube.com")
+        .header("X-Origin", "https://music.youtube.com")
+        .header(
+            "User-Agent",
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+        )
+        .header(
+            "Accept-Language",
+            if hl.to_lowercase().starts_with("pl") {
+                "pl-PL,pl;q=0.9,en-US;q=0.8,en;q=0.7"
+            } else {
+                "en-US,en;q=0.9,pl;q=0.7"
+            },
+        )
+        .json(&body);
+
+    if !cookie.is_empty() {
+        req = req.header("Cookie", &cookie);
+        let auth = sapisid_authorization(&cookie, MUSIC_ORIGIN, now_secs());
+        if !auth.is_empty() {
+            req = req
+                .header("Authorization", auth)
+                .header("X-Goog-AuthUser", "0");
+        }
+    }
+
+    let res = match req.try_clone().map(|r| r.send()) {
+        Some(fut) => match fut.await {
+            Ok(r) => r,
+            Err(e) => {
+                eprintln!("[ytm_browse] send failed, retrying once: {e}");
+                tokio::time::sleep(std::time::Duration::from_millis(800)).await;
+                req.send().await.map_err(|e| format!("browse send: {e}"))?
+            }
+        },
+        None => req.send().await.map_err(|e| format!("browse send: {e}"))?,
+    };
+    let status = res.status();
+    let text = res.text().await.map_err(|e| format!("browse body: {e}"))?;
+    if !status.is_success() {
+        return Err(format!(
+            "HTTP {status}: {}",
+            text.chars().take(240).collect::<String>()
+        ));
+    }
+
+    let data: Value = serde_json::from_str(&text).map_err(|e| e.to_string())?;
+    if data.get("error").is_some() {
+        return Err(format!(
+            "ytm error: {}",
+            data.get("error").unwrap_or(&Value::Null)
+        ));
+    }
+    let mut sections = Vec::new();
+    walk_carousels(&data, &mut sections);
+    if !sections.is_empty() {
+        return Ok(json!({ "zenithSections": sections }).to_string());
+    }
+
+    Ok(text)
+}
