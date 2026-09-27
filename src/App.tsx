@@ -5063,3 +5063,196 @@ export default function App() {
                       <QuickPicks tracks={quickPicks} onItemClick={handleItemClick} t={t} />
                     )}
 
+                    {activeTab === 'search' && heroTrack && (
+                      <HeroSection
+                        track={heroTrack}
+                        onPlay={() =>
+                          handleItemClick(heroTrack, sections[0]?.title, sections[0]?.items)
+                        }
+                        t={t}
+                      />
+                    )}
+                    {activeTab === 'search' && (
+                      <div className="search-results-list">
+                        {sections
+                          .flatMap((s) => s.items)
+                          .slice(0, 48)
+                          .map((item) => {
+                            const ownerSection = sections.find((s) =>
+                              s.items.some((i) => i.id === item.id)
+                            );
+                            return (
+                              <button
+                                key={item.id}
+                                data-ctx-track={ctxTrackAttr(item)}
+                                className={`search-result-row search-result-type-${item.type}`}
+                                onClick={() =>
+                                  handleItemClick(item, ownerSection?.title, ownerSection?.items)
+                                }
+                              >
+                                <div className="search-result-cover-wrap">
+                                  <img
+                                    alt=""
+                                    className="search-result-cover"
+                                    loading="lazy"
+                                    decoding="async"
+                                    {...coverAttrs(item)}
+                                  />
+                                  <div className="search-result-play-icon">
+                                    <Play size={14} fill="currentColor" />
+                                  </div>
+                                </div>
+                                <div className="search-result-meta">
+                                  <span className="search-result-title">{item.title}</span>
+                                  <span className="search-result-artist">{item.artist}</span>
+                                </div>
+                                <span className="search-result-badge">{typeLabel(item.type)}</span>
+                              </button>
+                            );
+                          })}
+                      </div>
+                    )}
+
+                    {activeTab === 'explore' && (
+                      <ExploreView
+                        sections={exploreSections}
+                        onItemClick={handleItemClick}
+                        onNavigateMoods={openMoodsGenres}
+                        t={t}
+                        lang={lang}
+                        renderSection={(section, idx) => (
+                          <SectionRow
+                            key={`${section.title}-${idx}`}
+                            section={section}
+                            sectionIndex={idx}
+                            onItemClick={handleItemClick}
+                          />
+                        )}
+                      />
+                    )}
+
+                    {activeTab === 'moods_genres' && (
+                      <MoodsGenresView onCategoryClick={loadMood} t={t} lang={lang} />
+                    )}
+
+                    {activeTab !== 'explore' &&
+                      activeTab !== 'moods_genres' &&
+                      activeTab !== 'search' && (
+                        <div className="sections-container">{sectionRows}</div>
+                      )}
+                  </>
+                )}
+              </div>
+            )}
+          </main>
+
+          <footer className="player-bar-premium">
+            <div
+              className={`player-now-playing-block ${currentTrack ? 'clickable' : ''}`}
+              onClick={() => currentTrack && openPlayer()}
+            >
+              {currentTrack && (
+                <>
+                  <img
+                    loading="lazy"
+                    decoding="async"
+                    alt=""
+                    className="player-mini-cover"
+                    {...coverAttrs(currentTrack, 'thumb')}
+                  />
+                  <div className="player-mini-info">
+                    <span className="player-title">{currentTrack.title}</span>
+                    <span className="player-artist">{currentTrack.artist}</span>
+                  </div>
+                </>
+              )}
+            </div>
+
+            <div className="player-core-controls">
+              <div className="playback-buttons-group">
+                <Shuffle
+                  size={18}
+                  className={`control-icon-btn pb-mode-btn ${shuffleOn ? 'active' : ''}`}
+                  aria-label={t.shuffle}
+                  onClick={toggleShuffle}
+                />
+                <SkipBack
+                  size={22}
+                  className="control-icon-btn"
+                  aria-label={t.previousTrack}
+                  onClick={playPrev}
+                >
+                  <title>{t.previousTrack}</title>
+                </SkipBack>
+                <div
+                  className="main-play-pause-circle"
+                  onClick={togglePlay}
+                  role="button"
+                  aria-label={isPlaying ? t.pause : t.play}
+                  title={isPlaying ? t.pause : t.play}
+                >
+                  {buffering ? (
+                    <Loader2 size={24} className="spin-icon" />
+                  ) : isPlaying ? (
+                    <Pause size={24} fill="currentColor" />
+                  ) : (
+                    <Play size={24} fill="currentColor" />
+                  )}
+                </div>
+                <SkipForward
+                  size={22}
+                  className="control-icon-btn"
+                  aria-label={t.nextTrack}
+                  onClick={playNext}
+                >
+                  <title>{t.nextTrack}</title>
+                </SkipForward>
+                {loopMode === 'one' ? (
+                  <Repeat1
+                    size={18}
+                    className="control-icon-btn pb-mode-btn active"
+                    aria-label={t.loopOne}
+                    onClick={cycleLoop}
+                  />
+                ) : (
+                  <Repeat
+                    size={18}
+                    className={`control-icon-btn pb-mode-btn ${loopMode === 'all' ? 'active' : ''}`}
+                    aria-label={loopMode === 'all' ? t.loopAll : t.loop}
+                    onClick={cycleLoop}
+                  />
+                )}
+              </div>
+              <div className={`progress-bar-wrapper${progressScrubbing ? ' scrubbing' : ''}`}>
+                <span ref={progressTimeElRef} className="progress-time-text" />
+                <div
+                  ref={progressTrackRef}
+                  className="progress-bar-track"
+                  onPointerDown={onProgressPointerDown}
+                  onPointerMove={onProgressPointerMove}
+                  onPointerUp={onProgressPointerUp}
+                  onPointerCancel={onProgressPointerUp}
+                >
+                  <div ref={progressFillRef} className="progress-bar-fill" />
+                  {pluginStates['ab-loop'] && abLoop.a !== null && duration > 0 && (
+                    <div
+                      className="ab-marker ab-a"
+                      style={{ left: `${(abLoop.a / duration) * 100}%` }}
+                      title="A"
+                    />
+                  )}
+                  {pluginStates['ab-loop'] && abLoop.b !== null && duration > 0 && (
+                    <div
+                      className="ab-marker ab-b"
+                      style={{ left: `${(abLoop.b / duration) * 100}%` }}
+                      title="B"
+                    />
+                  )}
+                  {pluginStates['ab-loop'] &&
+                    abLoop.active &&
+                    abLoop.a !== null &&
+                    abLoop.b !== null &&
+                    duration > 0 && (
+                      <div
+                        className="ab-loop-region"
+                        style={{
