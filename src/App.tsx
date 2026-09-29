@@ -5256,3 +5256,503 @@ export default function App() {
                       <div
                         className="ab-loop-region"
                         style={{
+                          left: `${(abLoop.a! / duration) * 100}%`,
+                          width: `${((abLoop.b! - abLoop.a!) / duration) * 100}%`,
+                        }}
+                      />
+                    )}
+                  <div
+                    ref={progressHandleRef}
+                    className={`progress-bar-handle${progressScrubbing ? ' dragging' : ''}`}
+                  />
+                </div>
+                <button
+                  type="button"
+                  className="progress-time-text remaining-toggle"
+                  title={showRemaining ? t.remainingLabel : t.durationLabel}
+                  onClick={() => setShowRemaining((v) => !v)}
+                >
+                  <span ref={durationTimeElRef} />
+                </button>
+              </div>
+            </div>
+
+            <div className="player-extra-controls-group">
+              {currentTrack && /^[\w-]{11}$/.test(currentTrack.id) && (
+                <YtmRatingButtons
+                  rating={trackRating}
+                  onLike={toggleLike}
+                  onDislike={toggleDislike}
+                  likeLabel={t.likeTrack}
+                  dislikeLabel={t.dislikeTrack}
+                />
+              )}
+              {pluginStates['ab-loop'] &&
+                (() => {
+                  const phase = abLoopPhase(abLoop);
+                  const hint =
+                    phase === 'off' ? t.abLoopSetA : phase === 'a' ? t.abLoopSetB : t.abLoopClear;
+                  return (
+                    <button
+                      type="button"
+                      className={`extra-icon-btn ab-loop-btn${phase === 'off' ? '' : ` ${phase === 'a' ? 'armed' : 'active'}`}`}
+                      data-phase={phase}
+                      aria-label={`${t.abLoop}: ${hint}`}
+                      aria-pressed={phase === 'ab'}
+                      title={hint}
+                      data-testid="ab-loop-btn"
+                      disabled={!currentTrack}
+                      onClick={() => cycleAbLoop(audio.currentTime || progressRef.current)}
+                    >
+                      <span className="ab-loop-letter">A</span>
+                      <span className="ab-loop-dash" aria-hidden />
+                      <span className="ab-loop-letter">B</span>
+                    </button>
+                  );
+                })()}
+              {pluginStates['share-card'] && (
+                <Share2
+                  size={18}
+                  className={`extra-icon-btn ${shareCardOk ? 'active' : ''}`}
+                  aria-label={shareCardOk ? t.shareCardCopied : t.shareCard}
+                  onClick={handleShareCard}
+                />
+              )}
+              <button
+                type="button"
+                className={`extra-icon-btn lyrics-toggle-btn ${activeTab === 'player' ? 'active' : ''}`}
+                aria-label={activeTab === 'player' ? t.lyricsClose : t.lyrics}
+                title={activeTab === 'player' ? t.lyricsClose : t.lyrics}
+                aria-pressed={activeTab === 'player'}
+                disabled={!currentTrack}
+                data-testid="lyrics-toggle"
+                onClick={() => {
+                  if (activeTab === 'player') leavePlayer();
+                  else if (currentTrack) openPlayer();
+                }}
+              >
+                <Mic2 size={20} />
+              </button>
+              <div className="volume-control-block" ref={volumeBlockRef} data-testid="volume-block">
+                {isMuted || volume === 0 ? (
+                  <VolumeX
+                    size={20}
+                    className="extra-icon-btn volume-muted-icon"
+                    aria-label={t.unmute}
+                    onClick={toggleMute}
+                  />
+                ) : volume < 0.5 ? (
+                  <Volume1
+                    size={20}
+                    className="extra-icon-btn"
+                    aria-label={t.mute}
+                    onClick={toggleMute}
+                  />
+                ) : (
+                  <Volume2
+                    size={20}
+                    className="extra-icon-btn"
+                    aria-label={t.mute}
+                    onClick={toggleMute}
+                  />
+                )}
+                <div className="volume-bar-track" onClick={handleVolumeClick}>
+                  <div
+                    className={`volume-bar-fill ${isMuted ? 'muted' : ''}`}
+                    style={{ width: `${isMuted ? 0 : volume * 100}%` }}
+                  ></div>
+                </div>
+                <span className="volume-pct">
+                  {isMuted ? '0%' : `${Math.round(volume * 100)}%`}
+                </span>
+              </div>
+              <button
+                type="button"
+                className={`extra-icon-btn queue-toggle-btn ${queueOpen ? 'active' : ''}`}
+                aria-label={t.openQueue}
+                aria-expanded={queueOpen}
+                onClick={() => setQueueOpen((o) => !o)}
+              >
+                <ListMusic size={20} />
+              </button>
+            </div>
+          </footer>
+
+          <QueueDrawer
+            open={queueOpen}
+            queue={queue}
+            queueIndex={queueIndex}
+            t={t}
+            onClose={() => setQueueOpen(false)}
+            onSelectTrack={(idx, _track) => {
+              if (idx !== queueIndex) void playByIndex(idx);
+            }}
+            onRemoveTrack={(idx) => {
+              const prev = queueRef.current;
+              if (idx < 0 || idx >= prev.length) return;
+              const wasCurrent = idx === queueIndexRef.current;
+              const next = prev.filter((_, i) => i !== idx);
+              let newIndex = queueIndexRef.current;
+              if (idx < newIndex) newIndex -= 1;
+              else if (idx === newIndex) {
+                newIndex = Math.min(newIndex, Math.max(0, next.length - 1));
+              }
+              queueRef.current = next;
+              queueIndexRef.current = newIndex;
+              setQueue(next);
+              setQueueIndex(newIndex);
+              if (next.length === 0) {
+                ++loadGenRef.current;
+                audio.pause();
+                audio.src = '';
+                setCurrentTrack(null);
+                setIsPlaying(false);
+                setBuffering(false);
+              } else if (wasCurrent && next[newIndex]) {
+                void loadTrack(next[newIndex], isPlayingRef.current);
+              }
+            }}
+            onReorder={(from, to) => {
+              const prev = queueRef.current;
+              if (from === to || from < 0 || to < 0 || from >= prev.length || to >= prev.length)
+                return;
+              const next = prev.slice();
+              const [moved] = next.splice(from, 1);
+              next.splice(to, 0, moved);
+              const cur = queueIndexRef.current;
+              let newIndex = cur;
+              if (from === cur) newIndex = to;
+              else if (from < cur && to >= cur) newIndex = cur - 1;
+              else if (from > cur && to <= cur) newIndex = cur + 1;
+              queueRef.current = next;
+              queueIndexRef.current = newIndex;
+              setQueue(next);
+              setQueueIndex(newIndex);
+            }}
+            onClearQueue={() => {
+              const current = queueRef.current[queueIndexRef.current];
+              if (current) {
+                setQueue([current]);
+                queueRef.current = [current];
+                setQueueIndex(0);
+                queueIndexRef.current = 0;
+              } else {
+                setQueue([]);
+                queueRef.current = [];
+                setQueueIndex(0);
+              }
+              pushToast(t.queueCleared, 'success');
+            }}
+          />
+        </div>
+      </div>
+
+      {isSettingsOpen && (
+        <ModalOverlay onClick={() => setIsSettingsOpen(false)} testId="settings-overlay">
+          <div className="glass-modal-container" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header-polished">
+              <h2>{t.generalSettings}</h2>
+              <X size={26} className="modal-close-icon" onClick={() => setIsSettingsOpen(false)} />
+            </div>
+            <div className="modal-body-polished">
+              <div className="settings-row-item settings-toggle-row">
+                <div className="settings-account-info">
+                  <span className="setting-label">{t.offlineDownloads}</span>
+                  <span className="plugin-desc">{t.offlineDownloadsDesc}</span>
+                </div>
+                <button
+                  type="button"
+                  className={`lang-option-btn remember-login-toggle${pluginStates['offline-downloads'] ? ' active' : ''}`}
+                  aria-pressed={Boolean(pluginStates['offline-downloads'])}
+                  data-testid="offline-downloads-toggle"
+                  onClick={() => togglePlugin('offline-downloads')}
+                >
+                  {pluginStates['offline-downloads'] ? t.pluginEnabled : t.pluginDisabled}
+                </button>
+              </div>
+              <div className="settings-row-item settings-toggle-row">
+                <div className="settings-account-info">
+                  <span className="setting-label">{t.rememberLogin}</span>
+                  <span className="plugin-desc">{t.rememberLoginDesc}</span>
+                </div>
+                <button
+                  type="button"
+                  className={`lang-option-btn remember-login-toggle${rememberLogin ? ' active' : ''}`}
+                  onClick={async () => {
+                    const next = !rememberLogin;
+                    setRememberLoginState(next);
+                    setRememberLogin(next);
+                    if (next) {
+                      await persistSessionIfWanted();
+                    } else {
+                      try {
+                        await invoke('forget_ytm_session_file');
+                      } catch (err) {
+                        console.debug('App', err);
+                      }
+                    }
+                  }}
+                >
+                  {rememberLogin ? t.pluginEnabled : t.pluginDisabled}
+                </button>
+              </div>
+              <div className="settings-row-item settings-toggle-row">
+                <div className="settings-account-info">
+                  <span className="setting-label">{t.lightLyrics}</span>
+                  <span className="plugin-desc">{t.lightLyricsDesc}</span>
+                </div>
+                <button
+                  type="button"
+                  className={`lang-option-btn remember-login-toggle${lightLyrics ? ' active' : ''}`}
+                  aria-pressed={lightLyrics}
+                  onClick={() => setLightLyrics(!lightLyrics)}
+                >
+                  {lightLyrics ? t.pluginEnabled : t.pluginDisabled}
+                </button>
+              </div>
+              <div className="settings-row-item settings-toggle-row">
+                <div className="settings-account-info">
+                  <span className="setting-label">{t.replayOnboarding}</span>
+                  <span className="plugin-desc">{t.replayOnboardingDesc}</span>
+                </div>
+                <button
+                  type="button"
+                  className="lang-option-btn settings-action-btn"
+                  onClick={() => {
+                    resetOnboarding();
+                    setIsSettingsOpen(false);
+                    setShowOnboarding(true);
+                  }}
+                >
+                  {t.onbTourCta}
+                </button>
+              </div>
+              <div className="settings-row-item settings-toggle-row">
+                <div className="settings-account-info">
+                  <span className="setting-label" id="settings-language-label">
+                    {t.language}
+                  </span>
+                  <span className="plugin-desc">{t.languageDesc}</span>
+                </div>
+                <div
+                  className="language-selector-group"
+                  role="radiogroup"
+                  aria-labelledby="settings-language-label"
+                >
+                  <button
+                    type="button"
+                    role="radio"
+                    aria-checked={lang === 'en'}
+                    className={`lang-option-btn ${lang === 'en' ? 'active' : ''}`}
+                    onClick={() => changeLanguage('en')}
+                  >
+                    {t.langEn}
+                  </button>
+                  <button
+                    type="button"
+                    role="radio"
+                    aria-checked={lang === 'pl'}
+                    className={`lang-option-btn ${lang === 'pl' ? 'active' : ''}`}
+                    onClick={() => changeLanguage('pl')}
+                  >
+                    {t.langPl}
+                  </button>
+                </div>
+              </div>
+              {libAuthed && (
+                <div className="settings-row-item settings-account-row">
+                  <div className="settings-account-info">
+                    <span className="setting-label">{t.logout}</span>
+                    <span className="plugin-desc">{t.logoutDesc}</span>
+                  </div>
+                  <button
+                    type="button"
+                    className="settings-logout-btn"
+                    onClick={() => void handleLogout()}
+                  >
+                    <LogOut size={16} />
+                    {t.logout}
+                  </button>
+                </div>
+              )}
+              <div className="settings-row-item settings-toggle-row">
+                <div className="settings-account-info">
+                  <span className="setting-label">{t.checkUpdates}</span>
+                  <span className="plugin-desc">
+                    {t.appVersion} {appVersion}
+                  </span>
+                  {updateStatus && (
+                    <span
+                      className={`settings-update-status tone-${
+                        updateStatus.kind === 'failed'
+                          ? 'error'
+                          : updateStatus.kind === 'unpublished' || updateStatus.kind === 'ahead'
+                            ? 'info'
+                            : 'success'
+                      }`}
+                      role="status"
+                    >
+                      {updateStatus.kind === 'newer'
+                        ? t.updateAvailableTag.replace('{tag}', updateStatus.tag || '')
+                        : updateStatus.kind === 'ahead'
+                          ? t.updateAhead
+                              .replace('{current}', appVersion)
+                              .replace('{tag}', updateStatus.tag || '')
+                          : updateStatus.kind === 'current'
+                            ? `${t.upToDate} (${updateStatus.tag})`
+                            : updateStatus.kind === 'unpublished'
+                              ? t.updateNotPublished
+                              : t.updateCheckFailed}
+                    </span>
+                  )}
+                </div>
+                {updateStatus?.installable ? (
+                  <button
+                    type="button"
+                    className="lang-option-btn settings-action-btn"
+                    disabled={updateInstalling !== false}
+                    onClick={() => void installAppUpdate()}
+                  >
+                    {updateInstalling === false
+                      ? t.updateNow
+                      : `${t.updateDownloading}${updateInstalling != null ? ` ${updateInstalling}%` : ''}`}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="lang-option-btn settings-action-btn"
+                    disabled={updateBusy}
+                    onClick={() => void checkForAppUpdate()}
+                  >
+                    {updateBusy ? t.checkingUpdates : t.checkUpdatesShort}
+                  </button>
+                )}
+              </div>
+              <div className="settings-row-item settings-toggle-row">
+                <div className="settings-account-info">
+                  <span className="setting-label">{t.downloadPage}</span>
+                  <span className="plugin-desc">{t.aboutLegal}</span>
+                </div>
+                <button
+                  type="button"
+                  className="lang-option-btn settings-action-btn"
+                  onClick={() =>
+                    void openUrl(updateStatus?.url || GITHUB_RELEASES).catch((err) =>
+                      console.debug('App', err)
+                    )
+                  }
+                >
+                  {t.openRelease}
+                </button>
+              </div>
+            </div>
+          </div>
+        </ModalOverlay>
+      )}
+
+      {pmOpen && (
+        <PlaylistManager
+          lang={lang}
+          ownerName={libAccount?.name ?? null}
+          onClose={() => setPmOpen(false)}
+          onSessionExpired={() => {
+            setLibAuthed(false);
+            setUserPlaylists([]);
+            setLibAccount(null);
+            setLibSections([]);
+            setSessionExpired(true);
+            setPmOpen(false);
+          }}
+          onPlay={(tracks, index, title) => {
+            if (tracks[index]) handleItemClick(tracks[index], title, tracks);
+          }}
+          onChanged={(change) => {
+            void loadUserPlaylists();
+            if (change?.deletedId && isViewingPlaylist(activeTab, activeMood, change.deletedId)) {
+              ++feedSeqRef.current.mood;
+              setSections([]);
+              setBrowseTitle(null);
+              setBrowseEmptyKind(null);
+              setActiveMood(null);
+              navigateTo('library');
+            }
+          }}
+        />
+      )}
+      {ctxMenu &&
+        createPortal(
+          <>
+            <div
+              className="ctx-menu-catcher"
+              onClick={() => setCtxMenu(null)}
+              onContextMenu={() => setCtxMenu(null)}
+            />
+            <div
+              className="ctx-menu"
+              style={{ left: ctxMenu.x, top: ctxMenu.y }}
+              role="menu"
+              data-testid="track-ctx-menu"
+            >
+              <div className="ctx-menu-label">{t.ctxAddToPlaylist}</div>
+              {userPlaylists.filter((p) => isEditablePlaylist(p.id)).length === 0 ? (
+                <div className="ctx-menu-empty">{t.ctxNoPlaylists}</div>
+              ) : (
+                userPlaylists
+                  .filter((p) => isEditablePlaylist(p.id))
+                  .map((p) => (
+                    <button
+                      key={p.id}
+                      role="menuitem"
+                      onClick={() => {
+                        const track = ctxMenu.track;
+                        setCtxMenu(null);
+                        void addCurrentToPlaylist(p, false, track);
+                      }}
+                    >
+                      {p.title}
+                    </button>
+                  ))
+              )}
+              {libAuthed && (
+                <button
+                  role="menuitem"
+                  onClick={() => {
+                    setCtxMenu(null);
+                    setPmOpen(true);
+                  }}
+                >
+                  {t.pmOpen}
+                </button>
+              )}
+            </div>
+          </>,
+          document.body
+        )}
+      {isPluginsOpen && (
+        <Suspense
+          fallback={
+            <ModalOverlay onClick={() => setIsPluginsOpen(false)} testId="plugins-overlay">
+              <div className="glass-modal-container" onClick={(e) => e.stopPropagation()} />
+            </ModalOverlay>
+          }
+        >
+          <PluginsPanel
+            lang={lang}
+            pluginStates={pluginStates}
+            togglePlugin={togglePlugin}
+            onClose={() => setIsPluginsOpen(false)}
+            discordClientId={discordClientId}
+            saveDiscordClientId={saveDiscordClientId}
+            audio={audio}
+            currentTrack={currentTrack}
+            onPlayTrack={(track, list) => {
+              setIsPluginsOpen(false);
+              void handleItemClick(track, t.historyTitle, list);
+            }}
+          />
+        </Suspense>
+      )}
+
+      {plEdit && (
+        <ModalOverlay onClick={() => !plEditBusy && setPlEdit(null)}>
+          <div className="glass-modal-container" onClick={(e) => e.stopPropagation()}>
