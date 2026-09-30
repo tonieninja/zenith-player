@@ -1163,3 +1163,148 @@ export function PluginsPanel({
         return <p className="plugin-no-settings">{t.pluginNoSettings}</p>;
     }
   };
+
+  const hasSettings = (id: string) =>
+    [
+      'crossfade',
+      'sleep-timer',
+      'offline-downloads',
+      'global-hotkeys',
+      'playback-speed',
+      'discord-rpc',
+      'lyrics-overlay',
+      'preload-next',
+      'fade-on-pause',
+      'webhook',
+      'remote-control',
+      'equalizer',
+      'loudness-normalization',
+      'lastfm-scrobbler',
+      'duck-on-voice',
+      'lyrics-karaoke',
+      'listening-room',
+      'zenith-stage',
+      'dualsense-pad',
+      'stats-tracker',
+      'listening-history',
+    ].includes(id);
+
+  return (
+    <ModalOverlay onClick={onClose} testId="plugins-overlay">
+      <div className="glass-modal-container plugins-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header-polished">
+          <h2>{t.plugins}</h2>
+          <X size={26} className="modal-close-icon" onClick={onClose} />
+        </div>
+        <div className="plugins-search">
+          <Search size={16} aria-hidden />
+          <input
+            type="text"
+            role="searchbox"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape' && query) {
+                e.stopPropagation();
+                setQuery('');
+              }
+            }}
+            placeholder={t.pluginSearch}
+            aria-label={t.pluginSearch}
+            spellCheck={false}
+            autoComplete="off"
+            autoCorrect="off"
+            autoCapitalize="off"
+            data-testid="plugin-search"
+          />
+          {query && (
+            <button
+              type="button"
+              className="plugins-search-clear"
+              aria-label={t.pluginSearchClear}
+              title={t.pluginSearchClear}
+              onClick={() => setQuery('')}
+            >
+              <X size={14} aria-hidden />
+            </button>
+          )}
+        </div>
+        <div className="modal-body-polished plugins-modal-body">
+          {(() => {
+            const q = deferredQuery.trim().toLowerCase();
+            const groups = pluginManager.byCategory();
+            let shown = 0;
+            const blocks = PLUGIN_CATEGORY_ORDER.map((cat) => {
+              const items = groups[cat]
+                .map((plugin) => ({
+                  plugin,
+                  text: pluginText(lang, plugin.id, {
+                    name: plugin.name,
+                    desc: plugin.description,
+                  }),
+                }))
+                .filter(({ plugin, text }) => {
+                  if (!q) return true;
+                  const other = pluginText(lang === 'pl' ? 'en' : 'pl', plugin.id, {
+                    name: plugin.name,
+                    desc: plugin.description,
+                  });
+                  return pluginQueryMatches([text.name, text.desc, other.name, other.desc], q);
+                });
+              if (items.length === 0) return null;
+              shown += items.length;
+              const Icon = CATEGORY_ICONS[cat];
+              const onCount = items.filter(({ plugin }) => pluginStates[plugin.id]).length;
+              return (
+                <section key={cat} className="plugin-category-block" data-category={cat}>
+                  <header className="plugin-category-head">
+                    <span className="plugin-category-icon">
+                      <Icon size={15} aria-hidden />
+                    </span>
+                    <h3 className="plugin-category-label">{PLUGIN_CATEGORY_LABELS[cat][lang]}</h3>
+                    <span className="plugin-category-count">
+                      {t.pluginOnCount
+                        .replace('{on}', String(onCount))
+                        .replace('{n}', String(items.length))}
+                    </span>
+                  </header>
+                  <div className="plugin-category-list">
+                    {items.map(({ plugin, text }) => (
+                      <PluginCard
+                        key={plugin.id}
+                        enabled={Boolean(pluginStates[plugin.id])}
+                        name={text.name}
+                        description={text.desc}
+                        onToggle={() => togglePlugin(plugin.id)}
+                        expanded={expandedId === plugin.id}
+                        onExpand={() =>
+                          setExpandedId((prev) => (prev === plugin.id ? null : plugin.id))
+                        }
+                        settings={
+                          hasSettings(plugin.id)
+                            ? renderSettings(plugin.id)
+                            : renderSettings('default')
+                        }
+                        t={t}
+                      />
+                    ))}
+                  </div>
+                </section>
+              );
+            });
+            return shown ? blocks : <p className="plugin-desc plugins-empty">{t.pluginNoMatch}</p>;
+          })()}
+        </div>
+      </div>
+    </ModalOverlay>
+  );
+}
+
+const CATEGORY_ICONS: Record<PluginCategory, typeof Play> = {
+  playback: Play,
+  sound: SlidersHorizontal,
+  lyrics: Quote,
+  control: Gamepad2,
+  integrations: Share2,
+  interface: LayoutDashboard,
+};
