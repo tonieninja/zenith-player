@@ -5756,3 +5756,26 @@ export default function App() {
       {plEdit && (
         <ModalOverlay onClick={() => !plEditBusy && setPlEdit(null)}>
           <div className="glass-modal-container" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header-polished">
+              <h2>{plEdit.mode === 'rename' ? t.renamePlaylist : t.deletePlaylist}</h2>
+              <X size={26} className="modal-close-icon" onClick={() => setPlEdit(null)} />
+            </div>
+            <div className="modal-body-polished np-modal-body">
+              {plEdit.mode === 'rename' ? (
+                <label className="np-field">
+                  <span className="np-field-label">{t.npTitle}</span>
+                  <input
+                    className="settings-text-input np-input"
+                    type="text"
+                    value={plEditTitle}
+                    maxLength={150}
+                    autoFocus
+                    onChange={(e) => setPlEditTitle(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') void submitPlaylistEdit();
+                    }}
+                    spellCheck={false}
+                  />
+                </label>
+              ) : (
+                <p className="plugin-desc">
