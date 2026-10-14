@@ -321,3 +321,301 @@ fn sanitize(v: &Value) -> Option<Value> {
         _ => return None,
     })
 }
+
+fn forward(v: &Value) -> bool {
+    let Some(clean) = sanitize(v) else {
+        return false;
+    };
+    #[cfg(test)]
+    if let Ok(path) = std::env::var("ZENITH_REMOTE_E2E_LOG") {
+        use std::io::Write;
+        if let Ok(mut f) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)
+        {
+            let _ = writeln!(f, "{clean}");
+        }
+    }
+    if let Some(app) = APP.lock().ok().and_then(|g| g.clone()) {
+        let _ = app.emit("zenith-remote-cmd", clean);
+    }
+    true
+}
+
+async fn page() -> Response {
+    (
+        [
+            (header::CONTENT_TYPE, "text/html; charset=utf-8"),
+            (header::CACHE_CONTROL, "no-cache"),
+            (
+                header::HeaderName::from_static("x-content-type-options"),
+                "nosniff",
+            ),
+            (
+                header::HeaderName::from_static("referrer-policy"),
+                "no-referrer",
+            ),
+        ],
+        PAGE,
+    )
+        .into_response()
+}
+
+async fn icon() -> Response {
+    (
+        [
+            (header::CONTENT_TYPE, "image/png"),
+            (header::CACHE_CONTROL, "max-age=86400"),
+        ],
+        ICON,
+    )
+        .into_response()
+}
+
+async fn api_state(Query(q): Query<PinQuery>) -> Response {
+    if let Err(code) = auth_ok(&q) {
+        return code.into_response();
+    }
+    let s = LAST_STATE.lock().map(|g| g.clone()).unwrap_or_default();
+    (
+        [
+            (header::CONTENT_TYPE, "application/json"),
+            (header::CACHE_CONTROL, "no-store"),
+        ],
+        s,
+    )
+        .into_response()
+}
+
+async fn ws_upgrade(ws: WebSocketUpgrade, Query(q): Query<PinQuery>) -> Response {
+    if let Err(code) = auth_ok(&q) {
+        return code.into_response();
+    }
+    ws.max_message_size(16 * 1024)
+        .on_upgrade(client)
+        .into_response()
+}
+
+async fn client(socket: WebSocket) {
+    let (mut sink, mut stream) = socket.split();
+    let mut rx = TX.subscribe();
+    if let Ok(mut c) = CLIENTS.lock() {
+        *c += 1;
+    }
+    let first = LAST_STATE.lock().map(|g| g.clone()).unwrap_or_default();
+    let lyrics = LAST_LYRICS.lock().map(|g| g.clone()).unwrap_or_default();
+    let mut ok = sink.send(Message::Text(first.into())).await.is_ok();
+    if ok && !lyrics.is_empty() {
+        ok = sink.send(Message::Text(lyrics.into())).await.is_ok();
+    }
+    if ok {
+        loop {
+            tokio::select! {
+                msg = rx.recv() => match msg {
+                    Ok(s) => {
+                        let bye = s == BYE;
+                        if sink.send(Message::Text(s.into())).await.is_err() || bye {
+                            let _ = sink.send(Message::Close(None)).await;
+                            break;
+                        }
+                    }
+                    Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
+                    Err(_) => break,
+                },
+                inc = stream.next() => match inc {
+                    Some(Ok(Message::Text(t))) => {
+                        if let Ok(v) = serde_json::from_str::<Value>(t.as_str()) { forward(&v); }
+                    }
+                    Some(Ok(Message::Ping(p))) => { let _ = sink.send(Message::Pong(p)).await; }
+                    Some(Ok(_)) => {}
+                    _ => break,
+                },
+            }
+        }
+    }
+    if let Ok(mut c) = CLIENTS.lock() {
+        *c = c.saturating_sub(1);
+    }
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoteInfo {
+    running: bool,
+    port: u16,
+    url: Option<String>,
+    mdns_url: Option<String>,
+    qr_url: Option<String>,
+    qr_svg: Option<String>,
+    clients: u32,
+    paired_devices: u32,
+}
+
+fn info() -> RemoteInfo {
+    let (port, pair, mdns) = SERVER
+        .lock()
+        .ok()
+        .and_then(|g| {
+            g.as_ref().map(|s| {
+                (
+                    Some(s.port),
+                    s.pair.then(|| s.pair_token.clone()),
+                    s.mdns.is_some(),
+                )
+            })
+        })
+        .unwrap_or((None, None, false));
+    let url = port.map(|p| {
+        format!(
+            "http://{}:{}/",
+            lan_ip()
+                .map(|i| i.to_string())
+                .unwrap_or_else(|| "127.0.0.1".into()),
+            p
+        )
+    });
+    let mdns_url = port
+        .filter(|_| mdns)
+        .map(|p| format!("http://zenith.local:{p}/"));
+    let qr_url = match (&url, pair) {
+        (Some(u), Some(t)) => Some(format!("{u}?pair={t}")),
+        (u, _) => u.clone(),
+    };
+    let qr_svg = qr_url.as_ref().and_then(|u| {
+        qrcode::QrCode::new(u.as_bytes()).ok().map(|c| {
+            qr_svg_fluid(
+                &c.render::<qrcode::render::svg::Color>()
+                    .quiet_zone(true)
+                    .module_dimensions(1, 1)
+                    .dark_color(qrcode::render::svg::Color("#000000"))
+                    .light_color(qrcode::render::svg::Color("#ffffff"))
+                    .build(),
+            )
+        })
+    });
+    RemoteInfo {
+        running: port.is_some(),
+        port: port.unwrap_or(0),
+        url,
+        mdns_url,
+        qr_url,
+        qr_svg,
+        clients: CLIENTS.lock().map(|c| *c).unwrap_or(0),
+        paired_devices: DEVICE_KEYS.lock().map(|k| k.len() as u32).unwrap_or(0),
+    }
+}
+
+#[tauri::command]
+pub async fn remote_start(
+    app: AppHandle,
+    port: u16,
+    pin: String,
+    pair: Option<bool>,
+) -> Result<RemoteInfo, String> {
+    use tauri::Manager;
+    if let Ok(dir) = app.path().app_data_dir() {
+        let _ = std::fs::create_dir_all(&dir);
+        load_keys(dir.join("remote_devices.json"));
+    }
+    *APP.lock().map_err(|e| e.to_string())? = Some(app);
+    start_server(port, pin, pair.unwrap_or(false)).await
+}
+
+fn stop_inner(s: &mut Server) {
+    if let Some(tx) = s.shutdown.take() {
+        let _ = tx.send(());
+    }
+    if let Some(d) = s.mdns.take() {
+        let _ = d.shutdown();
+    }
+}
+
+fn start_mdns(port: u16) -> Option<mdns_sd::ServiceDaemon> {
+    let ip = lan_ip()?;
+    let d = mdns_sd::ServiceDaemon::new().ok()?;
+    let svc = mdns_sd::ServiceInfo::new(
+        "_http._tcp.local.",
+        "Zenith Remote",
+        MDNS_HOST,
+        ip.to_string(),
+        port,
+        &[("path", "/")][..],
+    )
+    .ok()?;
+    if d.register(svc).is_err() {
+        let _ = d.shutdown();
+        return None;
+    }
+    Some(d)
+}
+
+async fn start_server(port: u16, pin: String, pair: bool) -> Result<RemoteInfo, String> {
+    let pin: String = pin.trim().chars().take(32).collect();
+    {
+        let mut g = SERVER.lock().map_err(|e| e.to_string())?;
+        if let Some(s) = g.as_mut() {
+            if s.port == port || port == 0 {
+                s.pin = pin;
+                if s.pair != pair {
+                    s.pair = pair;
+                    s.pair_token = random_hex(12);
+                }
+                drop(g);
+                return Ok(info());
+            }
+            stop_inner(s);
+            *g = None;
+        }
+    }
+    let port = if port == 0 { 8765 } else { port };
+    let host = [0, 0, 0, 0];
+    let listener = tokio::net::TcpListener::bind(SocketAddr::from((host, port)))
+        .await
+        .map_err(|e| format!("port {port}: {e}"))?;
+    let router = Router::new()
+        .route("/", get(page))
+        .route("/icon.png", get(icon))
+        .route("/icon-256.png", get(icon256))
+        .route("/icon-512.png", get(icon512))
+        .route("/manifest.webmanifest", get(manifest))
+        .route("/api/pair", get(api_pair))
+        .route("/api/state", get(api_state))
+        .route("/ws", get(ws_upgrade))
+        .layer(axum::middleware::from_fn(
+            |ConnectInfo(addr): ConnectInfo<SocketAddr>,
+             req: axum::extract::Request,
+             next: axum::middleware::Next| async move {
+                if !is_lan(addr.ip()) {
+                    return StatusCode::FORBIDDEN.into_response();
+                }
+                next.run(req).await
+            },
+        ));
+    let (tx, rx) = tokio::sync::oneshot::channel::<()>();
+    tokio::spawn(async move {
+        let _ = axum::serve(
+            listener,
+            router.into_make_service_with_connect_info::<SocketAddr>(),
+        )
+        .with_graceful_shutdown(async move {
+            let _ = rx.await;
+        })
+        .await;
+    });
+    let mdns = if std::env::var("ZENITH_REMOTE_MDNS").as_deref() == Ok("0") {
+        None
+    } else {
+        start_mdns(port)
+    };
+    *SERVER.lock().map_err(|e| e.to_string())? = Some(Server {
+        port,
+        pin,
+        pair,
+        pair_token: random_hex(12),
+        shutdown: Some(tx),
+        mdns,
+    });
+    *FAILS.lock().map_err(|e| e.to_string())? = (0, None);
+    Ok(info())
+}
