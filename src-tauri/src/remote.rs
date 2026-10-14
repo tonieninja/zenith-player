@@ -619,3 +619,303 @@ async fn start_server(port: u16, pin: String, pair: bool) -> Result<RemoteInfo, 
     *FAILS.lock().map_err(|e| e.to_string())? = (0, None);
     Ok(info())
 }
+
+#[tauri::command]
+pub fn remote_stop() {
+    if let Ok(mut g) = SERVER.lock() {
+        if let Some(mut s) = g.take() {
+            stop_inner(&mut s);
+        }
+    }
+    let _ = TX.send(String::from(BYE));
+}
+
+#[tauri::command]
+pub fn remote_forget_devices() -> RemoteInfo {
+    if let Ok(mut k) = DEVICE_KEYS.lock() {
+        k.clear();
+    }
+    save_keys();
+    info()
+}
+
+#[tauri::command]
+pub fn remote_info() -> RemoteInfo {
+    info()
+}
+
+#[tauri::command]
+pub fn remote_push(payload: String) {
+    if SERVER.lock().map(|g| g.is_none()).unwrap_or(true) || payload.len() > 512 * 1024 {
+        return;
+    }
+    if payload.starts_with("{\"type\":\"lyrics\"") {
+        if let Ok(mut g) = LAST_LYRICS.lock() {
+            if *g == payload {
+                return;
+            }
+            *g = payload.clone();
+        }
+    }
+    if payload.starts_with("{\"type\":\"state\"") {
+        if let Ok(mut g) = LAST_STATE.lock() {
+            if *g == payload {
+                return;
+            }
+            *g = payload.clone();
+        }
+    }
+    let _ = TX.send(payload);
+}
+
+fn qr_svg_fluid(svg: &str) -> String {
+    let Some(start) = svg.find("<svg") else {
+        return svg.to_string();
+    };
+    let end = start + svg[start..].find('>').unwrap_or(0);
+    let head = &svg[start..end];
+    let attr = |name: &str| -> Option<u32> {
+        let k = format!(" {name}=\"");
+        let i = head.find(&k)? + k.len();
+        head[i..].split('"').next()?.parse().ok()
+    };
+    let (Some(w), Some(h)) = (attr("width"), attr("height")) else {
+        return svg.to_string();
+    };
+    let mut new_head = head
+        .replace(&format!(" width=\"{w}\""), "")
+        .replace(&format!(" height=\"{h}\""), "");
+    if !new_head.contains("viewBox") {
+        new_head.push_str(&format!(" viewBox=\"0 0 {w} {h}\""));
+    }
+    new_head.push_str(" width=\"100%\" height=\"100%\" shape-rendering=\"crispEdges\" preserveAspectRatio=\"xMidYMid meet\"");
+    format!("{}{}{}", &svg[..start], new_head, &svg[end..])
+}
+#[derive(serde::Serialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct FirewallStatus {
+    pub windows: bool,
+    pub rule_ok: bool,
+    pub public_network: bool,
+}
+
+pub const FIREWALL_RULE: &str = "Zenith Player (local network)";
+
+#[cfg(windows)]
+fn hidden_cmd(exe: &str) -> std::process::Command {
+    use std::os::windows::process::CommandExt;
+    let mut c = std::process::Command::new(exe);
+    c.creation_flags(0x0800_0000);
+    c
+}
+
+#[tauri::command]
+pub async fn remote_firewall_status() -> FirewallStatus {
+    #[cfg(windows)]
+    {
+        tokio::task::spawn_blocking(|| {
+            let rule_ok = hidden_cmd("netsh")
+                .args(["advfirewall", "firewall", "show", "rule"])
+                .arg(format!("name={FIREWALL_RULE}"))
+                .output()
+                .map(|o| o.status.success())
+                .unwrap_or(false);
+            let public_network = hidden_cmd("powershell")
+                .args([
+                    "-NoProfile",
+                    "-NonInteractive",
+                    "-Command",
+                    "(Get-NetConnectionProfile | Where-Object { $_.NetworkCategory -eq 'Public' }).Count",
+                ])
+                .output()
+                .ok()
+                .and_then(|o| String::from_utf8_lossy(&o.stdout).trim().parse::<u32>().ok())
+                .map(|n| n > 0)
+                .unwrap_or(false);
+            FirewallStatus { windows: true, rule_ok, public_network }
+        })
+        .await
+        .unwrap_or_default()
+    }
+    #[cfg(not(windows))]
+    {
+        FirewallStatus::default()
+    }
+}
+
+#[tauri::command]
+pub async fn remote_firewall_allow() -> Result<bool, String> {
+    #[cfg(windows)]
+    {
+        let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+        let exe = exe.to_string_lossy().replace('\'', "''");
+        let args = format!(
+            "advfirewall firewall add rule name=\"{FIREWALL_RULE}\" dir=in action=allow program=\"{exe}\" profile=private,public remoteip=localsubnet protocol=TCP enable=yes"
+        );
+        let script = format!(
+            "try {{ Start-Process netsh -Verb RunAs -Wait -WindowStyle Hidden -ArgumentList '{args}'; exit 0 }} catch {{ exit 1 }}"
+        );
+        let ok = tokio::task::spawn_blocking(move || {
+            hidden_cmd("powershell")
+                .args(["-NoProfile", "-NonInteractive", "-Command", &script])
+                .status()
+                .map(|s| s.success())
+                .unwrap_or(false)
+        })
+        .await
+        .unwrap_or(false);
+        if !ok {
+            return Ok(false);
+        }
+        Ok(remote_firewall_status().await.rule_ok)
+    }
+    #[cfg(not(windows))]
+    {
+        Ok(true)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn lan_filter() {
+        assert!(is_lan("192.168.1.5".parse().unwrap()));
+        assert!(is_lan("10.0.0.1".parse().unwrap()));
+        assert!(is_lan("127.0.0.1".parse().unwrap()));
+        assert!(is_lan("::ffff:192.168.0.2".parse().unwrap()));
+        assert!(!is_lan("8.8.8.8".parse().unwrap()));
+        assert!(!is_lan("2001:db8::1".parse().unwrap()));
+    }
+    fn http(port: u16, req: &str) -> String {
+        use std::io::{Read, Write};
+        let mut s = std::net::TcpStream::connect(("127.0.0.1", port)).unwrap();
+        s.set_read_timeout(Some(Duration::from_millis(800)))
+            .unwrap();
+        s.write_all(req.as_bytes()).unwrap();
+        let mut out = vec![0u8; 65536];
+        let n = s.read(&mut out).unwrap_or(0);
+        String::from_utf8_lossy(&out[..n]).into_owned()
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn server_roundtrip() {
+        let port = 18799;
+        start_server(port, "1234".into(), false).await.unwrap();
+        remote_push("{\"type\":\"state\",\"isPlaying\":true}".into());
+        let r = tokio::task::spawn_blocking(move || {
+            (
+                http(port, "GET / HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n"),
+                http(port, "GET /api/state HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n"),
+                http(port, "GET /api/state?pin=1234 HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n"),
+                http(port, "GET /ws?pin=1234 HTTP/1.1\r\nHost: x\r\nConnection: Upgrade\r\nUpgrade: websocket\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n"),
+            )
+        })
+        .await
+        .unwrap();
+        assert!(
+            r.0.starts_with("HTTP/1.1 200") && r.0.contains("Zenith Remote"),
+            "{}",
+            r.0
+        );
+        assert!(r.1.starts_with("HTTP/1.1 401"), "{}", r.1);
+        assert!(
+            r.2.starts_with("HTTP/1.1 200") && r.2.contains("isPlaying"),
+            "{}",
+            r.2
+        );
+        assert!(r.3.starts_with("HTTP/1.1 101"), "{}", r.3);
+        let i = info();
+        let svg = i.qr_svg.unwrap();
+        assert!(i.running && svg.contains("<svg"));
+        assert!(
+            svg.contains("viewBox=") && svg.contains("width=\"100%\""),
+            "{svg}"
+        );
+        remote_stop();
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        assert!(std::net::TcpStream::connect(("127.0.0.1", port)).is_err());
+        assert!(!info().running);
+
+        let port = 18798;
+        start_server(port, String::new(), true).await.unwrap();
+        let qr = info().qr_url.unwrap();
+        let tok = qr.split("pair=").nth(1).unwrap().to_string();
+        let r = tokio::task::spawn_blocking(move || {
+            let a = http(
+                port,
+                "GET /api/state HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n",
+            );
+            let b = http(
+                port,
+                &format!("GET /api/pair?t={tok} HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n"),
+            );
+            let c = http(
+                port,
+                &format!("GET /api/pair?t={tok} HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n"),
+            );
+            let key = b
+                .split("\"key\":\"")
+                .nth(1)
+                .map(|x| x[..48].to_string())
+                .unwrap_or_default();
+            let d = http(
+                port,
+                &format!(
+                    "GET /api/state?key={key} HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n"
+                ),
+            );
+            let m = http(
+                port,
+                "GET /manifest.webmanifest HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n",
+            );
+            (a, b, c, d, m)
+        })
+        .await
+        .unwrap();
+        assert!(r.0.starts_with("HTTP/1.1 401"), "{}", r.0);
+        assert!(
+            r.1.starts_with("HTTP/1.1 200") && r.1.contains("key"),
+            "{}",
+            r.1
+        );
+        assert!(
+            r.2.starts_with("HTTP/1.1 401"),
+            "token must be single-use: {}",
+            r.2
+        );
+        assert!(r.3.starts_with("HTTP/1.1 200"), "{}", r.3);
+        assert!(r.4.contains("Zenith Remote"), "{}", r.4);
+        remote_stop();
+    }
+
+    #[test]
+    fn sanitize_cmds() {
+        assert_eq!(
+            sanitize(&json!({"cmd":"volume","value":3})).unwrap()["value"],
+            1.0
+        );
+        assert!(sanitize(&json!({"cmd":"rm -rf"})).is_none());
+        assert!(sanitize(&json!({"cmd":"playTrack","track":{"id":"../x"}})).is_none());
+        assert!(sanitize(&json!({"cmd":"playTrack","track":{"id":"dQw4w9WgXcQ"}})).is_some());
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    #[ignore]
+    async fn e2e_serve() {
+        let port: u16 = std::env::var("ZENITH_E2E_PORT")
+            .ok()
+            .and_then(|p| p.parse().ok())
+            .unwrap_or(18890);
+        std::env::set_var("ZENITH_REMOTE_MDNS", "0");
+        start_server(port, "4321".into(), false).await.unwrap();
+        remote_push(
+            r#"{"type":"state","isPlaying":true,"position":10,"duration":200,"volume":0.5,"liked":false,"shuffle":false,"sleepLeft":0,"track":{"id":"t1","title":"E2E Song","artist":"Test Artist","cover":""},"queue":[]}"#.into(),
+        );
+        remote_push(
+            r#"{"type":"lyrics","trackId":"t1","synced":[{"t":0,"x":"first line"},{"t":9,"x":"current line"},{"t":60,"x":"later line"}],"plain":null}"#.into(),
+        );
+        println!("E2E_READY {port}");
+        tokio::time::sleep(Duration::from_secs(900)).await;
+    }
+}
