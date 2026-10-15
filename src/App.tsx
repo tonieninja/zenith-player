@@ -5779,3 +5779,99 @@ export default function App() {
                 </label>
               ) : (
                 <p className="plugin-desc">
+                  {t.deletePlaylistConfirm.replace('{name}', plEdit.pl.title)}
+                </p>
+              )}
+              {plEditError && <div className="np-error">{t.playlistEditFailed}</div>}
+              <div className="np-actions">
+                <button className="np-cancel-btn" onClick={() => setPlEdit(null)}>
+                  {t.npCancel}
+                </button>
+                <button
+                  className={`np-create-btn${plEdit.mode === 'delete' ? ' danger' : ''}`}
+                  disabled={plEditBusy || (plEdit.mode === 'rename' && !plEditTitle.trim())}
+                  onClick={() => void submitPlaylistEdit()}
+                >
+                  {plEditBusy
+                    ? t.working
+                    : plEdit.mode === 'rename'
+                      ? t.saveChanges
+                      : t.deletePlaylist}
+                </button>
+              </div>
+            </div>
+          </div>
+        </ModalOverlay>
+      )}
+
+      {fdEdit && (
+        <ModalOverlay onClick={() => setFdEdit(null)}>
+          <div className="glass-modal-container" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header-polished">
+              <h2>{fdEdit.mode === 'rename' ? t.renameFolder : t.moveToFolder}</h2>
+              <X size={26} className="modal-close-icon" onClick={() => setFdEdit(null)} />
+            </div>
+            <div className="modal-body-polished np-modal-body">
+              {fdEdit.mode === 'move' && (
+                <label className="np-field">
+                  <span className="np-field-label">{t.folder}</span>
+                  <Select
+                    value={fdEdit.target}
+                    ariaLabel={t.folder}
+                    options={[
+                      { value: '', label: t.noFolder },
+                      ...plFolders.folders.map((f) => ({ value: f.id, label: f.name })),
+                      { value: '__new', label: t.newFolder },
+                    ]}
+                    onChange={(v) => setFdEdit({ ...fdEdit, target: String(v) })}
+                  />
+                </label>
+              )}
+              {(fdEdit.mode === 'rename' || fdEdit.target === '__new') && (
+                <label className="np-field">
+                  <span className="np-field-label">{t.folderName}</span>
+                  <input
+                    className="settings-text-input np-input"
+                    type="text"
+                    value={fdName}
+                    maxLength={80}
+                    autoFocus
+                    onChange={(e) => setFdName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') submitFolderEdit();
+                    }}
+                    spellCheck={false}
+                  />
+                </label>
+              )}
+              <p className="plugin-desc">{t.folderLocalHint}</p>
+              <div className="np-actions">
+                <button className="np-cancel-btn" onClick={() => setFdEdit(null)}>
+                  {t.npCancel}
+                </button>
+                <button
+                  className="np-create-btn"
+                  disabled={
+                    (fdEdit.mode === 'rename' || fdEdit.target === '__new') && !fdName.trim()
+                  }
+                  onClick={submitFolderEdit}
+                >
+                  {t.saveChanges}
+                </button>
+              </div>
+            </div>
+          </div>
+        </ModalOverlay>
+      )}
+
+      {npOpen && (
+        <ModalOverlay onClick={() => setNpOpen(false)}>
+          <div className="glass-modal-container" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header-polished">
+              <h2>{t.newPlaylist}</h2>
+              <X size={26} className="modal-close-icon" onClick={() => setNpOpen(false)} />
+            </div>
+            <div className="modal-body-polished np-modal-body">
+              <label className="np-field">
+                <span className="np-field-label">{t.npTitle}</span>
+                <input
