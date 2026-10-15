@@ -825,3 +825,129 @@ export function PlaylistManager({
     </ModalOverlay>
   );
 }
+
+function SpotifyExport({
+  lang,
+  name,
+  description,
+  entries,
+  onClose,
+}: {
+  lang: Language;
+  name: string;
+  description: string;
+  entries: PlaylistEntry[];
+  onClose: () => void;
+}) {
+  const t = translations[lang];
+  const [clientId, setClientId] = useState(getSpotifyClientId());
+  const [connected, setConnected] = useState(isSpotifyConnected());
+  const [phase, setPhase] = useState<'idle' | 'auth' | 'matching' | 'done'>('idle');
+  const [progress, setProgress] = useState({ done: 0, total: entries.length });
+  const [result, setResult] = useState<ExportResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const connect = async () => {
+    setError(null);
+    setSpotifyClientId(clientId);
+    setPhase('auth');
+    try {
+      await connectSpotify();
+      setConnected(true);
+    } catch (e) {
+      setError(fill(t.pmSpotifyFailed, { err: String((e as Error).message || e) }));
+    } finally {
+      setPhase('idle');
+    }
+  };
+
+  const start = async () => {
+    setError(null);
+    setPhase('matching');
+    try {
+      const r = await exportToSpotify(name, description, entries, (done, total) =>
+        setProgress({ done, total })
+      );
+      setResult(r);
+      setPhase('done');
+    } catch (e) {
+      setError(fill(t.pmSpotifyFailed, { err: String((e as Error).message || e) }));
+      setPhase('idle');
+      if (String((e as Error).message).includes('not connected')) setConnected(false);
+    }
+  };
+
+  return (
+    <div className="pm-dialog-backdrop" onClick={phase === 'matching' ? undefined : onClose}>
+      <div
+        className="pm-dialog pm-spotify"
+        role="dialog"
+        aria-label={t.pmSpotify}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h3>{t.pmSpotify}</h3>
+        {!connected ? (
+          <>
+            <label className="pm-field">
+              <span>{t.pmSpotifyClientId}</span>
+              <input
+                value={clientId}
+                onChange={(e) => setClientId(e.target.value)}
+                spellCheck={false}
+              />
+            </label>
+            <p className="pm-hint">{fill(t.pmSpotifyClientHelp, { uri: SPOTIFY_REDIRECT_URI })}</p>
+            <div className="pm-dialog-actions">
+              <button className="pm-btn" onClick={onClose}>
+                {t.pmCancel}
+              </button>
+              <button
+                className="pm-btn pm-btn-accent"
+                disabled={!clientId.trim() || phase === 'auth'}
+                onClick={() => void connect()}
+              >
+                {phase === 'auth' ? t.pmSpotifyWaiting : t.pmSpotifyConnect}
+              </button>
+            </div>
+          </>
+        ) : phase === 'done' && result ? (
+          <>
+            <p>{fill(t.pmSpotifyDone, { matched: result.matched, total: entries.length })}</p>
+            {result.unmatched.length > 0 && (
+              <div className="pm-unmatched">
+                <span>{t.pmSpotifyUnmatched}</span>
+                <ul>
+                  {result.unmatched.map((e, i) => (
+                    <li key={`${e.videoId}-${i}`}>
+                      {e.title} <em>{e.artist}</em>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            <div className="pm-dialog-actions">
+              <button className="pm-btn" onClick={onClose}>
+                {t.pmCancel}
+              </button>
+              <button
+                className="pm-btn pm-btn-accent"
+                onClick={() => void openUrl(result.playlistUrl)}
+              >
+                {t.pmSpotifyOpen}
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <p className="pm-hint">{t.pmSpotifyConnected}</p>
+            {phase === 'matching' && (
+              <div className="pm-progress">
+                <div style={{ width: `${(progress.done / Math.max(1, progress.total)) * 100}%` }} />
+                <span>{fill(t.pmSpotifyMatching, progress)}</span>
+              </div>
+            )}
+            <div className="pm-dialog-actions">
+              <button
+                className="pm-btn"
+                disabled={phase === 'matching'}
+                onClick={() => {
