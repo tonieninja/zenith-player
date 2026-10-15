@@ -734,3 +734,276 @@ pub async fn fetch_direct_audio(video_id: &str) -> Option<DirectAudio> {
     let visitor = visitor_data().await;
     client_once(video_id, Client::Visionos, visitor.as_deref(), None).await
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{is_bot_check, is_progressive_url, parse_visitor_data, pick_audio_url};
+
+    #[tokio::test]
+    #[ignore = "talks to youtube"]
+    async fn live_native_layer() {
+        let ids = [
+            "kJQP7kiw5Fk",
+            "9bZkp7q19f0",
+            "OPf0YbXqDm0",
+            "fJ9rUzIMcZQ",
+            "60ItHLz5WEA",
+        ];
+        let mut ok = 0;
+        for id in ids {
+            let t = std::time::Instant::now();
+            let got = super::fetch_direct_audio(id).await;
+            println!(
+                "native {id}: {} in {} ms",
+                got.is_some(),
+                t.elapsed().as_millis()
+            );
+            ok += got.is_some() as usize;
+        }
+        assert!(ok >= 4, "native layer {ok}/5");
+    }
+
+    #[test]
+    fn native_layer_needs_no_js_and_no_po_token() {
+        let c = super::spec(super::Client::Visionos);
+        assert_eq!(c.name, "VISIONOS");
+        assert_eq!(c.client_id, 101);
+        assert!(!c.needs_js && !c.needs_pot && !c.cookies);
+    }
+
+    #[test]
+    fn web_clients_need_po_tokens_and_tv_does_not() {
+        use super::{spec, Client};
+        for c in [
+            Client::Web,
+            Client::WebSafari,
+            Client::Mweb,
+            Client::WebMusic,
+        ] {
+            assert!(spec(c).needs_pot, "{c:?}");
+        }
+        for c in [
+            Client::Tv,
+            Client::TvSamsung,
+            Client::WebEmbedded,
+            Client::TvDowngraded,
+        ] {
+            assert!(!spec(c).needs_pot && spec(c).needs_js, "{c:?}");
+        }
+        assert_eq!(spec(Client::WebMusic).host, "music.youtube.com");
+    }
+
+    #[test]
+    fn body_carries_sts_and_embed_context() {
+        use super::{request_body, spec, Client};
+        let b = request_body(
+            "dQw4w9WgXcQ",
+            &spec(Client::WebEmbedded),
+            Some("vd"),
+            Some(20767),
+        );
+        assert_eq!(
+            b.pointer("/playbackContext/contentPlaybackContext/signatureTimestamp"),
+            Some(&json!(20767))
+        );
+        assert_eq!(
+            b.pointer("/context/thirdParty/embedUrl"),
+            Some(&json!("https://www.reddit.com/"))
+        );
+        assert_eq!(b.pointer("/context/client/visitorData"), Some(&json!("vd")));
+        let v = request_body("dQw4w9WgXcQ", &spec(Client::Visionos), None, None);
+        assert!(v
+            .pointer("/playbackContext/contentPlaybackContext/signatureTimestamp")
+            .is_none());
+        assert_eq!(
+            v.pointer("/context/client/deviceMake"),
+            Some(&json!("Apple"))
+        );
+    }
+
+    #[test]
+    fn reads_embed_tokens_from_the_page() {
+        let html = r#"x "embeddedPlayerEncryptedContext":"AAu-1_x","ancestorOriginsSupported":false "encryptedHostFlags":"AAuF" "a":"""#;
+        assert_eq!(
+            super::json_str_field(html, "embeddedPlayerEncryptedContext").as_deref(),
+            Some("AAu-1_x")
+        );
+        assert_eq!(
+            super::json_str_field(html, "encryptedHostFlags").as_deref(),
+            Some("AAuF")
+        );
+        assert_eq!(super::json_str_field(html, "a"), None);
+        assert_eq!(super::json_str_field(html, "nope"), None);
+    }
+
+    #[test]
+    fn cipher_and_query_helpers() {
+        let (u, s, sp) = super::parse_cipher("s=AB%3DC&sp=sig&url=https%3A%2F%2Fr1.googlevideo.com%2Fvideoplayback%3Fn%3Dxyz%26itag%3D251").unwrap();
+        assert_eq!(s, "AB=C");
+        assert_eq!(sp, "sig");
+        assert_eq!(super::query_param(&u, "n").as_deref(), Some("xyz"));
+        let u2 = super::set_param(&u, "n", "solved");
+        assert_eq!(super::query_param(&u2, "n").as_deref(), Some("solved"));
+        assert_eq!(super::query_param(&u2, "itag").as_deref(), Some("251"));
+        let u3 = super::set_param(&u2, "sig", "a/b+c=");
+        assert_eq!(super::query_param(&u3, "sig").as_deref(), Some("a/b+c="));
+        assert!(super::parse_cipher("url=https%3A%2F%2Fx").is_none());
+    }
+
+    #[test]
+    fn signed_in_needs_a_sapisid_cookie() {
+        assert!(super::Auth::from_cookie_header("SAPISID=a; SID=b").is_some());
+        assert!(super::Auth::from_cookie_header("__Secure-3PAPISID=a").is_some());
+        assert!(super::Auth::from_cookie_header("NID=1").is_none());
+        assert!(super::Auth::from_cookie_header("").is_none());
+    }
+
+    #[test]
+    fn ciphered_formats_are_still_candidates() {
+        let data = json!({
+            "streamingData": {
+                "adaptiveFormats": [
+                    { "itag": 251, "mimeType": "audio/webm; codecs=\"opus\"", "signatureCipher": "s=QQ&sp=sig&url=https%3A%2F%2Fr1.googlevideo.com%2Fvideoplayback%3Fitag%3D251" },
+                    { "itag": 18, "mimeType": "video/mp4; codecs=\"avc1, mp4a.40.2\"", "url": "https://r1.googlevideo.com/videoplayback?itag=18" }
+                ]
+            }
+        });
+        let c = super::candidates(&data);
+        assert_eq!(c.len(), 2);
+        assert!(c[0].sig.is_some(), "audio-only first even with a cipher");
+        assert!(c[1].url.contains("itag=18"));
+    }
+
+    #[test]
+    fn parses_visitor_data() {
+        let body = r#")]}'
+[[null,null,[[[null,null,null,null,null,null,null,null,null,null,null,null,null,"CgtBQkNERUZHSElKSyiAgICA"]]]]]"#;
+        assert_eq!(
+            parse_visitor_data(body).as_deref(),
+            Some("CgtBQkNERUZHSElKSyiAgICA")
+        );
+        assert_eq!(parse_visitor_data("garbage"), None);
+    }
+
+    #[test]
+    fn detects_bot_check() {
+        let d = json!({"playabilityStatus": {"status": "LOGIN_REQUIRED", "reason": "Sign in to confirm you are not a bot"}});
+        assert!(is_bot_check(&d));
+        let d = json!({"playabilityStatus": {"status": "LOGIN_REQUIRED", "reason": "This video is private"}});
+        assert!(!is_bot_check(&d));
+    }
+    use serde_json::json;
+
+    #[test]
+    fn rejects_hls() {
+        assert!(!is_progressive_url(
+            "https://manifest.googlevideo.com/api/manifest/hls_playlist/foo.m3u8"
+        ));
+        assert!(is_progressive_url(
+            "https://rr1---sn-abc.googlevideo.com/videoplayback?id=x"
+        ));
+    }
+
+    #[test]
+    fn prefers_m4a() {
+        let data = json!({
+            "streamingData": {
+                "adaptiveFormats": [
+                    { "itag": 251, "mimeType": "audio/webm; codecs=\"opus\"", "url": "https://g.example/opus" },
+                    { "itag": 140, "mimeType": "audio/mp4; codecs=\"mp4a.40.2\"", "url": "https://g.example/m4a" }
+                ]
+            }
+        });
+        let picked = pick_audio_url(&data).as_deref().map(str::to_string);
+        if crate::native_audio::available() {
+            assert_eq!(picked.as_deref(), Some("https://g.example/opus"));
+        } else {
+            assert_eq!(picked.as_deref(), Some("https://g.example/m4a"));
+        }
+    }
+
+    #[test]
+    fn skips_muxed_when_opus_exists() {
+        let data = json!({
+            "streamingData": {
+                "adaptiveFormats": [
+                    { "itag": 251, "mimeType": "audio/webm; codecs=\"opus\"", "url": "https://g.example/opus" }
+                ],
+                "formats": [
+                    { "itag": 18, "mimeType": "video/mp4; codecs=\"avc1.42001E, mp4a.40.2\"", "url": "https://g.example/mux" }
+                ]
+            }
+        });
+        assert_eq!(
+            pick_audio_url(&data).as_deref(),
+            Some("https://g.example/opus")
+        );
+    }
+}
+
+#[cfg(test)]
+mod live_tests {
+    #[tokio::test]
+    #[ignore]
+    async fn innertube_timing() {
+        for id in [
+            "dQw4w9WgXcQ",
+            "kJQP7kiw5Fk",
+            "9bZkp7q19f0",
+            "OPf0YbXqDm0",
+            "fJ9rUzIMcZQ",
+        ] {
+            let t = std::time::Instant::now();
+            let got = super::fetch_direct_audio(id).await;
+            println!(
+                "innertube {id}: {:.2}s ok={}",
+                t.elapsed().as_secs_f64(),
+                got.is_some()
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod chain_live {
+    #[tokio::test(flavor = "multi_thread")]
+    #[ignore = "talks to youtube"]
+    async fn every_layer_on_real_tracks() {
+        crate::player_js::init(std::env::temp_dir().join("zenith-live-player"));
+        let ids = [
+            "kJQP7kiw5Fk",
+            "9bZkp7q19f0",
+            "OPf0YbXqDm0",
+            "fJ9rUzIMcZQ",
+            "60ItHLz5WEA",
+            "JGwWNGJdvx8",
+            "hT_nvWreIhg",
+            "YQHsXMglC9A",
+            "RgKAFK5djSk",
+            "CevxZvSJLk8",
+        ];
+        let mut hits = std::collections::HashMap::new();
+        for id in ids {
+            for c in [
+                super::Client::Visionos,
+                super::Client::WebEmbedded,
+                super::Client::TvSamsung,
+            ] {
+                let t = std::time::Instant::now();
+                let got = super::resolve_with(id, &[c], None).await;
+                let itag = got
+                    .as_ref()
+                    .and_then(|(g, _)| super::query_param(&g.url, "itag"));
+                println!(
+                    "{id} {c:?}: {:?} itag={itag:?} {} ms",
+                    got.is_some(),
+                    t.elapsed().as_millis()
+                );
+                if got.is_some() {
+                    *hits.entry(format!("{c:?}")).or_insert(0) += 1;
+                }
+            }
+        }
+        println!("{hits:?}");
+    }
+}

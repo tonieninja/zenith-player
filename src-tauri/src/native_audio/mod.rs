@@ -1192,3 +1192,149 @@ pub mod headless {
         })
     }
 }
+
+#[cfg(test)]
+mod ab_tests {
+    use super::{ab_jump, ab_range};
+
+    #[test]
+    fn range_needs_b_after_a() {
+        assert_eq!(ab_range(Some(10.0), Some(25.0)), Some((10.0, 25.0)));
+        assert_eq!(ab_range(Some(10.0), Some(10.1)), None);
+        assert_eq!(ab_range(Some(25.0), Some(10.0)), None);
+        assert_eq!(ab_range(Some(10.0), None), None);
+        assert_eq!(ab_range(Some(f64::NAN), Some(20.0)), None);
+    }
+
+    #[test]
+    fn jumps_back_to_a_at_b() {
+        let ab = Some((10.0, 25.0));
+        assert_eq!(ab_jump(ab, 20.0), None);
+        assert_eq!(ab_jump(ab, 24.98), Some(10.0));
+        assert_eq!(ab_jump(ab, 40.0), Some(10.0));
+        assert_eq!(ab_jump(None, 40.0), None);
+    }
+}
+
+#[cfg(test)]
+mod engine_tests {
+    use super::*;
+
+    fn url(name: &str) -> String {
+        let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures")
+            .join(name);
+        format!("file://{}", p.display())
+    }
+
+    async fn until(secs: f64, f: impl Fn(&Snapshot) -> bool) -> Snapshot {
+        let start = Instant::now();
+        loop {
+            let s = snapshot();
+            if f(&s) || start.elapsed().as_secs_f64() > secs {
+                return s;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    }
+
+    fn gains() -> (f64, f64) {
+        with(|st| (st.decks[0].gain, st.decks[1].gain)).unwrap()
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn plays_seeks_loops_and_crossfades_end_to_end() {
+        std::env::set_var("ZENITH_AUDIO_SINK", "fake");
+        assert!(start(None).is_some());
+
+        run_cmd(Cmd::SetSrc {
+            url: url("tone.webm"),
+        });
+        assert!(wait_ready(5000).await);
+        let s = play().await.unwrap();
+        assert!(!s.paused);
+        assert!((s.d.unwrap() - 3.0).abs() < 0.1, "{:?}", s.d);
+        tokio::time::sleep(Duration::from_millis(600)).await;
+        let t = snapshot().t;
+        assert!(t > 0.35 && t < 0.9, "position moves in real time: {t}");
+
+        run_cmd(Cmd::Pause);
+        let a = snapshot().t;
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        assert!((snapshot().t - a).abs() < 0.02, "paused position holds");
+        play().await.unwrap();
+
+        run_cmd(Cmd::Loop {
+            a: Some(1.0),
+            b: Some(1.6),
+        });
+        let mut wraps = 0;
+        let mut last = snapshot().t;
+        let start_t = Instant::now();
+        while wraps < 2 && start_t.elapsed() < Duration::from_secs(5) {
+            tokio::time::sleep(Duration::from_millis(30)).await;
+            let t = snapshot().t;
+            if t + 0.3 < last {
+                wraps += 1;
+                assert!(t >= 0.95 && t < 1.3, "wrapped to {t}");
+            }
+            last = t;
+        }
+        assert_eq!(wraps, 2, "A-B loop wraps twice");
+        run_cmd(Cmd::Loop { a: None, b: None });
+
+        run_cmd(Cmd::Rate { r: 2.0 });
+        let a = snapshot().t;
+        tokio::time::sleep(Duration::from_millis(400)).await;
+        let moved = snapshot().t - a;
+        assert!(moved > 0.55 && moved < 1.0, "double speed moved {moved}");
+        run_cmd(Cmd::Rate { r: 1.0 });
+
+        run_cmd(Cmd::Eq {
+            bands: vec![6.0; 15],
+        });
+        assert!((with(|st| st.preamp).unwrap() - 10f64.powf(-6.0 / 20.0)).abs() < 1e-9);
+        run_cmd(Cmd::Eq {
+            bands: vec![0.0; 15],
+        });
+
+        run_cmd(Cmd::Seek { t: 2.7 });
+        let s = until(3.0, |s| s.ended).await;
+        assert!(s.ended && s.paused, "track ends after seek near the end");
+        assert!(s.t > 2.8, "{}", s.t);
+
+        play().await.unwrap();
+        let t = until(1.0, |s| s.t > 0.2).await.t;
+        assert!(t < 1.0, "play after end restarts: {t}");
+
+        assert!(preroll(&url("tone.m4a")));
+        crossfade(url("tone.m4a"), 0.6).await.unwrap();
+        let s = snapshot();
+        assert!(s.crossfading && s.src.ends_with("tone.m4a"));
+        tokio::time::sleep(Duration::from_millis(250)).await;
+        let (g0, g1) = gains();
+        assert!(
+            g0 > 0.05 && g0 < 0.99 && g1 > 0.05 && g1 < 0.99,
+            "mid fade {g0} {g1}"
+        );
+        let s = until(2.0, |s| !s.crossfading).await;
+        assert!(!s.crossfading && !s.paused);
+        let (g0, g1) = gains();
+        assert!((g0 - 1.0).abs() < 1e-9 || (g1 - 1.0).abs() < 1e-9);
+        assert!(with(|st| st.decks[1 - st.active].src.is_empty()).unwrap());
+
+        crossfade(url("tone.webm"), 0.3).await.unwrap();
+        let s = until(2.0, |s| !s.crossfading).await;
+        assert!(s.src.ends_with("tone.webm") && !s.paused);
+
+        run_cmd(Cmd::SetSrc {
+            url: "file:///nope/missing.webm".into(),
+        });
+        let r = play().await;
+        assert!(r.is_err(), "missing file reports an error");
+
+        run_cmd(Cmd::AbortAll);
+        let s = snapshot();
+        assert!(!s.has_source && s.paused);
+    }
+}
