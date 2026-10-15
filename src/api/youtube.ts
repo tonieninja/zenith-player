@@ -3025,3 +3025,156 @@ function parseShelves(data: any, t: TranslationBundle): Section[] {
     }
     return items;
   }
+
+  function findShelves(obj: any) {
+    if (!obj) return;
+    if (Array.isArray(obj)) {
+      obj.forEach(findShelves);
+      return;
+    }
+    if (typeof obj !== 'object') return;
+
+    const renderer =
+      obj.musicCarouselShelfRenderer ||
+      obj.musicShelfRenderer ||
+      obj.musicCardShelfRenderer ||
+      obj.musicImmersiveCarouselShelfRenderer ||
+      obj.musicPlaylistShelfRenderer ||
+      obj.musicGridRenderer ||
+      obj.gridRenderer ||
+      obj.richShelfRenderer ||
+      obj.musicShelfContinuation ||
+      obj.gridContinuation;
+    if (renderer) {
+      const title =
+        extractFirstText(renderer.header?.musicCarouselShelfBasicHeaderRenderer?.title) ||
+        extractFirstText(renderer.header?.musicShelfHeaderRenderer?.title) ||
+        extractFirstText(renderer.title) ||
+        extractFirstText(renderer.header?.title) ||
+        t.defaultSectionTitle;
+      if (obj.musicCardShelfRenderer) {
+        const card = obj.musicCardShelfRenderer;
+        const self = extractItems([
+          {
+            musicTwoRowItemRenderer: {
+              title: card.title,
+              subtitle: card.subtitle,
+              thumbnailRenderer: card.thumbnail,
+              thumbnail: card.thumbnail,
+              navigationEndpoint: card.onTap || card.navigationEndpoint,
+              overlay: card.thumbnailOverlay || card.overlay,
+              playlistItemData: card.playlistItemData,
+              playNavigationEndpoint:
+                card.onTap ||
+                card.thumbnailOverlay?.musicItemThumbnailOverlayRenderer?.content
+                  ?.musicPlayButtonRenderer?.playNavigationEndpoint,
+            },
+          },
+        ]);
+        const more = extractItems(card.contents || []);
+        const all = [...self, ...more];
+        if (all.length > 0) sections.push({ title, items: all });
+      } else {
+        const items = extractItems(renderer.contents || renderer.items);
+        if (items.length > 0) sections.push({ title, items });
+      }
+    }
+
+    if (obj.itemSectionRenderer?.contents && !renderer) {
+      const nestedItems = extractItems(obj.itemSectionRenderer.contents);
+      if (nestedItems.length > 0) {
+        sections.push({ title: t.searchResults, items: nestedItems });
+      }
+    }
+
+    if (obj.richSectionRenderer?.content) {
+      findShelves(obj.richSectionRenderer.content);
+    }
+
+    const shelfKeys = [
+      'musicCarouselShelfRenderer',
+      'musicShelfRenderer',
+      'musicCardShelfRenderer',
+      'musicImmersiveCarouselShelfRenderer',
+      'musicPlaylistShelfRenderer',
+      'musicGridRenderer',
+      'gridRenderer',
+      'richShelfRenderer',
+      'musicShelfContinuation',
+      'gridContinuation',
+    ];
+    for (const key of Object.keys(obj)) {
+      if (!shelfKeys.includes(key)) {
+        findShelves(obj[key]);
+      }
+    }
+  }
+
+  findShelves(data);
+
+  const merged: Section[] = [];
+  const byTitle = new Map<string, Section>();
+  for (const section of sections) {
+    const existing = byTitle.get(section.title);
+    if (!existing) {
+      byTitle.set(section.title, section);
+      merged.push(section);
+      continue;
+    }
+    const seen = new Set(existing.items.map((i) => i.id));
+    for (const item of section.items) {
+      if (!seen.has(item.id)) {
+        seen.add(item.id);
+        existing.items.push(item);
+      }
+    }
+  }
+  return merged;
+}
+
+function parseRichHome(data: any, t: TranslationBundle): Section[] {
+  return parseShelves(data, t);
+}
+
+function findLyricsBrowseId(obj: any, lang: Language): string | null {
+  const tokens = lang === 'pl' ? ['tekst', 'lyrics'] : ['lyrics'];
+  let found: string | null = null;
+
+  const walk = (node: any) => {
+    if (!node || found) return;
+    if (Array.isArray(node)) {
+      node.forEach(walk);
+      return;
+    }
+    if (typeof node !== 'object') return;
+
+    const tab = node.tabRenderer;
+    if (
+      tab?.title &&
+      typeof tab.title === 'string' &&
+      tokens.some((t) => tab.title.toLowerCase().includes(t))
+    ) {
+      found = tab.endpoint?.browseEndpoint?.browseId || null;
+      if (found) return;
+    }
+
+    const text = node?.text;
+    if (text?.runs) {
+      const runText = text.runs
+        .map((r: any) => r.text)
+        .join('')
+        .toLowerCase();
+      if (tokens.some((t) => runText.includes(t))) {
+        const id = node.endpoint?.browseEndpoint?.browseId;
+        if (id) {
+          found = id;
+          return;
+        }
+      }
+    }
+    Object.values(node).forEach(walk);
+  };
+
+  walk(obj);
+  return found;
+}
