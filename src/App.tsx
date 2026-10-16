@@ -5875,3 +5875,49 @@ export default function App() {
               <label className="np-field">
                 <span className="np-field-label">{t.npTitle}</span>
                 <input
+                  className="settings-text-input np-input"
+                  type="text"
+                  ref={npTitleRef}
+                  value={npTitle}
+                  maxLength={150}
+                  autoFocus
+                  onChange={(e) => setNpTitle(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (!isCommitKey(e.nativeEvent)) return;
+                    e.preventDefault();
+                    setNpTitle(e.currentTarget.value);
+                    submitNewPlaylist();
+                  }}
+                  spellCheck={false}
+                />
+              </label>
+              <label className="np-field">
+                <span className="np-field-label">{t.npDesc}</span>
+                <textarea
+                  className="settings-text-input np-input np-textarea"
+                  ref={npDescRef}
+                  value={npDesc}
+                  maxLength={5000}
+                  rows={3}
+                  onChange={(e) => setNpDesc(e.target.value)}
+                  spellCheck={false}
+                />
+              </label>
+              <div className="np-field">
+                <span className="np-field-label">{t.npPrivacy}</span>
+                <div className="np-privacy-group">
+                  {(
+                    [
+                      ['PRIVATE', t.npPrivate],
+                      ['UNLISTED', t.npUnlisted],
+                      ['PUBLIC', t.npPublic],
+                    ] as [PlaylistPrivacy, string][]
+                  ).map(([value, label]) => (
+                    <button
+                      key={value}
+                      className={`np-privacy-pill ${npPrivacy === value ? 'active' : ''}`}
+                      onClick={() => setNpPrivacy(value)}
+                    >
+                      {label}
+                    </button>
+                  ))}
