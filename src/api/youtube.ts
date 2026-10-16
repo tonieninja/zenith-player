@@ -3178,3 +3178,32 @@ function findLyricsBrowseId(obj: any, lang: Language): string | null {
   walk(obj);
   return found;
 }
+
+function extractLyricsText(obj: any): string | null {
+  let lyrics: string | null = null;
+
+  const walk = (node: any) => {
+    if (!node || lyrics) return;
+    if (Array.isArray(node)) {
+      node.forEach(walk);
+      return;
+    }
+    if (typeof node !== 'object') return;
+
+    const d = node?.musicDescriptionShelfRenderer?.description ?? node?.description;
+    if (d?.runs) {
+      const text = d.runs
+        .map((r: any) => r.text)
+        .join('')
+        .trim();
+      if (text) {
+        lyrics = text;
+        return;
+      }
+    }
+    Object.values(node).forEach(walk);
+  };
+
+  walk(obj);
+  return lyrics;
+}

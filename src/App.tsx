@@ -5921,3 +5921,25 @@ export default function App() {
                       {label}
                     </button>
                   ))}
+                </div>
+              </div>
+              {npError && <div className="np-error">{t.npError}</div>}
+              <div className="np-actions">
+                <button className="np-cancel-btn" onClick={() => setNpOpen(false)}>
+                  {t.npCancel}
+                </button>
+                <button
+                  className="np-create-btn"
+                  disabled={!npTitle.trim() || npBusy}
+                  onClick={submitNewPlaylist}
+                >
+                  {npBusy ? t.npCreating : t.npCreate}
+                </button>
+              </div>
+            </div>
+          </div>
+        </ModalOverlay>
+      )}
+    </div>
+  );
+}
