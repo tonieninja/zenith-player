@@ -127,3 +127,67 @@ jobs:
           cp src-tauri/target/${{ matrix.target }}/release/zenith-player.exe "portable/Zenith_4.0.0_${{ matrix.arch }}_portable.exe"
       - uses: actions/upload-artifact@v4
         with:
+          name: bundle-windows-${{ matrix.arch }}
+          path: |
+            src-tauri/target/${{ matrix.target }}/release/bundle/nsis/*-setup.exe
+            src-tauri/target/${{ matrix.target }}/release/bundle/nsis/*.sig
+            src-tauri/target/${{ matrix.target }}/release/bundle/msi/*.msi
+            src-tauri/target/${{ matrix.target }}/release/bundle/msi/*.sig
+            portable/*.exe
+
+  release:
+    needs: [linux, macos, windows]
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { path: dl }
+      - name: merge bundles
+        shell: bash
+        run: |
+          mkdir -p bundle
+          for d in deb appimage rpm dmg macos nsis msi portable; do mkdir -p "bundle/$d"; done
+          find dl -type f | while read -r f; do
+            case "$f" in
+              */deb/*) cp "$f" bundle/deb/ ;;
+              */appimage/*) cp "$f" bundle/appimage/ ;;
+              */dmg/*) cp "$f" bundle/dmg/ ;;
+              */macos/*) cp "$f" bundle/macos/ ;;
+              */nsis/*) cp "$f" bundle/nsis/ ;;
+              */msi/*) cp "$f" bundle/msi/ ;;
+              */rpm/*) cp "$f" bundle/rpm/ ;;
+              */portable/*) cp "$f" bundle/portable/ ;;
+            esac
+          done
+          find bundle -type f | sort
+      - name: latest.json
+        if: env.TAURI_SIGNING_PRIVATE_KEY != ''
+        run: |
+          V=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          node scripts/make-latest-json.mjs bundle "$V" "${GITHUB_REF_NAME}" > bundle/latest.json
+          cat bundle/latest.json
+      - name: checksums
+        run: |
+          cd bundle
+          find . -type f ! -name SHA256SUMS -printf '%P\n' | sort | xargs sha256sum > SHA256SUMS
+          cat SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: zenith-release
+          path: bundle
+      - name: publish release (tags only)
+        if: startsWith(github.ref, 'refs/tags/v') && env.TAURI_SIGNING_PRIVATE_KEY != ''
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          files: |
+            bundle/deb/*
+            bundle/appimage/*
+            bundle/dmg/*
+            bundle/macos/*
+            bundle/nsis/*
+            bundle/msi/*
+            bundle/rpm/*
+            bundle/portable/*
+            bundle/latest.json
+            bundle/SHA256SUMS
