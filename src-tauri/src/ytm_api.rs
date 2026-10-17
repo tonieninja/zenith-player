@@ -942,3 +942,70 @@ pub async fn ytm_browse(
 
     Ok(text)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn music_host_ignores_google_and_www_only_cookies() {
+        let cookies = [
+            ("SAPISID", "google", ".google.com"),
+            ("SAPISID", "www-only", "www.youtube.com"),
+            ("SAPISID", "yt", "youtube.com"),
+            ("__Secure-3PAPISID", "three", ".youtube.com"),
+            ("SID", "gsid", ".google.com"),
+        ];
+        let h = music_cookie_header(&cookies);
+        assert_eq!(h, "SAPISID=yt; __Secure-3PAPISID=three");
+    }
+
+    #[test]
+    fn more_specific_domain_wins() {
+        let cookies = [
+            ("SAPISID", "broad", ".youtube.com"),
+            ("SAPISID", "music", "music.youtube.com"),
+        ];
+        assert_eq!(music_cookie_header(&cookies), "SAPISID=music");
+    }
+
+    #[test]
+    fn authorization_includes_1p_and_3p_hashes() {
+        let cookie = "SAPISID=secret; __Secure-1PAPISID=one; __Secure-3PAPISID=three";
+        let auth = sapisid_authorization(cookie, MUSIC_ORIGIN, 1_700_000_000);
+        assert_eq!(
+            auth,
+            "SAPISIDHASH 1700000000_d2a0deeb95ea263a68778d9e9ac8840dce59d800 SAPISID1PHASH 1700000000_da24a2c934790185633fc7b6b66bd84107f1999e SAPISID3PHASH 1700000000_7761b97c35f7260402cc05c3109e7bd1aa1ebeca"
+        );
+    }
+
+    #[test]
+    fn authorization_falls_back_to_3p_when_sapisid_is_missing() {
+        let cookie = "__Secure-3PAPISID=three";
+        let auth = sapisid_authorization(cookie, MUSIC_ORIGIN, 1_700_000_000);
+        assert!(auth.starts_with("SAPISIDHASH 1700000000_7761b97c35f7260402cc05c3109e7bd1aa1ebeca"));
+        assert!(auth.contains("SAPISID3PHASH 1700000000_7761b97c35f7260402cc05c3109e7bd1aa1ebeca"));
+    }
+
+    #[test]
+    fn clock_duration_parses_mmss_and_hhmmss() {
+        assert_eq!(parse_clock_duration("3:21"), Some(201.0));
+        assert_eq!(parse_clock_duration("1:02:03"), Some(3723.0));
+        assert_eq!(parse_clock_duration("0:00"), None);
+        assert_eq!(parse_clock_duration("2013"), None);
+    }
+
+    #[test]
+    fn two_row_item_keeps_length_text() {
+        let r = json!({
+            "playlistItemData": { "videoId": "ZP69PLBqFUo" },
+            "title": { "runs": [{ "text": "Get Lucky" }] },
+            "subtitle": { "runs": [{ "text": "Daft Punk" }] },
+            "lengthText": { "runs": [{ "text": "4:08" }] },
+            "thumbnailRenderer": { "musicThumbnailRenderer": { "thumbnail": { "thumbnails": [] } } },
+        });
+        let item = item_from_two_row(&r).unwrap();
+        assert_eq!(item["durationSec"], json!(248.0));
+        assert_eq!(item["title"], json!("Get Lucky"));
+    }
+}

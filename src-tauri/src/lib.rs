@@ -851,3 +851,32 @@ pub fn run() {
             }
         });
 }
+
+#[cfg(test)]
+mod hotkey_tests {
+    use super::*;
+
+    #[test]
+    fn default_bindings_parse() {
+        for (a, acc) in default_hotkey_bindings() {
+            assert!(HOTKEY_ACTIONS.contains(&a.as_str()));
+            if !acc.is_empty() {
+                assert!(parse_accelerator(&acc).is_some(), "{acc}");
+            }
+        }
+    }
+
+    #[test]
+    fn accelerator_parsing() {
+        assert!(parse_accelerator("Ctrl+Shift+KeyP").is_some());
+        assert!(parse_accelerator("Alt+F9").is_some());
+        assert!(parse_accelerator("").is_none());
+        assert!(parse_accelerator("Ctrl+Nope").is_none());
+        assert!(
+            parse_accelerator("Ctrl+KeyV").is_none(),
+            "Ctrl+V must not be a global hotkey"
+        );
+        assert!(parse_accelerator("Ctrl+KeyC").is_none());
+        assert!(parse_accelerator("Ctrl+KeyQ").is_none());
+    }
+}
