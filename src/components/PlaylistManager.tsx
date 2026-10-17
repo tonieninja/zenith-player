@@ -951,3 +951,24 @@ function SpotifyExport({
                 className="pm-btn"
                 disabled={phase === 'matching'}
                 onClick={() => {
+                  disconnectSpotify();
+                  setConnected(false);
+                }}
+              >
+                {t.pmSpotifyDisconnect}
+              </button>
+              <button
+                className="pm-btn pm-btn-accent"
+                disabled={phase === 'matching'}
+                onClick={() => void start()}
+              >
+                {t.pmSpotify}
+              </button>
+            </div>
+          </>
+        )}
+        {error && <p className="pm-error">{error}</p>}
+      </div>
+    </div>
+  );
+}

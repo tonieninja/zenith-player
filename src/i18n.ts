@@ -1043,3 +1043,19 @@ const pl: Record<keyof typeof en, string> = {
   feedLoadFailedDesc:
     'YouTube Music nie odpowiada. Sprawdź połączenie z internetem i spróbuj ponownie.',
 };
+
+export function streamStuckMessage(
+  t: typeof en,
+  kind: string | null | undefined,
+  signedIn: boolean
+): string {
+  if (kind === 'network') return t.streamBlockedNetwork;
+  if (kind === 'bot') return signedIn ? t.streamBlockedBotSignedIn : t.streamBlockedBot;
+  if (kind === 'component') return t.streamBlockedComponent;
+  return signedIn ? t.streamUnavailableStuckSignedIn : t.streamUnavailableStuck;
+}
+
+export const translations: Record<'en' | 'pl', Record<keyof typeof en, string>> = { en, pl };
+
+export type TranslationKey = keyof typeof en;
+export type Language = keyof typeof translations;
