@@ -1,3 +1,4 @@
+use hidapi::{BusType, HidApi, HidDevice};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -5,8 +6,8 @@ use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter};
 
 const VID: u16 = 0x054C;
-const PID_USB: u16 = 0x0CE6;
-const PID_BT: u16 = 0x0CE7;
+// DualSense i DualSense Edge; po Bluetooth PID jest ten sam co po USB
+const PIDS: [u16; 2] = [0x0CE6, 0x0DF2];
 
 static RUNNING: AtomicBool = AtomicBool::new(false);
 static POLL_THREAD: Mutex<Option<std::thread::JoinHandle<()>>> = Mutex::new(None);
@@ -88,118 +89,217 @@ impl GestureTracker {
 
         let abs_dx = dx.abs();
         let abs_dy = dy.abs();
-        let gesture = if abs_dx > abs_dy * 2.0 {
+        let action = if abs_dx > abs_dy * 2.0 {
             if dx > 0.0 {
-                "right"
+                "next"
             } else {
-                "left"
+                "prev"
             }
         } else if abs_dy > abs_dx * 2.0 {
-            if dy < 0.0 {
-                "up"
-            } else {
-                "down"
-            }
+            "toggle-play"
         } else {
             return None;
         };
 
         self.last_fire = Instant::now();
-        Some(gesture)
+        Some(action)
     }
 }
 
-fn parse_touch_usb(buf: &[u8]) -> (bool, i32, i32) {
-    if buf.len() < 37 {
-        return (false, 0, 0);
-    }
-    let t0 = buf[33];
-    let active = (t0 & 0x80) == 0;
-    let x = ((buf[35] as i32 & 0x0F) << 8) | (buf[34] as i32);
-    let y = ((buf[36] as i32) << 4) | ((buf[35] as i32 & 0xF0) >> 4);
-    (active, x, y)
+#[derive(Clone, Copy, Default, PartialEq, Debug)]
+struct PadState {
+    touching: bool,
+    x: i32,
+    y: i32,
+    buttons: [u8; 3],
 }
 
-fn parse_touch_bt(buf: &[u8]) -> (bool, i32, i32) {
-    if buf.len() < 9 || buf[0] != 0x31 {
-        return (false, 0, 0);
-    }
-    let t0 = buf[4];
-    let active = (t0 & 0x80) == 0;
-    let x = ((buf[6] as i32 & 0x0F) << 8) | (buf[5] as i32);
-    let y = ((buf[7] as i32) << 4) | ((buf[6] as i32 & 0xF0) >> 4);
-    (active, x, y)
-}
-
-fn write_led(device: &mut hidapi::HidDevice, r: u8, g: u8, b: u8) {
-    let mut report = [0u8; 48];
-    report[0] = 0x02;
-    report[1] = 0xFF;
-    report[2] = 0xF7;
-    report[45] = r;
-    report[46] = g;
-    report[47] = b;
-    let _ = device.write(&report);
-}
-
-fn poll_loop(app: AppHandle) {
-    let Ok(api) = hidapi::HidApi::new() else {
-        RUNNING.store(false, Ordering::SeqCst);
-        return;
+// raport 0x01 z USB (64 B) i 0x31 z Bluetooth (78 B) mają te same pola, w BT przesunięte o bajt
+fn parse_report(buf: &[u8]) -> Option<(PadState, bool)> {
+    let (base, bt) = match *buf.first()? {
+        0x01 if buf.len() >= 64 => (1, false),
+        0x31 if buf.len() >= 78 => (2, true),
+        _ => return None,
     };
-
-    let (mut device, is_bt) = match api.open(VID, PID_USB) {
-        Ok(d) => (d, false),
-        Err(_) => match api.open(VID, PID_BT) {
-            Ok(d) => (d, true),
-            Err(_) => {
-                RUNNING.store(false, Ordering::SeqCst);
-                let _ = app.emit("zenith-dualsense-status", "not-found");
-                return;
-            }
-        },
+    let d = &buf[base..];
+    let state = PadState {
+        touching: d[32] & 0x80 == 0,
+        x: ((d[34] as i32 & 0x0F) << 8) | d[33] as i32,
+        y: ((d[35] as i32) << 4) | ((d[34] as i32 & 0xF0) >> 4),
+        buttons: [d[7], d[8], d[9]],
     };
-    let _ = device.set_blocking_mode(false);
-    let status = if is_bt { "connected-bt" } else { "connected" };
-    let _ = app.emit("zenith-dualsense-status", status);
+    Some((state, bt))
+}
+
+const CROSS: u8 = 0x20;
+const L1: u8 = 0x01;
+const R1: u8 = 0x02;
+const OPTIONS: u8 = 0x20;
+const TOUCH_CLICK: u8 = 0x02;
+const HAT_RIGHT: u8 = 2;
+const HAT_LEFT: u8 = 6;
+
+// te same przyciski co wcześniej w Gamepad API: krzyżyk/options/klik touchpada, R1/L1, d-pad
+fn button_action(prev: [u8; 3], now: [u8; 3]) -> Option<&'static str> {
+    let down = |i: usize, mask: u8| now[i] & mask != 0 && prev[i] & mask == 0;
+    let hat = |b: [u8; 3]| b[0] & 0x0F;
+    let hat_to = |h: u8| hat(now) == h && hat(prev) != h;
+    if down(0, CROSS) || down(1, OPTIONS) || down(2, TOUCH_CLICK) {
+        Some("toggle-play")
+    } else if down(1, R1) || hat_to(HAT_RIGHT) {
+        Some("next")
+    } else if down(1, L1) || hat_to(HAT_LEFT) {
+        Some("prev")
+    } else {
+        None
+    }
+}
+
+fn crc32(prefix: u8, data: &[u8]) -> u32 {
+    let mut crc = !0u32;
+    for &b in std::iter::once(&prefix).chain(data) {
+        crc ^= b as u32;
+        for _ in 0..8 {
+            crc = (crc >> 1) ^ (0xEDB8_8320 & (crc & 1).wrapping_neg());
+        }
+    }
+    !crc
+}
+
+fn led_report(bt: bool, seq: u8, first: bool, rgb: [u8; 3]) -> Vec<u8> {
+    if !bt {
+        let mut r = vec![0u8; 48];
+        r[0] = 0x02;
+        r[1] = 0xFF;
+        r[2] = 0xF7;
+        r[45..48].copy_from_slice(&rgb);
+        return r;
+    }
+    let mut r = vec![0u8; 78];
+    r[0] = 0x31;
+    r[1] = (seq & 0x0F) << 4;
+    r[2] = 0x10;
+    let c = &mut r[3..];
+    c[0] = 0xFF;
+    c[1] = 0xF7;
+    if first {
+        // po sparowaniu pad trzyma własną animację diody, dopóki jej nie wygasimy
+        c[38] = 0x02;
+        c[41] = 0x02;
+    }
+    c[44..47].copy_from_slice(&rgb);
+    let crc = crc32(0xA2, &r[..74]);
+    r[74..78].copy_from_slice(&crc.to_le_bytes());
+    r
+}
+
+fn open_pad(api: &mut HidApi) -> Option<(HidDevice, bool)> {
+    let _ = api.refresh_devices();
+    let info = api
+        .device_list()
+        .find(|d| d.vendor_id() == VID && PIDS.contains(&d.product_id()))?
+        .clone();
+    let dev = info.open_device(api).ok()?;
+    Some((dev, matches!(info.bus_type(), BusType::Bluetooth)))
+}
+
+fn emit_action(app: &AppHandle, action: &str) {
+    if crate::native_audio::is_headless() {
+        crate::native_audio::headless::action(action);
+    } else {
+        let _ = app.emit("zenith-dualsense-action", action);
+    }
+}
+
+fn sleep_while_running(total: Duration) {
+    let until = Instant::now() + total;
+    while RUNNING.load(Ordering::SeqCst) && Instant::now() < until {
+        thread::sleep(Duration::from_millis(100));
+    }
+}
+
+fn run_pad(app: &AppHandle, device: &HidDevice, mut bt: bool) {
+    // bez odczytu raportu 0x05 pad po Bluetooth wysyła skrócony raport bez touchpada
+    let mut feature = [0u8; 41];
+    feature[0] = 0x05;
+    let _ = device.get_feature_report(&mut feature);
 
     let mut tracker = GestureTracker::new();
-    let mut was_active = false;
-    let mut last_led = [255u8, 255, 255];
+    let mut prev = PadState::default();
+    let mut last_led: Option<[u8; 3]> = None;
+    let mut seq = 0u8;
+    let mut last_action = Instant::now() - Duration::from_secs(1);
     let mut buf = [0u8; 128];
 
     while RUNNING.load(Ordering::SeqCst) {
-        if let Ok(rgb) = LED.lock() {
-            let cur = [rgb[0], rgb[1], rgb[2]];
-            if cur != last_led {
-                write_led(&mut device, cur[0], cur[1], cur[2]);
-                last_led = cur;
+        let want = LED.lock().map(|c| *c).unwrap_or([0, 0, 0]);
+        if last_led != Some(want) {
+            let report = led_report(bt, seq, last_led.is_none(), want);
+            seq = seq.wrapping_add(1);
+            if device.write(&report).is_ok() {
+                last_led = Some(want);
             }
         }
 
-        match device.read_timeout(&mut buf, 20) {
-            Ok(n) if n > 0 => {
-                let (active, x, y) = if is_bt {
-                    parse_touch_bt(&buf[..n])
-                } else {
-                    parse_touch_usb(&buf[..n])
-                };
-                if active {
-                    tracker.on_touch(x, y);
-                    was_active = true;
-                } else if was_active {
-                    if let Some(g) = tracker.on_release() {
-                        let _ = app.emit("zenith-dualsense-gesture", g);
-                    }
-                    was_active = false;
-                }
+        let n = match device.read_timeout(&mut buf, 100) {
+            Ok(n) => n,
+            Err(e) => {
+                eprintln!("[dualsense] read failed: {e}");
+                return;
             }
-            _ => {}
+        };
+        let Some((state, is_bt)) = parse_report(&buf[..n]) else {
+            continue;
+        };
+        if is_bt && !bt {
+            bt = true;
+            last_led = None;
         }
-        thread::sleep(Duration::from_millis(40));
+
+        let mut action = button_action(prev.buttons, state.buttons);
+        if state.touching {
+            tracker.on_touch(state.x, state.y);
+        } else if prev.touching {
+            action = action.or(tracker.on_release());
+        }
+        prev = state;
+
+        if let Some(a) = action {
+            if last_action.elapsed() >= Duration::from_millis(300) {
+                last_action = Instant::now();
+                emit_action(app, a);
+            }
+        }
     }
 
-    write_led(&mut device, 0, 0, 0);
+    let off = led_report(bt, seq, false, [0, 0, 0]);
+    let _ = device.write(&off);
+}
+
+fn poll_loop(app: AppHandle) {
+    let Ok(mut api) = HidApi::new() else {
+        RUNNING.store(false, Ordering::SeqCst);
+        return;
+    };
+    let mut told_missing = false;
+    while RUNNING.load(Ordering::SeqCst) {
+        let Some((device, bt)) = open_pad(&mut api) else {
+            if !told_missing {
+                told_missing = true;
+                let _ = app.emit("zenith-dualsense-status", "not-found");
+            }
+            sleep_while_running(Duration::from_secs(2));
+            continue;
+        };
+        told_missing = false;
+        let status = if bt { "connected-bt" } else { "connected" };
+        let _ = app.emit("zenith-dualsense-status", status);
+        run_pad(&app, &device, bt);
+        if RUNNING.load(Ordering::SeqCst) {
+            let _ = app.emit("zenith-dualsense-status", "disconnected");
+            sleep_while_running(Duration::from_secs(1));
+        }
+    }
     let _ = app.emit("zenith-dualsense-status", "stopped");
 }
 
@@ -242,4 +342,84 @@ pub fn dualsense_set_led(r: u8, g: u8, b: u8) -> Result<(), String> {
         *rgb = [r, g, b];
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn usb_report() -> Vec<u8> {
+        let mut r = vec![0u8; 64];
+        r[0] = 0x01;
+        r[8] = 0x08;
+        r[33] = 0x80;
+        r
+    }
+
+    fn as_bt(usb: &[u8]) -> Vec<u8> {
+        let mut r = vec![0u8; 78];
+        r[0] = 0x31;
+        r[2..65].copy_from_slice(&usb[1..64]);
+        r
+    }
+
+    #[test]
+    fn bt_report_reads_like_usb_shifted_by_one() {
+        let mut usb = usb_report();
+        usb[33] = 0x05;
+        usb[34] = 0x34;
+        usb[35] = 0x52;
+        usb[36] = 0x19;
+        usb[9] = R1;
+        let (a, a_bt) = parse_report(&usb).unwrap();
+        let (b, b_bt) = parse_report(&as_bt(&usb)).unwrap();
+        assert!(!a_bt && b_bt);
+        assert_eq!(a, b);
+        assert!(a.touching);
+        assert_eq!((a.x, a.y), (0x234, 0x195));
+        assert_eq!(a.buttons[1], R1);
+    }
+
+    #[test]
+    fn short_bt_report_is_ignored() {
+        let mut short = vec![0u8; 10];
+        short[0] = 0x01;
+        assert!(parse_report(&short).is_none());
+    }
+
+    #[test]
+    fn buttons_fire_on_press_only() {
+        let idle = [0x08, 0, 0];
+        assert_eq!(
+            button_action(idle, [0x08 | CROSS, 0, 0]),
+            Some("toggle-play")
+        );
+        assert_eq!(
+            button_action([0x08 | CROSS, 0, 0], [0x08 | CROSS, 0, 0]),
+            None
+        );
+        assert_eq!(button_action(idle, [0x08, R1, 0]), Some("next"));
+        assert_eq!(button_action(idle, [HAT_LEFT, 0, 0]), Some("prev"));
+        assert_eq!(
+            button_action(idle, [0x08, 0, TOUCH_CLICK]),
+            Some("toggle-play")
+        );
+    }
+
+    #[test]
+    fn crc_matches_reference() {
+        assert_eq!(crc32(b'1', b"23456789"), 0xCBF4_3926);
+    }
+
+    #[test]
+    fn bt_led_report_has_colour_and_crc() {
+        let r = led_report(true, 3, true, [10, 20, 30]);
+        assert_eq!(r.len(), 78);
+        assert_eq!((r[0], r[1], r[2]), (0x31, 0x30, 0x10));
+        assert_eq!(&r[47..50], &[10, 20, 30]);
+        let crc = u32::from_le_bytes([r[74], r[75], r[76], r[77]]);
+        assert_eq!(crc, crc32(0xA2, &r[..74]));
+        let usb = led_report(false, 0, true, [10, 20, 30]);
+        assert_eq!(&usb[45..48], &[10, 20, 30]);
+    }
 }
