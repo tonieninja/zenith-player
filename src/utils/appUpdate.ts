@@ -3,6 +3,7 @@ import { fetch } from '@tauri-apps/plugin-http';
 
 export const GITHUB_REPO = 'tonieninja/zenith-player';
 export const GITHUB_RELEASES = `https://github.com/${GITHUB_REPO}/releases`;
+export const DONATE_URL = 'https://buymeacoffee.com/tonieninja';
 
 function parseVer(v: string): number[] {
   return v

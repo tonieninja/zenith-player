@@ -210,6 +210,7 @@ import { setLightLyrics, useLightLyrics } from './utils/lightLyrics';
 import {
   checkGithubUpdate,
   checkSignedUpdate,
+  DONATE_URL,
   GITHUB_RELEASES,
   installPendingUpdate,
 } from './utils/appUpdate';
@@ -5643,6 +5644,19 @@ export default function App() {
                   }
                 >
                   {t.openRelease}
+                </button>
+              </div>
+              <div className="settings-row-item settings-toggle-row">
+                <div className="settings-account-info">
+                  <span className="setting-label">{t.supportApp}</span>
+                  <span className="plugin-desc">{t.supportAppDesc}</span>
+                </div>
+                <button
+                  type="button"
+                  className="lang-option-btn settings-action-btn"
+                  onClick={() => void openUrl(DONATE_URL).catch((err) => console.debug('App', err))}
+                >
+                  {t.supportAppBtn}
                 </button>
               </div>
             </div>

@@ -816,6 +816,11 @@ pub fn zaudio_duck(on: bool, level: f64, sensitivity: f64) -> Result<(), String>
 }
 
 #[tauri::command]
+pub fn zaudio_duck_meter() -> (f64, bool) {
+    duck::meter()
+}
+
+#[tauri::command]
 pub fn zaudio_cmd(cmd: Cmd) -> Snapshot {
     run_cmd(cmd)
 }
