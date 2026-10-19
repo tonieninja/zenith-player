@@ -34,6 +34,71 @@ export function resetCoverTheme() {
   );
 }
 
+type Rgb = [number, number, number];
+
+// dioda pada świeci tylko nasyconym kolorem, więc odcień zostaje, a nasycenie min. 0.8 i pełna jasność
+export function vividColor([r, g, b]: Rgb): Rgb | null {
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  if (max === 0 || (max - min) / max < 0.08) return null;
+  const d = max - min;
+  const h = max === r ? ((g - b) / d + 6) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  const s = Math.max((max - min) / max, 0.8);
+  const x = 1 - Math.abs((h % 2) - 1);
+  const [cr, cg, cb] = [
+    [1, x, 0],
+    [x, 1, 0],
+    [0, 1, x],
+    [0, x, 1],
+    [x, 0, 1],
+    [1, 0, x],
+  ][Math.floor(h) % 6]!;
+  return [cr!, cg!, cb!].map((c) => Math.round(255 * (1 - s + s * c))) as Rgb;
+}
+
+// średnia ważona nasyceniem, żeby szare tło okładki nie zjadało koloru
+export function coverLedColor(coverUrl: string): Promise<Rgb | null> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.referrerPolicy = 'no-referrer';
+    img.onload = () => {
+      try {
+        const size = 24;
+        const canvas = document.createElement('canvas');
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return resolve(null);
+        ctx.drawImage(img, 0, 0, size, size);
+        const { data } = ctx.getImageData(0, 0, size, size);
+        let r = 0;
+        let g = 0;
+        let b = 0;
+        let w = 0;
+        for (let i = 0; i < data.length; i += 4) {
+          const pr = data[i]!;
+          const pg = data[i + 1]!;
+          const pb = data[i + 2]!;
+          const max = Math.max(pr, pg, pb);
+          if (data[i + 3]! < 40 || max < 40) continue;
+          const sat = (max - Math.min(pr, pg, pb)) / max;
+          const wt = sat * sat;
+          r += pr * wt;
+          g += pg * wt;
+          b += pb * wt;
+          w += wt;
+        }
+        resolve(w ? vividColor([r / w, g / w, b / w]) : null);
+      } catch {
+        resolve(null);
+      }
+    };
+    img.onerror = () => resolve(null);
+    img.src = coverUrl;
+  });
+}
+
 let themeJob = 0;
 
 export function applyCoverTheme(coverUrl: string | undefined | null) {
