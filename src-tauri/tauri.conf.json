@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Zenith",
-  "version": "4.0.1",
+  "version": "4.1.0",
   "identifier": "com.zenithplayer.desktop",
   "build": {
     "beforeDevCommand": "pnpm dev",
@@ -92,6 +92,8 @@
     "macOS": {
       "minimumSystemVersion": "11.0",
       "hardenedRuntime": true,
+      "signingIdentity": "-",
+      "entitlements": "macos/Entitlements.plist",
       "dmg": {
         "background": "macos/dmg-background.png",
         "windowSize": { "width": 660, "height": 400 },
@@ -105,20 +107,38 @@
       },
       "rpm": {
         "desktopTemplate": "linux/zenith.desktop",
-        "depends": ["webkit2gtk4.1", "gtk3", "libayatana-appindicator-gtk3", "gstreamer1-plugins-base", "gstreamer1-plugins-good", "gstreamer1-plugin-libav"]
+        "depends": [
+          "webkit2gtk4.1",
+          "gtk3",
+          "libayatana-appindicator-gtk3",
+          "gstreamer1-plugins-base",
+          "gstreamer1-plugins-good",
+          "gstreamer1-plugin-libav"
+        ]
       },
       "deb": {
         "section": "sound",
         "desktopTemplate": "linux/zenith.desktop",
-        "files": { "/usr/share/metainfo/com.zenithplayer.desktop.metainfo.xml": "linux/zenith.metainfo.xml" },
-        "depends": ["libwebkit2gtk-4.1-0", "libgtk-3-0", "libayatana-appindicator3-1", "gstreamer1.0-plugins-base", "gstreamer1.0-plugins-good", "gstreamer1.0-libav"]
+        "files": {
+          "/usr/share/metainfo/com.zenithplayer.desktop.metainfo.xml": "linux/zenith.metainfo.xml"
+        },
+        "depends": [
+          "libwebkit2gtk-4.1-0",
+          "libgtk-3-0",
+          "libayatana-appindicator3-1",
+          "gstreamer1.0-plugins-base",
+          "gstreamer1.0-plugins-good",
+          "gstreamer1.0-libav"
+        ]
       }
     }
   },
   "plugins": {
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEY5NjE1NjFGNjdDRjI0NkQKUldSdEpNOW5IMVpoK2R1c20rRFI0cnhCNVJ2VUlJZ2doWDN2dXk1UkxrRGVDckh5M3creE9IYXUK",
-      "endpoints": ["https://github.com/tonieninja/zenith-player/releases/latest/download/latest.json"]
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEZENTM4RkE3M0ExMzI4OUIKUldTYktCTTZwNDlUL2R1Yi9JUENWakw2VG11MFlIQWRkSGU3YU5oanNpT3cwOTJSSTVBSU9SR1UK",
+      "endpoints": [
+        "https://github.com/tonieninja/zenith-player/releases/latest/download/latest.json"
+      ]
     }
   }
 }

@@ -1,5 +1,15 @@
 # Changelog
 
+## 4.1.0
+
+- DualSense works over Bluetooth, not only on a cable
+- the lightbar takes its colour from the cover, dims on pause and flashes on next, previous and play
+- the pad reconnects by itself after you turn it off and on again
+- Duck on Voice listens to the mic in Rust and has a live meter with the threshold on it,
+  so you can see when it kicks in
+- support link in Settings, About
+- new update signing key, older builds have to grab 4.1.0 by hand once
+
 ## 4.0.1
 
 - audio plays from a Rust engine now (symphonia + cpal), EQ and loudness normalization went with it.

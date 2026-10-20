@@ -1,7 +1,7 @@
 {
   "name": "zenith-player",
   "private": true,
-  "version": "4.0.1",
+  "version": "4.1.0",
   "license": "MIT",
   "description": "Independent desktop music player. Not affiliated with Google or YouTube.",
   "packageManager": "pnpm@10.18.3",

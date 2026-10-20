@@ -14,6 +14,7 @@
   <categories><category>AudioVideo</category><category>Audio</category><category>Player</category></categories>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="4.1.0" date="2026-11-14"/>
     <release version="4.0.1" date="2026-11-05"/>
     <release version="4.0.0" date="2026-10-29"/>
   </releases>
