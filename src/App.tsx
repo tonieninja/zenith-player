@@ -371,6 +371,7 @@ export default function App() {
   const [isMuted, setIsMuted] = useState(false);
   const [coverVolHint, setCoverVolHint] = useState<number | null>(null);
   const coverVolHintTimer = useRef(0);
+  const coverWheelRef = useRef<HTMLDivElement | null>(null);
   const [loopMode, setLoopMode] = useState<LoopMode>('off');
   const [shuffleOn, setShuffleOn] = useState(false);
   const originalQueueRef = useRef<Track[] | null>(null);
@@ -2558,6 +2559,34 @@ export default function App() {
     return () => el.removeEventListener('wheel', onWheel);
   }, []);
 
+  const coverWheelHandler = useLatest((e: WheelEvent) => {
+    const delta = e.deltaY > 0 ? -0.03 : 0.03;
+    const next = Math.max(0, Math.min(1, volumeRef.current + delta));
+    setVolume(next);
+    volumeRef.current = next;
+    if (!audio.isCrossfading) {
+      rampVolume(audio, next, pluginManager.isEnabled('smooth-volume'));
+    } else {
+      audio.volume = next;
+    }
+    if (pluginManager.isEnabled('remember-volume')) saveRememberedVolume(next);
+    setCoverVolHint(Math.round(next * 100));
+    window.clearTimeout(coverVolHintTimer.current);
+    coverVolHintTimer.current = window.setTimeout(() => setCoverVolHint(null), 900);
+  });
+  const hasTrack = Boolean(currentTrack);
+  useEffect(() => {
+    const el = coverWheelRef.current;
+    if (!el) return;
+    // React podpina onWheel jako pasywny, więc tylko natywny listener powstrzyma przewijanie widoku
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      coverWheelHandler.current(e);
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, [activeTab, hasTrack]);
+
   useEffect(() => {
     let lastUiAt = 0;
     const syncDurationFromAudio = () => {
@@ -4576,26 +4605,8 @@ export default function App() {
                   <div className="player-col-cover">
                     <div
                       className="player-view-cover-wrap"
+                      ref={coverWheelRef}
                       title={`${Math.round(volume * 100)}%`}
-                      onWheel={(e) => {
-                        e.preventDefault();
-                        const delta = e.deltaY > 0 ? -0.03 : 0.03;
-                        const next = Math.max(0, Math.min(1, volumeRef.current + delta));
-                        setVolume(next);
-                        volumeRef.current = next;
-                        if (!audio.isCrossfading) {
-                          rampVolume(audio, next, pluginManager.isEnabled('smooth-volume'));
-                        } else {
-                          audio.volume = next;
-                        }
-                        if (pluginManager.isEnabled('remember-volume')) saveRememberedVolume(next);
-                        setCoverVolHint(Math.round(next * 100));
-                        window.clearTimeout(coverVolHintTimer.current);
-                        coverVolHintTimer.current = window.setTimeout(
-                          () => setCoverVolHint(null),
-                          900
-                        );
-                      }}
                     >
                       <img
                         loading="eager"

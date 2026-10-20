@@ -132,21 +132,26 @@ export async function copyShareCardToClipboard(info: NowPlayingInfo): Promise<bo
       img!.src = info.coverUrl!;
     });
   }
-  const blob = await generateShareCard(info, img);
+  let blob: Blob;
   try {
-    if (navigator.clipboard?.write) {
-      await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
-      return true;
-    }
+    blob = await generateShareCard(info, img);
   } catch (err) {
-    console.debug('shareCard copyShareCardToClipboard', err);
+    console.warn('[share-card] render failed', err);
+    return false;
   }
+  // schowek webview odmawia, gdy okno nie ma fokusu albo minął gest, Tauri pisze do systemu bez tych warunków
   try {
     const { writeImage } = await import('@tauri-apps/plugin-clipboard-manager');
-    const buffer = await blob.arrayBuffer();
-    await writeImage(new Uint8Array(buffer));
+    await writeImage(new Uint8Array(await blob.arrayBuffer()));
     return true;
-  } catch {
+  } catch (err) {
+    console.debug('shareCard tauri clipboard', err);
+  }
+  try {
+    await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+    return true;
+  } catch (err) {
+    console.warn('[share-card] clipboard failed', err);
     return false;
   }
 }

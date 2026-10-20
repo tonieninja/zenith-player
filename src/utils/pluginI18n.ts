@@ -224,8 +224,14 @@ const CATALOG: Record<string, Record<Language, PluginText>> = {
     pl: { name: 'Tytuł okna', desc: 'Pokazuje bieżący utwór w tytule okna.' },
   },
   'copy-track-link': {
-    en: { name: 'Copy track link', desc: 'Copy the YouTube Music link of the track.' },
-    pl: { name: 'Kopiowanie linku', desc: 'Kopiuje link do utworu w YouTube Music.' },
+    en: {
+      name: 'Copy track link',
+      desc: 'Copies the YouTube Music link whenever a new track starts.',
+    },
+    pl: {
+      name: 'Kopiowanie linku',
+      desc: 'Kopiuje link do YouTube Music przy każdym nowym utworze.',
+    },
   },
   'system-tray': {
     en: { name: 'System tray', desc: 'Closing the window keeps Zenith playing in the tray.' },
