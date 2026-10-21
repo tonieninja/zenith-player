@@ -45,7 +45,7 @@ import {
   EQ_MIN_DB,
   EQ_PRESETS,
   EQ_FREQS,
-  eqPreampDb,
+  EQ_PRESET_BASS,
   fromLegacyBands,
   getEqBands,
 } from '../plugins/equalizer';
@@ -172,15 +172,14 @@ describe('saved settings', () => {
 });
 
 describe('equalizer', () => {
-  it('is 15-band ISO with the Bass Boost curve and headroom', () => {
+  it('is 15-band ISO and bass boost comes from the shelf, not sub bands', () => {
     expect([...EQ_FREQS]).toEqual([
       25, 40, 63, 100, 160, 250, 400, 630, 1000, 1600, 2500, 4000, 6300, 10000, 16000,
     ]);
     expect(EQ_LABELS[8]).toBe('1k');
     expect(EQ_LABELS[9]).toBe('1.6k');
-    expect(BASS_BOOST_BANDS.slice(0, 5)).toEqual([4, 5.5, 5, 1.8, 0]);
-    expect(eqPreampDb([...BASS_BOOST_BANDS])).toBe(-5.5);
-    expect(eqPreampDb(EQ_PRESETS.flat)).toBe(-0);
+    expect(BASS_BOOST_BANDS.slice(0, 5)).toEqual([0, 0, 0, 0, 0]);
+    expect(EQ_PRESET_BASS.bass).toBe(9);
   });
   it('migrates saved 10-band curves', () => {
     localStorage.setItem('zenith_eq_bands', JSON.stringify([1, 1, 1, 1, 1, 1, 1, 1, 1, 1]));

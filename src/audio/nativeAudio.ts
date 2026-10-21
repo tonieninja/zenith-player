@@ -24,7 +24,7 @@ type Cmd =
   | { op: 'abortAll' }
   | { op: 'releaseInactive' }
   | { op: 'load' }
-  | { op: 'eq'; bands: number[] }
+  | { op: 'eq'; bands: number[]; bass: number }
   | { op: 'norm'; on: boolean }
   | { op: 'loop'; a: number | null; b: number | null };
 
@@ -121,8 +121,8 @@ export class NativeAudio {
     this.send({ op: 'loop', a, b });
   }
 
-  setFx(bands: number[] | null, norm: boolean) {
-    this.send({ op: 'eq', bands: bands ?? new Array(EQ_FREQS.length).fill(0) });
+  setFx(bands: number[] | null, norm: boolean, bass = 0) {
+    this.send({ op: 'eq', bands: bands ?? new Array(EQ_FREQS.length).fill(0), bass });
     this.send({ op: 'norm', on: norm });
   }
 

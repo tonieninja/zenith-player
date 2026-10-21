@@ -1,4 +1,4 @@
-use super::dsp::Eq;
+use super::dsp::{Eq, Limiter};
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::mpsc::{channel, RecvTimeoutError, Sender};
@@ -63,16 +63,18 @@ pub struct Mixer {
     cur: [f32; 2],
     eq: Eq,
     eq_ver: u64,
+    lim: Limiter,
     sr: u32,
 }
 
-static EQ_BANDS: Mutex<(u64, Vec<f64>)> = Mutex::new((0, Vec::new()));
+static EQ_BANDS: Mutex<(u64, Vec<f64>, f64)> = Mutex::new((0, Vec::new(), 0.0));
 static EQ_VER: AtomicU64 = AtomicU64::new(0);
 
-pub fn set_eq(bands: &[f64]) {
+pub fn set_eq(bands: &[f64], bass: f64) {
     let mut g = EQ_BANDS.lock().unwrap_or_else(|p| p.into_inner());
     g.0 += 1;
     g.1 = bands.to_vec();
+    g.2 = bass;
     EQ_VER.store(g.0, Ordering::SeqCst);
 }
 
@@ -81,8 +83,9 @@ impl Mixer {
         Mixer {
             decks,
             cur: [0.0; 2],
-            eq: Eq::default(),
+            eq: Eq::new(&[], sr as f64),
             eq_ver: 0,
+            lim: Limiter::new(sr),
             sr,
         }
     }
@@ -93,7 +96,7 @@ impl Mixer {
             return;
         }
         if let Ok(g) = EQ_BANDS.try_lock() {
-            self.eq = Eq::new(&g.1, self.sr as f64);
+            self.eq.set(&g.1, g.2);
             self.eq_ver = g.0;
         }
     }
@@ -144,12 +147,14 @@ impl Mixer {
             self.cur[i] = if n > 0 { g } else { self.cur[i] };
         }
         if any {
-            if !self.eq.is_flat() {
-                self.eq.process(out);
-            }
+            self.eq.process(out);
+            // limiter działa zawsze, przełączanie dodawałoby i zabierało 5 ms opóźnienia, czyli trzask
+            self.lim.process(out);
             for s in out.iter_mut() {
                 *s = s.clamp(-1.0, 1.0);
             }
+        } else {
+            self.lim.reset();
         }
         any
     }
@@ -438,7 +443,11 @@ mod tests {
         assert!((a.pos() - 10.1).abs() < 1e-6);
         b.set_gain(1.0);
         m.render(&mut out);
-        assert!((out[out.len() - 1] - 1.0).abs() < 0.01);
+        let ceil = super::super::dsp::LIMIT_CEIL;
+        assert!(
+            (out[out.len() - 1] - ceil).abs() < 0.01,
+            "sum above ceiling is limited"
+        );
     }
 
     #[test]

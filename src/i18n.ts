@@ -205,6 +205,8 @@ const en = {
   fadePauseDesc: 'Milliseconds to fade out/in on pause.',
   eqPreset: 'Preset',
   eqCustom: 'Custom',
+  eqBass: 'Bass boost',
+  eqBassDesc: 'Clean low shelf at 90 Hz. Rumble under 22 Hz is cut so the bass stays tight.',
   eqP_flat: 'Flat',
   eqP_bass: 'Bass Boost',
   eqP_treble: 'Treble boost',
@@ -738,6 +740,9 @@ const pl: Record<keyof typeof en, string> = {
   fadePauseDesc: 'Milisekundy wyciszania/przygłaśniania przy pauzie.',
   eqPreset: 'Preset',
   eqCustom: 'Własny',
+  eqBass: 'Wzmocnienie basu',
+  eqBassDesc:
+    'Czysta półka od 90 Hz w dół. Dudnienie poniżej 22 Hz jest wycięte, więc bas jest zwarty.',
   eqP_flat: 'Płasko',
   eqP_bass: 'Bass Boost',
   eqP_treble: 'Wzmocnienie sopranów',

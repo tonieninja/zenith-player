@@ -70,6 +70,9 @@ import {
   EQ_MIN_DB,
   EQ_PRESETS,
   getEqBands,
+  getEqBass,
+  EQ_BASS_MAX_DB,
+  EQ_PRESET_BASS,
   getEqPreset,
   setEqBands,
 } from '../plugins/equalizer';
@@ -228,6 +231,7 @@ export function PluginsPanel({
   const [peers, setPeers] = useState(0);
   const [eqBands, setEqBandsState] = useState(getEqBands);
   const [eqPreset, setEqPresetState] = useState(getEqPreset);
+  const [eqBass, setEqBassState] = useState(getEqBass);
   const [remoteInfo, setRemoteInfo] = useState<RemoteInfo | null>(null);
   const [fw, setFw] = useState<FirewallStatus | null>(null);
   const [fwBusy, setFwBusy] = useState(false);
@@ -607,11 +611,38 @@ export function PluginsPanel({
                 onChange={(k) => {
                   const b = EQ_PRESETS[k];
                   if (!b) return;
+                  const bass = EQ_PRESET_BASS[k] ?? 0;
                   setEqPresetState(k);
                   setEqBandsState([...b]);
-                  setEqBands([...b], k);
+                  setEqBassState(bass);
+                  setEqBands([...b], k, bass);
                 }}
               />
+            </div>
+            <div className="plugin-setting-row">
+              <div className="plugin-setting-label">
+                <span>{t.eqBass}</span>
+                <span className="plugin-desc">{t.eqBassDesc}</span>
+              </div>
+              <div className="crossfade-secs-control">
+                <input
+                  type="range"
+                  min={0}
+                  max={EQ_BASS_MAX_DB}
+                  step={1}
+                  value={eqBass}
+                  aria-label={t.eqBass}
+                  onChange={(e) => {
+                    const v = Number(e.target.value);
+                    setEqBassState(v);
+                    setEqPresetState('custom');
+                    setEqBands(eqBands, 'custom', v);
+                  }}
+                />
+                <span className="crossfade-secs-value">
+                  {eqBass > 0 ? `+${eqBass}` : eqBass} dB
+                </span>
+              </div>
             </div>
             {eqBands.map((g, i) => (
               <div className="plugin-setting-row" key={EQ_LABELS[i]}>
