@@ -33,10 +33,6 @@ const CATALOG: Record<string, Record<Language, PluginText>> = {
     en: { name: 'Second screen lyrics', desc: 'Big lyrics window for a second monitor.' },
     pl: { name: 'Tekst na drugim ekranie', desc: 'Duże okno z tekstem na drugi monitor.' },
   },
-  'lyrics-karaoke': {
-    en: { name: 'Karaoke mode', desc: 'Highlight the active line with a pulse.' },
-    pl: { name: 'Tryb karaoke', desc: 'Podświetla aktywną linię pulsującym efektem.' },
-  },
   'mini-player': {
     en: { name: 'Mini player', desc: 'Compact always-on-top window with transport controls.' },
     pl: { name: 'Miniodtwarzacz', desc: 'Kompaktowe okno ze sterowaniem, zawsze na wierzchu.' },
@@ -128,11 +124,11 @@ const CATALOG: Record<string, Record<Language, PluginText>> = {
   'zenith-stage': {
     en: {
       name: 'Zenith Stage',
-      desc: 'Streamer pack: lyrics overlay + karaoke + share card in one toggle.',
+      desc: 'Streamer pack: lyrics overlay + share card in one toggle.',
     },
     pl: {
       name: 'Zenith Stage',
-      desc: 'Pakiet dla streamerów: nakładka z tekstem, karaoke i karta udostępniania jednym przełącznikiem.',
+      desc: 'Pakiet dla streamerów: nakładka z tekstem i karta udostępniania jednym przełącznikiem.',
     },
   },
   'dualsense-pad': {

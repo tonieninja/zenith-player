@@ -2,8 +2,26 @@ import { invoke } from '@tauri-apps/api/core';
 import { emitTo } from '@tauri-apps/api/event';
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
 import type { OverlayPayload } from '../overlay/types';
-import { isHighContrastLyrics, isKaraokeMode } from './lyricsKaraoke';
 import { ZenithPlugin } from './types';
+
+export const HIGH_CONTRAST_KEY = 'zenith_lyrics_high_contrast';
+
+export function isHighContrastLyrics(): boolean {
+  try {
+    return localStorage.getItem(HIGH_CONTRAST_KEY) !== '0';
+  } catch (err) {
+    console.debug('lyricsOverlay isHighContrastLyrics', err);
+  }
+  return true;
+}
+
+export function setHighContrastLyrics(on: boolean) {
+  try {
+    localStorage.setItem(HIGH_CONTRAST_KEY, on ? '1' : '0');
+  } catch (err) {
+    console.debug('lyricsOverlay setHighContrastLyrics', err);
+  }
+}
 
 export const OVERLAY_FONT_KEY = 'zenith_overlay_font';
 export const OVERLAY_ALIGN_KEY = 'zenith_overlay_align';
@@ -156,7 +174,7 @@ let lastOverlaySig = '';
 export async function pushLyricsOverlay(
   payload: Omit<
     OverlayPayload,
-    'fontSize' | 'align' | 'opacity' | 'karaoke' | 'highContrast' | 'secondScreen' | 'hideTrackMeta'
+    'fontSize' | 'align' | 'opacity' | 'highContrast' | 'secondScreen' | 'hideTrackMeta'
   >,
   opts?: { secondScreen?: boolean; force?: boolean }
 ) {
@@ -178,7 +196,6 @@ export async function pushLyricsOverlay(
     fontSize: getOverlayFontSize(),
     align: getOverlayAlign(),
     opacity: getOverlayOpacity(),
-    karaoke: isKaraokeMode(),
     highContrast: isHighContrastLyrics(),
     secondScreen: false,
     hideTrackMeta: getOverlayHideMeta(),

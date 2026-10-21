@@ -125,8 +125,6 @@ export default function OverlayApp() {
   const [data, setData] = useState<OverlayPayload | null>(null);
   const clockRef = useRef({ progress: 0, at: 0, seen: 0, playing: false, rate: 1 });
   const [clockTick, setClockTick] = useState(0);
-  const [beat, setBeat] = useState(false);
-  const lastLineRef = useRef(-1);
   const lastPersistKeyRef = useRef('');
   const [syncOffsetMs, setSyncOffsetMs] = useState(getLyricsSyncOffset);
   const fitCleanup = useRef<(() => void) | null>(null);
@@ -170,7 +168,6 @@ export default function OverlayApp() {
           prev.artist === p.artist &&
           prev.synced?.length === p.synced?.length &&
           prev.activeLyricIndex === p.activeLyricIndex &&
-          prev.karaoke === p.karaoke &&
           prev.highContrast === p.highContrast &&
           prev.fontSize === p.fontSize &&
           prev.align === p.align &&
@@ -244,15 +241,6 @@ export default function OverlayApp() {
     return () => cancelAnimationFrame(raf);
   }, [data, syncOffsetMs, clockTick]);
 
-  useEffect(() => {
-    if (idx >= 0 && idx !== lastLineRef.current) {
-      lastLineRef.current = idx;
-      setBeat(true);
-      const t = setTimeout(() => setBeat(false), 600);
-      return () => clearTimeout(t);
-    }
-  }, [idx]);
-
   const synced = data?.synced ?? [];
 
   if (!data || (!data.synced?.length && !data.text)) {
@@ -279,7 +267,6 @@ export default function OverlayApp() {
     'overlay-root',
     `size-${data.fontSize}`,
     `align-${data.align}`,
-    data.karaoke ? 'karaoke' : '',
     data.highContrast ? 'high-contrast' : '',
     data.secondScreen ? 'second-screen' : '',
     data.hideTrackMeta ? 'lyrics-only' : '',
@@ -299,7 +286,6 @@ export default function OverlayApp() {
     >
       <div className="overlay-panel" ref={setPanelRef}>
         <OverlayChrome label={s.close} />
-        {beat && data.karaoke && <div className="overlay-beat" />}
         {!data.hideTrackMeta && <TrackMeta data={data} />}
         {synced.length > 0 ? (
           <div className="overlay-lyrics-stage">

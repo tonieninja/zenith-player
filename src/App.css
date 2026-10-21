@@ -1266,7 +1266,6 @@ button.nav-item {
     0 0 0 1px rgba(255, 255, 255, 0.06),
     inset 0 0 80px rgba(0, 0, 0, 0.1);
   border: var(--glass-border);
-  cursor: ns-resize;
 }
 
 .cover-vol-badge {
@@ -3784,6 +3783,11 @@ svg.lucide {
 html.has-cover-theme .glass-static-backdrop.has-track {
   background:
     radial-gradient(
+      ellipse 85% 60% at 50% 0%,
+      color-mix(in srgb, var(--ambient-color, transparent) 45%, transparent),
+      transparent 72%
+    ),
+    radial-gradient(
       circle at 18% 22%,
       var(--theme-mesh-1, rgba(77, 140, 255, 0.14)),
       transparent 42%
@@ -3794,6 +3798,19 @@ html.has-cover-theme .glass-static-backdrop.has-track {
       transparent 38%
     ),
     linear-gradient(180deg, rgba(10, 11, 16, 0.94), rgba(6, 7, 10, 0.98));
+}
+
+html.has-cover-theme .glass-overlay-dark {
+  background: linear-gradient(180deg, rgba(7, 7, 11, 0.12) 0%, rgba(7, 7, 11, 0.75) 100%);
+}
+
+.share-card-btn.active {
+  color: var(--theme-accent, var(--accent-1));
+}
+
+.share-card-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
 }
 
 html.has-cover-theme .nav-item.active {

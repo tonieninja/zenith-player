@@ -17,7 +17,6 @@ export interface OverlayPayload {
   fontSize: 'sm' | 'md' | 'lg' | 'xl' | 'auto';
   align: 'bottom' | 'top' | 'center';
   opacity: number;
-  karaoke: boolean;
   highContrast: boolean;
   secondScreen: boolean;
   hideTrackMeta?: boolean;

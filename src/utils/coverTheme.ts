@@ -34,6 +34,8 @@ export function resetCoverTheme() {
   );
 }
 
+import { cachedCoverUrl } from './imgError';
+
 type Rgb = [number, number, number];
 
 // dioda pada świeci tylko nasyconym kolorem, więc odcień zostaje, a nasycenie min. 0.8 i pełna jasność
@@ -95,7 +97,7 @@ export function coverLedColor(coverUrl: string): Promise<Rgb | null> {
       }
     };
     img.onerror = () => resolve(null);
-    img.src = coverUrl;
+    img.src = cachedCoverUrl(coverUrl, 120);
   });
 }
 
@@ -148,8 +150,8 @@ export function applyCoverTheme(coverUrl: string | undefined | null) {
         accent,
         accent2,
         `rgba(${r}, ${g}, ${b}, 0.32)`,
-        `rgba(${r}, ${g}, ${b}, 0.14)`,
-        `rgba(${mix(r, 255, 0.3)}, ${mix(g, 255, 0.3)}, ${mix(b, 255, 0.3)}, 0.07)`
+        `rgba(${r}, ${g}, ${b}, 0.24)`,
+        `rgba(${mix(r, 255, 0.3)}, ${mix(g, 255, 0.3)}, ${mix(b, 255, 0.3)}, 0.12)`
       );
       const app = document.querySelector('.zenith-app') as HTMLElement | null;
       app?.style.setProperty('--ambient-color', `rgb(${r}, ${g}, ${b})`);
@@ -160,5 +162,6 @@ export function applyCoverTheme(coverUrl: string | undefined | null) {
   img.onerror = () => {
     if (job === themeJob) resetCoverTheme();
   };
-  img.src = coverUrl;
+  // lokalne proxy okładek zawsze daje nagłówek CORS, bez niego canvas bywa zablokowany i motyw się resetuje
+  img.src = cachedCoverUrl(coverUrl, 120);
 }

@@ -99,12 +99,7 @@ import {
   getDuckSensitivity,
   setDuckSensitivity,
 } from '../plugins/duckOnVoice';
-import {
-  isKaraokeMode,
-  setKaraokeMode,
-  isHighContrastLyrics,
-  setHighContrastLyrics,
-} from '../plugins/lyricsKaraoke';
+import { isHighContrastLyrics, setHighContrastLyrics } from '../plugins/lyricsOverlay';
 import {
   createRoom,
   joinRoom,
@@ -222,7 +217,6 @@ export function PluginsPanel({
   const [webhookUrl, setWebhookUrlState] = useState(getWebhookUrl);
   const [duckLvl, setDuckLvl] = useState(getDuckLevel);
   const [duckSens, setDuckSens] = useState(getDuckSensitivity);
-  const [karaoke, setKaraoke] = useState(isKaraokeMode);
   const [hiContrast, setHiContrast] = useState(isHighContrastLyrics);
   const [roomCode, setRoomCode] = useState(getRoomCode);
   const [joinInput, setJoinInput] = useState('');
@@ -421,6 +415,25 @@ export function PluginsPanel({
       case 'lyrics-overlay':
         return (
           <>
+            <div className="plugin-setting-row">
+              <div className="plugin-setting-label">
+                <span>{t.highContrastLyrics}</span>
+                <span className="plugin-desc">{t.highContrastLyricsDesc}</span>
+              </div>
+              <button
+                role="switch"
+                aria-checked={hiContrast}
+                aria-label={t.highContrastLyrics}
+                className={`plugin-toggle ${hiContrast ? 'on' : ''}`}
+                onClick={() => {
+                  const next = !hiContrast;
+                  setHiContrast(next);
+                  setHighContrastLyrics(next);
+                }}
+              >
+                <span className="plugin-toggle-knob" />
+              </button>
+            </div>
             <div className="plugin-setting-row">
               <div className="plugin-setting-label">
                 <span>{t.overlayFontSize}</span>
@@ -958,49 +971,6 @@ export function PluginsPanel({
             />
           </>
         );
-      case 'lyrics-karaoke':
-        return (
-          <>
-            <div className="plugin-setting-row">
-              <div className="plugin-setting-label">
-                <span>{t.karaokeMode}</span>
-                <span className="plugin-desc">{t.karaokeModeDesc}</span>
-              </div>
-              <button
-                role="switch"
-                aria-checked={karaoke}
-                aria-label={t.karaokeMode}
-                className={`plugin-toggle ${karaoke ? 'on' : ''}`}
-                onClick={() => {
-                  const next = !karaoke;
-                  setKaraoke(next);
-                  setKaraokeMode(next);
-                }}
-              >
-                <span className="plugin-toggle-knob" />
-              </button>
-            </div>
-            <div className="plugin-setting-row">
-              <div className="plugin-setting-label">
-                <span>{t.highContrastLyrics}</span>
-                <span className="plugin-desc">{t.highContrastLyricsDesc}</span>
-              </div>
-              <button
-                role="switch"
-                aria-checked={hiContrast}
-                aria-label={t.highContrastLyrics}
-                className={`plugin-toggle ${hiContrast ? 'on' : ''}`}
-                onClick={() => {
-                  const next = !hiContrast;
-                  setHiContrast(next);
-                  setHighContrastLyrics(next);
-                }}
-              >
-                <span className="plugin-toggle-knob" />
-              </button>
-            </div>
-          </>
-        );
       case 'listening-room':
         return (
           <div className="plugin-setting-col">
@@ -1220,7 +1190,6 @@ export function PluginsPanel({
       'loudness-normalization',
       'lastfm-scrobbler',
       'duck-on-voice',
-      'lyrics-karaoke',
       'listening-room',
       'zenith-stage',
       'dualsense-pad',
