@@ -252,7 +252,12 @@ html.opaque-window #root {
   font-weight: 760;
   color: #fff;
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.75);
-  animation: ovLineIn 0.32s ease-out;
+  transform-origin: center;
+  animation: ovActiveIn 520ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.ov-lines {
+  animation: ovStackUp 520ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .ov-line--active .lyric-karaoke,
@@ -267,14 +272,30 @@ html.opaque-window #root {
     0 0 18px rgba(180, 210, 255, 0.45);
 }
 
-@keyframes ovLineIn {
+@keyframes ovStackUp {
   from {
-    opacity: 0.4;
-    transform: translate3d(0, 0.25em, 0);
+    transform: translate3d(0, 0.85em, 0);
+  }
+  to {
+    transform: none;
+  }
+}
+
+@keyframes ovActiveIn {
+  from {
+    opacity: 0.6;
+    transform: scale(0.86);
   }
   to {
     opacity: 1;
     transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ov-lines,
+  .ov-line--active {
+    animation: none;
   }
 }
 

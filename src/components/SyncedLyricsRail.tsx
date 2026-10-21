@@ -4,14 +4,15 @@ import { LyricsTripleCarousel } from './LyricsTripleCarousel';
 import { useLightLyrics } from '../utils/lightLyrics';
 import './SyncedLyricsRail.css';
 
-export const SYNCED_LYRICS_SLIDE_MS = 520;
+export const SYNCED_LYRICS_SLIDE_MS = 600;
 export { OVERLAY_LYRICS_SLIDE_MS } from './LyricsTripleCarousel';
 
-const SLIDE_EASE = (t: number) => 1 - (1 - t) ** 3;
-
-const NATIVE_SMOOTH = typeof navigator !== 'undefined' && !/Linux/.test(navigator.userAgent);
+// ta sama krzywa co --slide-ease w CSS, natywne scrollTo smooth ma własny czas i rozjeżdża się z wierszami
+const SLIDE_EASE = (t: number) => 1 - (1 - t) ** 5;
+const scrollRaf = new WeakMap<HTMLElement, number>();
 
 function smoothScrollToCenter(container: HTMLElement, target: HTMLElement, duration: number) {
+  cancelAnimationFrame(scrollRaf.get(container) ?? 0);
   const start = container.scrollTop;
   const containerRect = container.getBoundingClientRect();
   const targetRect = target.getBoundingClientRect();
@@ -21,18 +22,13 @@ function smoothScrollToCenter(container: HTMLElement, target: HTMLElement, durat
   const end = Math.max(0, Math.min(start + idealDelta, maxScroll));
   const delta = end - start;
   if (Math.abs(delta) < 1) return;
-  if (NATIVE_SMOOTH) {
-    container.scrollTo({ top: end, behavior: 'smooth' });
-    return;
-  }
-
   const t0 = performance.now();
   const tick = (now: number) => {
     const p = Math.min(1, (now - t0) / duration);
-    container.scrollTop = start + (end - start) * SLIDE_EASE(p);
-    if (p < 1) requestAnimationFrame(tick);
+    container.scrollTop = start + delta * SLIDE_EASE(p);
+    if (p < 1) scrollRaf.set(container, requestAnimationFrame(tick));
   };
-  requestAnimationFrame(tick);
+  scrollRaf.set(container, requestAnimationFrame(tick));
 }
 
 export type SyncedLyricLine = { time: number; text: string };

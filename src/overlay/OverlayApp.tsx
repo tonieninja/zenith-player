@@ -65,12 +65,11 @@ function OverlayLines({
   const prev = idx > 0 ? synced[idx - 1] : null;
   const next = synced[idx + 1] ?? null;
   return (
-    <div className="ov-lines">
+    <div className="ov-lines" key={idx}>
       <div className="ov-line ov-line--side ov-line--prev" aria-hidden>
         {prev?.text || '\u00a0'}
       </div>
       <div
-        key={idx}
         className="ov-line ov-line--active"
         style={{ '--line-scale': lineScale(cur?.text ?? '') } as CSSProperties}
       >
@@ -155,12 +154,10 @@ export default function OverlayApp() {
       const c = clockRef.current;
       const rate = p.rate && p.rate > 0 ? p.rate : 1;
       const at = performance.now();
-      const guess = c.playing ? c.progress + ((at - c.at) / 1000) * c.rate : c.progress;
-      c.seen = at;
-      if (c.playing !== p.isPlaying || c.rate !== rate || Math.abs(guess - p.progress) > 0.3) {
-        clockRef.current = { progress: p.progress, at, seen: at, playing: p.isPlaying, rate };
-        setClockTick((n) => n + 1);
-      }
+      const restart = c.playing !== p.isPlaying || c.rate !== rate;
+      // kotwica przy każdej paczce, opóźnienie IPC to kilka ms, a stary próg 0.3 s dawał widoczny dryf
+      clockRef.current = { progress: p.progress, at, seen: at, playing: p.isPlaying, rate };
+      if (restart) setClockTick((n) => n + 1);
       setData((prev) => {
         if (!prev) return p;
         const sameTrack =
@@ -227,7 +224,7 @@ export default function OverlayApp() {
       const elapsed = Math.min(performance.now(), c.seen + 12000) - c.at;
       return c.progress + (Math.max(0, elapsed) / 1000) * c.rate;
     };
-    progressNowRef.current = now;
+    progressNowRef.current = () => now() + offset / 1000;
     const compute = () => getActiveLyricIndex(data.synced, now(), offset);
     setIdx(compute());
     if (!data.isPlaying) return;
@@ -255,7 +252,9 @@ export default function OverlayApp() {
           <div className="overlay-idle">
             {data?.title ? s.lyricsNone : s.lyricsIdle}
             <span className="overlay-idle-sub">
-              {data?.title ? `${data.title} - ${data.artist}` : s.lyricsIdleHint}
+              {data?.title && !data.hideTrackMeta
+                ? `${data.title} - ${data.artist}`
+                : s.lyricsIdleHint}
             </span>
           </div>
         </div>

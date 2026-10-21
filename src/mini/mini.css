@@ -90,7 +90,22 @@ html.opaque-window .mini-root {
   margin-top: 2px;
 }
 
+@property --mini-c1 {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #a78bfa;
+}
+
+@property --mini-c2 {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #ffffff;
+}
+
 .mini-progress {
+  transition:
+    --mini-c1 0.9s ease,
+    --mini-c2 0.9s ease;
   height: 3px;
   background: rgba(255, 255, 255, 0.12);
   border-radius: 2px;
@@ -100,7 +115,7 @@ html.opaque-window .mini-root {
 
 .mini-progress-fill {
   height: 100%;
-  background: linear-gradient(90deg, #a78bfa, #fff);
+  background: linear-gradient(90deg, var(--mini-c1, #a78bfa), var(--mini-c2, #fff));
   border-radius: 2px;
   transform-origin: left center;
   transform: scaleX(0);

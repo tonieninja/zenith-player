@@ -2476,7 +2476,8 @@ export default function App() {
   const paintProgressUiRef = useLatest<(t: number, d?: number) => void>(paintProgressUi);
 
   const getLyricProgress = useCallback(
-    () => audioRef.current?.currentTime ?? progressRef.current,
+    () =>
+      (audioRef.current?.currentTime ?? progressRef.current) + lyricsSyncOffsetRef.current / 1000,
     []
   );
 

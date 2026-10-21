@@ -45,6 +45,8 @@ import {
   setOverlayOpacity,
   getOverlayHideMeta,
   setOverlayHideMeta,
+  getSecondScreenHideMeta,
+  setSecondScreenHideMeta,
   getLyricsSyncOffset,
   setLyricsSyncOffset,
   LYRICS_SYNC_OFFSET_MIN,
@@ -208,6 +210,7 @@ export function PluginsPanel({
   const [overlayAlign, setOverlayAlignState] = useState(getOverlayAlign);
   const [overlayOpacity, setOverlayOpacityState] = useState(getOverlayOpacity);
   const [overlayHideMeta, setOverlayHideMetaState] = useState(getOverlayHideMeta);
+  const [secondHideMeta, setSecondHideMetaState] = useState(getSecondScreenHideMeta);
   const [lyricsSyncOffset, setLyricsSyncOffsetState] = useState(getLyricsSyncOffset);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [query, setQuery] = useState('');
@@ -541,6 +544,29 @@ export function PluginsPanel({
               </div>
             </div>
           </>
+        );
+      case 'second-screen-lyrics':
+        return (
+          <div className="plugin-setting-row">
+            <div className="plugin-setting-label">
+              <span>{t.secondScreenHideMeta}</span>
+              <span className="plugin-desc">{t.secondScreenHideMetaDesc}</span>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={secondHideMeta}
+              aria-label={t.secondScreenHideMeta}
+              className={`plugin-toggle ${secondHideMeta ? 'on' : ''}`}
+              onClick={() => {
+                const next = !secondHideMeta;
+                setSecondHideMetaState(next);
+                setSecondScreenHideMeta(next);
+              }}
+            >
+              <span className="plugin-toggle-knob" />
+            </button>
+          </div>
         );
       case 'preload-next':
         return (
@@ -1182,6 +1208,7 @@ export function PluginsPanel({
       'playback-speed',
       'discord-rpc',
       'lyrics-overlay',
+      'second-screen-lyrics',
       'preload-next',
       'fade-on-pause',
       'webhook',

@@ -143,6 +143,26 @@ export function setOverlayHideMeta(hide: boolean) {
   notifySettingsChanged();
 }
 
+export const SECOND_HIDE_META_KEY = 'zenith_second_hide_meta';
+
+export function getSecondScreenHideMeta(): boolean {
+  try {
+    return localStorage.getItem(SECOND_HIDE_META_KEY) === '1';
+  } catch (err) {
+    console.debug('lyricsOverlay getSecondScreenHideMeta', err);
+  }
+  return false;
+}
+
+export function setSecondScreenHideMeta(hide: boolean) {
+  try {
+    localStorage.setItem(SECOND_HIDE_META_KEY, hide ? '1' : '0');
+  } catch (err) {
+    console.debug('lyricsOverlay setSecondScreenHideMeta', err);
+  }
+  notifySettingsChanged();
+}
+
 async function openOverlayWindow() {
   try {
     const existing = await WebviewWindow.getByLabel('lyrics-overlay');
@@ -208,6 +228,7 @@ export async function pushLyricsOverlay(
         ...full,
         secondScreen: true,
         align: 'center',
+        hideTrackMeta: getSecondScreenHideMeta(),
       });
     }
   } catch (err) {

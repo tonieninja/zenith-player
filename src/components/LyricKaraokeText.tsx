@@ -341,7 +341,7 @@ export function LyricKaraokeText({ text, active: activeProp, start, end, getProg
     const el = wrapRef.current;
     if (!el) return;
     const span = Math.max(0.32, end - start);
-    const pos = () => (getProgress?.() ?? start) - 0.35 - start;
+    const pos = () => (getProgress?.() ?? start) - start;
 
     const fill = el.querySelector<HTMLElement>('.lyric-karaoke-fill');
     if (fill && typeof fill.animate === 'function') {
