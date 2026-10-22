@@ -1,5 +1,19 @@
 # Changelog
 
+## 4.1.1
+
+- EQ no longer turns the whole song down, a limiter keeps it from clipping instead
+- bass boost has its own slider and hits the bass you can actually hear, changes glide without clicks
+- lyrics switch lines right on time instead of half a second late, line changes are one smooth slide
+- second screen lyrics can hide the title and artist
+- mini player progress bar takes its colours from the cover
+- ambient glow tints the background with the cover again
+- Discord shows "Listening to <song>", clickable title and artist, the playlist you play from and two buttons
+- phone remote got bigger buttons and sliders, no zoom on tap, works around the notch, two columns on tablets
+- share card button is clearly visible and tells you if copying worked
+- the cover in the player no longer shows a resize cursor
+- karaoke mode plugin is gone, it did nothing the lyrics don't already do
+
 ## 4.1.0
 
 - DualSense works over Bluetooth, not only on a cable
