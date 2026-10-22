@@ -9,18 +9,14 @@ export const HIGH_CONTRAST_KEY = 'zenith_lyrics_high_contrast';
 export function isHighContrastLyrics(): boolean {
   try {
     return localStorage.getItem(HIGH_CONTRAST_KEY) !== '0';
-  } catch (err) {
-    console.debug('lyricsOverlay isHighContrastLyrics', err);
-  }
+  } catch {}
   return true;
 }
 
 export function setHighContrastLyrics(on: boolean) {
   try {
     localStorage.setItem(HIGH_CONTRAST_KEY, on ? '1' : '0');
-  } catch (err) {
-    console.debug('lyricsOverlay setHighContrastLyrics', err);
-  }
+  } catch {}
 }
 
 export const OVERLAY_FONT_KEY = 'zenith_overlay_font';
@@ -39,9 +35,7 @@ export function getLyricsSyncOffset(): number {
     if (Number.isFinite(v)) {
       return Math.max(LYRICS_SYNC_OFFSET_MIN, Math.min(LYRICS_SYNC_OFFSET_MAX, v));
     }
-  } catch (err) {
-    console.debug('lyricsOverlay getLyricsSyncOffset', err);
-  }
+  } catch {}
   return 0;
 }
 
@@ -49,9 +43,7 @@ export function setLyricsSyncOffset(ms: number) {
   const clamped = Math.max(LYRICS_SYNC_OFFSET_MIN, Math.min(LYRICS_SYNC_OFFSET_MAX, ms));
   try {
     localStorage.setItem(LYRICS_SYNC_OFFSET_KEY, String(clamped));
-  } catch (err) {
-    console.debug('lyricsOverlay setLyricsSyncOffset', err);
-  }
+  } catch {}
   window.dispatchEvent(new CustomEvent('zenith-lyrics-sync-changed', { detail: clamped }));
   notifySettingsChanged();
 }
@@ -61,9 +53,7 @@ export const OVERLAY_SETTINGS_EVENT = 'zenith-overlay-settings-changed';
 function notifySettingsChanged() {
   try {
     window.dispatchEvent(new CustomEvent(OVERLAY_SETTINGS_EVENT));
-  } catch (err) {
-    console.debug('lyricsOverlay notifySettingsChanged', err);
-  }
+  } catch {}
 }
 
 export type OverlayFontSize = 'sm' | 'md' | 'lg' | 'xl' | 'auto';
@@ -72,18 +62,14 @@ export function getOverlayFontSize(): OverlayFontSize {
   try {
     const v = localStorage.getItem(OVERLAY_FONT_KEY);
     if (v === 'sm' || v === 'md' || v === 'lg' || v === 'xl' || v === 'auto') return v;
-  } catch (err) {
-    console.debug('lyricsOverlay getOverlayFontSize', err);
-  }
+  } catch {}
   return 'auto';
 }
 
 export function setOverlayFontSize(size: OverlayFontSize) {
   try {
     localStorage.setItem(OVERLAY_FONT_KEY, size);
-  } catch (err) {
-    console.debug('lyricsOverlay setOverlayFontSize', err);
-  }
+  } catch {}
   notifySettingsChanged();
 }
 
@@ -91,18 +77,14 @@ export function getOverlayAlign(): 'bottom' | 'top' | 'center' {
   try {
     const v = localStorage.getItem(OVERLAY_ALIGN_KEY);
     if (v === 'top' || v === 'center') return v;
-  } catch (err) {
-    console.debug('lyricsOverlay getOverlayAlign', err);
-  }
+  } catch {}
   return 'bottom';
 }
 
 export function setOverlayAlign(align: 'bottom' | 'top' | 'center') {
   try {
     localStorage.setItem(OVERLAY_ALIGN_KEY, align);
-  } catch (err) {
-    console.debug('lyricsOverlay setOverlayAlign', err);
-  }
+  } catch {}
   notifySettingsChanged();
 }
 
@@ -110,36 +92,28 @@ export function getOverlayOpacity(): number {
   try {
     const v = Number(localStorage.getItem(OVERLAY_OPACITY_KEY));
     if (Number.isFinite(v) && v >= 0.4 && v <= 0.98) return v;
-  } catch (err) {
-    console.debug('lyricsOverlay getOverlayOpacity', err);
-  }
+  } catch {}
   return 0.88;
 }
 
 export function setOverlayOpacity(opacity: number) {
   try {
     localStorage.setItem(OVERLAY_OPACITY_KEY, String(opacity));
-  } catch (err) {
-    console.debug('lyricsOverlay setOverlayOpacity', err);
-  }
+  } catch {}
   notifySettingsChanged();
 }
 
 export function getOverlayHideMeta(): boolean {
   try {
     return localStorage.getItem(OVERLAY_HIDE_META_KEY) === '1';
-  } catch (err) {
-    console.debug('lyricsOverlay getOverlayHideMeta', err);
-  }
+  } catch {}
   return false;
 }
 
 export function setOverlayHideMeta(hide: boolean) {
   try {
     localStorage.setItem(OVERLAY_HIDE_META_KEY, hide ? '1' : '0');
-  } catch (err) {
-    console.debug('lyricsOverlay setOverlayHideMeta', err);
-  }
+  } catch {}
   notifySettingsChanged();
 }
 
@@ -148,18 +122,14 @@ export const SECOND_HIDE_META_KEY = 'zenith_second_hide_meta';
 export function getSecondScreenHideMeta(): boolean {
   try {
     return localStorage.getItem(SECOND_HIDE_META_KEY) === '1';
-  } catch (err) {
-    console.debug('lyricsOverlay getSecondScreenHideMeta', err);
-  }
+  } catch {}
   return false;
 }
 
 export function setSecondScreenHideMeta(hide: boolean) {
   try {
     localStorage.setItem(SECOND_HIDE_META_KEY, hide ? '1' : '0');
-  } catch (err) {
-    console.debug('lyricsOverlay setSecondScreenHideMeta', err);
-  }
+  } catch {}
   notifySettingsChanged();
 }
 
@@ -170,9 +140,7 @@ async function openOverlayWindow() {
       await existing.show();
       return;
     }
-  } catch (err) {
-    console.debug('lyricsOverlay openOverlayWindow', err);
-  }
+  } catch {}
   await invoke('open_lyrics_overlay');
 }
 
@@ -183,9 +151,7 @@ async function closeOverlayWindow() {
     try {
       const win = await WebviewWindow.getByLabel('lyrics-overlay');
       if (win) await win.destroy();
-    } catch (err) {
-      console.debug('lyricsOverlay closeOverlayWindow', err);
-    }
+    } catch {}
   }
 }
 
@@ -231,9 +197,7 @@ export async function pushLyricsOverlay(
         hideTrackMeta: getSecondScreenHideMeta(),
       });
     }
-  } catch (err) {
-    console.debug('lyricsOverlay pushLyricsOverlay', err);
-  }
+  } catch {}
 }
 
 export const lyricsOverlayPlugin: ZenithPlugin = {

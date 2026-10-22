@@ -26,9 +26,7 @@ export function getSleepTimerMinutes(): number {
 export function setSleepTimerMinutes(mins: number) {
   try {
     localStorage.setItem(SLEEP_TIMER_KEY, String(mins));
-  } catch (err) {
-    console.debug('sleepTimer setSleepTimerMinutes', err);
-  }
+  } catch {}
 }
 
 function armTimer() {

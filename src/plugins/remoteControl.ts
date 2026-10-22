@@ -52,26 +52,20 @@ export function getRemotePort(): number {
   try {
     const n = Number(localStorage.getItem(REMOTE_PORT_KEY));
     if (Number.isInteger(n) && n >= 1024 && n <= 65535) return n;
-  } catch (err) {
-    console.debug('remoteControl getRemotePort', err);
-  }
+  } catch {}
   return REMOTE_DEFAULT_PORT;
 }
 
 export function setRemotePort(n: number) {
   try {
     localStorage.setItem(REMOTE_PORT_KEY, String(n));
-  } catch (err) {
-    console.debug('remoteControl setRemotePort', err);
-  }
+  } catch {}
 }
 
 export function getRemotePin(): string {
   try {
     return localStorage.getItem(REMOTE_PIN_KEY) || '';
-  } catch (err) {
-    console.debug('remoteControl getRemotePin', err);
-  }
+  } catch {}
   return '';
 }
 
@@ -79,17 +73,13 @@ export function setRemotePin(pin: string) {
   try {
     if (pin.trim()) localStorage.setItem(REMOTE_PIN_KEY, pin.trim().slice(0, 32));
     else localStorage.removeItem(REMOTE_PIN_KEY);
-  } catch (err) {
-    console.debug('remoteControl setRemotePin', err);
-  }
+  } catch {}
 }
 
 export function getRemotePairMode(): boolean {
   try {
     return localStorage.getItem(REMOTE_PAIR_KEY) !== '0';
-  } catch (err) {
-    console.debug('remoteControl getRemotePairMode', err);
-  }
+  } catch {}
   return false;
 }
 
@@ -97,9 +87,7 @@ export function setRemotePairMode(on: boolean) {
   try {
     if (on) localStorage.setItem(REMOTE_PAIR_KEY, '1');
     else localStorage.setItem(REMOTE_PAIR_KEY, '0');
-  } catch (err) {
-    console.debug('remoteControl setRemotePairMode', err);
-  }
+  } catch {}
 }
 
 export async function forgetRemoteDevices(): Promise<RemoteInfo | null> {
@@ -128,9 +116,7 @@ export function pushRemoteLyrics(
       .map((l) => ({ t: Math.round(l.time * 100) / 100, x: l.text })),
     plain: synced?.length ? null : (plain || '').slice(0, 20000),
   });
-  invoke('remote_push', { payload }).catch((err) =>
-    console.debug('remoteControl pushRemoteLyrics', err)
-  );
+  invoke('remote_push', { payload }).catch(() => {});
 }
 
 let unlisten: UnlistenFn | null = null;
@@ -166,13 +152,7 @@ export async function stopRemote() {
   unlisten = null;
   try {
     await invoke('remote_stop');
-  } catch (err) {
-    console.debug('remoteControl stopRemote', err);
-  }
-}
-
-export function remoteRunning() {
-  return running;
+  } catch {}
 }
 
 export async function getRemoteInfo(): Promise<RemoteInfo | null> {
@@ -188,16 +168,12 @@ export function pushRemoteState(s: RemoteState) {
   const payload = JSON.stringify({ type: 'state', ...s });
   if (payload === lastPayload) return;
   lastPayload = payload;
-  invoke('remote_push', { payload }).catch((err) =>
-    console.debug('remoteControl pushRemoteState', err)
-  );
+  invoke('remote_push', { payload }).catch(() => {});
 }
 
 export function pushRemoteMessage(msg: Record<string, unknown>) {
   if (!running) return;
-  invoke('remote_push', { payload: JSON.stringify(msg) }).catch((err) =>
-    console.debug('remoteControl pushRemoteMessage', err)
-  );
+  invoke('remote_push', { payload: JSON.stringify(msg) }).catch(() => {});
 }
 
 let pusher: (() => void) | null = null;

@@ -9,9 +9,7 @@ async function openSecond() {
       await existing.show();
       return;
     }
-  } catch (err) {
-    console.debug('secondScreenLyrics openSecond', err);
-  }
+  } catch {}
   await invoke('open_lyrics_second_screen');
 }
 
@@ -22,9 +20,7 @@ async function closeSecond() {
     try {
       const win = await WebviewWindow.getByLabel('lyrics-second');
       if (win) await win.destroy();
-    } catch (err) {
-      console.debug('secondScreenLyrics closeSecond', err);
-    }
+    } catch {}
   }
 }
 

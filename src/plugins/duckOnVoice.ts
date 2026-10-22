@@ -20,18 +20,14 @@ export function getDuckLevel(): number {
   try {
     const v = Number(localStorage.getItem(DUCK_LEVEL_KEY));
     if (Number.isFinite(v) && v >= 0.05 && v <= 0.5) return v;
-  } catch (err) {
-    console.debug('duckOnVoice getDuckLevel', err);
-  }
+  } catch {}
   return 0.2;
 }
 
 export function setDuckLevel(v: number) {
   try {
     localStorage.setItem(DUCK_LEVEL_KEY, String(v));
-  } catch (err) {
-    console.debug('duckOnVoice setDuckLevel', err);
-  }
+  } catch {}
   if (nativeDuck) syncNativeDuck();
 }
 
@@ -39,18 +35,14 @@ export function getDuckSensitivity(): number {
   try {
     const v = Number(localStorage.getItem(DUCK_SENSITIVITY_KEY));
     if (Number.isFinite(v) && v >= 0.01 && v <= 0.15) return v;
-  } catch (err) {
-    console.debug('duckOnVoice getDuckSensitivity', err);
-  }
+  } catch {}
   return 0.04;
 }
 
 export function setDuckSensitivity(v: number) {
   try {
     localStorage.setItem(DUCK_SENSITIVITY_KEY, String(v));
-  } catch (err) {
-    console.debug('duckOnVoice setDuckSensitivity', err);
-  }
+  } catch {}
   if (nativeDuck) syncNativeDuck();
 }
 
@@ -98,7 +90,7 @@ class DuckMonitor {
     window.clearInterval(this.timer);
     this.timer = 0;
     this.stream?.getTracks().forEach((t) => t.stop());
-    this.ctx?.close().catch((err) => console.debug('duckOnVoice stop', err));
+    this.ctx?.close().catch(() => {});
     this.ctx = null;
     this.analyser = null;
     this.stream = null;

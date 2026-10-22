@@ -51,9 +51,7 @@ export const discordPresencePlugin: ZenithPlugin = {
     }
     if (!info) {
       lastSentKey = '';
-      invoke('discord_clear_presence').catch((err) =>
-        console.debug('discordPresence onNowPlaying', err)
-      );
+      invoke('discord_clear_presence').catch(() => {});
       return;
     }
     const key = `${info.id}|${info.isPlaying}|${Math.round(info.duration)}|${info.context ?? ''}`;
@@ -77,6 +75,6 @@ export const discordPresencePlugin: ZenithPlugin = {
       pendingTimer = null;
     }
     lastSentKey = '';
-    invoke('discord_disconnect').catch((err) => console.debug('discordPresence onDisable', err));
+    invoke('discord_disconnect').catch(() => {});
   },
 };

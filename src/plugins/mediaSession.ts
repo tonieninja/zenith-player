@@ -14,7 +14,7 @@ function pushNative(info: NowPlayingInfo | null, playing?: boolean) {
     playing: playing ?? info?.isPlaying ?? false,
     position: info?.position ?? 0,
     duration: info?.duration ?? 0,
-  }).catch((err) => console.debug('mediaSession pushNative', err));
+  }).catch(() => {});
 }
 
 let handlers: {
@@ -56,9 +56,7 @@ function syncMetadata(info: NowPlayingInfo | null) {
         playbackRate: 1,
       });
     }
-  } catch (err) {
-    console.debug('mediaSession syncMetadata', err);
-  }
+  } catch {}
 }
 
 function wireActions() {
@@ -71,9 +69,7 @@ function wireActions() {
     navigator.mediaSession.setActionHandler('seekto', (details) => {
       if (typeof details.seekTime === 'number') handlers.seek?.(details.seekTime);
     });
-  } catch (err) {
-    console.debug('mediaSession wireActions', err);
-  }
+  } catch {}
 }
 
 export const mediaSessionPlugin: ZenithPlugin = {
@@ -91,9 +87,7 @@ export const mediaSessionPlugin: ZenithPlugin = {
     for (const action of ['play', 'pause', 'previoustrack', 'nexttrack', 'seekto'] as const) {
       try {
         navigator.mediaSession.setActionHandler(action, null);
-      } catch (err) {
-        console.debug('mediaSession onDisable', err);
-      }
+      } catch {}
     }
   },
   onNowPlaying(info) {
@@ -108,8 +102,6 @@ export const mediaSessionPlugin: ZenithPlugin = {
     if (!('mediaSession' in navigator)) return;
     try {
       navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
-    } catch (err) {
-      console.debug('mediaSession onPlayStateChange', err);
-    }
+    } catch {}
   },
 };

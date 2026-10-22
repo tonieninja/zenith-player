@@ -6,9 +6,7 @@ export const WEBHOOK_URL_KEY = 'zenith_webhook_url';
 export function getWebhookUrl(): string {
   try {
     return localStorage.getItem(WEBHOOK_URL_KEY) || '';
-  } catch (err) {
-    console.debug('webhook getWebhookUrl', err);
-  }
+  } catch {}
   return '';
 }
 
@@ -16,9 +14,7 @@ export function setWebhookUrl(url: string) {
   try {
     if (url.trim()) localStorage.setItem(WEBHOOK_URL_KEY, url.trim());
     else localStorage.removeItem(WEBHOOK_URL_KEY);
-  } catch (err) {
-    console.debug('webhook setWebhookUrl', err);
-  }
+  } catch {}
 }
 
 async function postWebhook(info: NowPlayingInfo) {
