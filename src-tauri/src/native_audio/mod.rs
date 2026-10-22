@@ -1142,10 +1142,11 @@ pub mod headless {
     }
 
     fn discord_presence(playing: bool) {
-        let (cid, track) = h(|h| {
+        let (cid, track, context) = h(|h| {
             (
                 h.plan["discordClientId"].as_str().map(String::from),
                 h.plan["queue"][index(&h.plan)].clone(),
+                h.plan["playingFrom"].as_str().map(String::from),
             )
         });
         let Some(client_id) = cid else { return };
@@ -1157,7 +1158,11 @@ pub mod headless {
             duration: s.d.unwrap_or(0.0),
             position: s.t,
             is_playing: playing && !s.paused,
-            cover_url: track["cover"].as_str().map(String::from),
+            cover_url: track["coverLarge"]
+                .as_str()
+                .or_else(|| track["cover"].as_str())
+                .map(String::from),
+            context,
             track_url: track["id"]
                 .as_str()
                 .map(|id| format!("https://music.youtube.com/watch?v={id}")),

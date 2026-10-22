@@ -29,6 +29,7 @@ function send(info: NowPlayingInfo) {
       isPlaying: info.isPlaying,
       coverUrl: info.coverUrl || null,
       trackUrl: `https://music.youtube.com/watch?v=${info.id}`,
+      context: info.context || null,
     },
   }).catch((err) => {
     console.warn('[plugin:discord-rpc]', err);
@@ -55,7 +56,7 @@ export const discordPresencePlugin: ZenithPlugin = {
       );
       return;
     }
-    const key = `${info.id}|${info.isPlaying}|${Math.round(info.duration)}`;
+    const key = `${info.id}|${info.isPlaying}|${Math.round(info.duration)}|${info.context ?? ''}`;
     const elapsed = Date.now() - lastSentAt;
     if (key !== lastSentKey || elapsed >= MIN_UPDATE_INTERVAL_MS) {
       lastSentKey = key;

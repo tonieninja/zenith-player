@@ -3318,10 +3318,11 @@ export default function App() {
       position,
       isPlaying,
       coverUrl: currentTrack.coverLarge || currentTrack.cover,
+      context: playingFrom || undefined,
     };
     pluginManager.notifyNowPlaying(info);
     pluginManager.notifyTrackChange(info);
-  }, [audio, currentTrack, duration, isPlaying]);
+  }, [audio, currentTrack, duration, isPlaying, playingFrom]);
 
   useEffect(() => {
     if (!currentTrack) {
