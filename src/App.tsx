@@ -146,8 +146,6 @@ import {
   isAlbumCollectionId,
   planAutoTransition,
 } from './plugins/crossfade';
-
-const MANUAL_FADE_SECS = 0.35;
 import { registerDualSenseHandler } from './plugins/dualSense';
 import { bindFx } from './plugins/equalizer';
 import {
@@ -216,13 +214,6 @@ import {
   installPendingUpdate,
 } from './utils/appUpdate';
 import { resetOnboarding, shouldShowOnboarding } from './utils/onboarding';
-
-const Onboarding = lazy(() =>
-  import('./components/Onboarding').then((m) => ({ default: m.Onboarding }))
-);
-const PluginsPanel = lazy(() =>
-  import('./components/PluginsPanel').then((m) => ({ default: m.PluginsPanel }))
-);
 import { smartShuffle } from './utils/smartShuffle';
 import {
   decidePrevious,
@@ -275,9 +266,17 @@ import {
 import { useLatest } from './hooks/useLatest';
 import './App.css';
 
+const Onboarding = lazy(() =>
+  import('./components/Onboarding').then((m) => ({ default: m.Onboarding }))
+);
+const PluginsPanel = lazy(() =>
+  import('./components/PluginsPanel').then((m) => ({ default: m.PluginsPanel }))
+);
+
 const appWindow = getCurrentWindow();
 const FAVORITES_ID = '__favorites';
 const MAX_SEARCH_LENGTH = 200;
+const MANUAL_FADE_SECS = 0.35;
 
 type FeedLoadTab = 'home' | 'explore' | 'mood' | 'search';
 const FEED_LOADING_INITIAL: Record<FeedLoadTab, boolean> = {
@@ -395,9 +394,7 @@ export default function App() {
 
   const [libAuthed, setLibAuthed] = useState(false);
   const [sessionExpired, setSessionExpired] = useState(false);
-  const [isOffline, setIsOffline] = useState(
-    () => typeof navigator !== 'undefined' && navigator.onLine === false
-  );
+  const [isOffline, setIsOffline] = useState(() => !navigator.onLine);
   useEffect(() => {
     const on = () => setIsOffline(false);
     const off = () => setIsOffline(true);
@@ -506,7 +503,7 @@ export default function App() {
   useEffect(() => {
     getVersion()
       .then(setAppVersion)
-      .catch((err) => console.debug('App', err));
+      .catch(() => {});
   }, []);
 
   const checkForAppUpdate = useCallback(async () => {
@@ -521,9 +518,7 @@ export default function App() {
           version = live;
           if (live !== appVersion) setAppVersion(live);
         }
-      } catch (err) {
-        console.debug('App', err);
-      }
+      } catch {}
       const tr = translations[lang];
       const signed = await checkSignedUpdate(version);
       if (signed) {
@@ -591,10 +586,7 @@ export default function App() {
         {
           label: t.openRelease,
           labelKey: 'openRelease',
-          onClick: () =>
-            void openUrl(`${GITHUB_RELEASES}/latest`).catch((err) =>
-              console.debug('App onClick', err)
-            ),
+          onClick: () => void openUrl(`${GITHUB_RELEASES}/latest`).catch(() => {}),
         },
         { key: 'updateInstallFailed' }
       );
@@ -609,9 +601,7 @@ export default function App() {
         let version = '';
         try {
           version = await getVersion();
-        } catch (err) {
-          console.debug('App', err);
-        }
+        } catch {}
         const u = await checkSignedUpdate(version || undefined);
         if (!u) return;
         const stored = localStorage.getItem('zenith_lang');
@@ -676,9 +666,7 @@ export default function App() {
     try {
       if (value.trim()) localStorage.setItem('zenith_discord_client_id', value.trim());
       else localStorage.removeItem('zenith_discord_client_id');
-    } catch (err) {
-      console.debug('App', err);
-    }
+    } catch {}
   }, []);
 
   const lyricProviders = useMemo<LyricsProvider[]>(
@@ -758,7 +746,7 @@ export default function App() {
           }
           streamCacheSet(streamCacheRef.current, track.id, url, STREAM_CACHE_LIMIT);
         })
-        .catch((err) => console.debug('App', err))
+        .catch(() => {})
         .finally(() => {
           prefetchInflightRef.current = Math.max(0, prefetchInflightRef.current - 1);
           const next = prefetchPendingRef.current.shift();
@@ -833,9 +821,7 @@ export default function App() {
       if (newLang === lang) return;
       try {
         localStorage.setItem('zenith_lang', newLang);
-      } catch (err) {
-        console.debug('App', err);
-      }
+      } catch {}
       setLang(newLang);
       clearHomeBrowseCache();
       const dataSeq = ++feedSeqRef.current.home;
@@ -848,7 +834,7 @@ export default function App() {
           setHomeSections(stableOrderSections(nextHome));
           setQuickPicks(picks);
         })
-        .catch((err) => console.debug('App', err))
+        .catch(() => {})
         .finally(() => {
           if (dataSeq === feedSeqRef.current.home) setFeedTabLoading('home', false);
         });
@@ -858,7 +844,7 @@ export default function App() {
           if (exploreSeq !== feedSeqRef.current.explore) return;
           setExploreSections(stableOrderSections(data));
         })
-        .catch((err) => console.debug('App', err));
+        .catch(() => {});
     },
     [lang, setFeedTabLoading]
   );
@@ -871,7 +857,7 @@ export default function App() {
       next: tt.trayNext,
       show: tt.trayShow,
       quit: tt.trayQuit,
-    }).catch((err) => console.debug('App', err));
+    }).catch(() => {});
   }, [lang]);
 
   const debouncedSearch = useDebounce(searchQuery, 400);
@@ -930,9 +916,7 @@ export default function App() {
             ];
             startBackgroundPrefetch(allTracks);
             allTracks.slice(0, 3).forEach((t) => prefetchStream(t));
-          } catch (err) {
-            console.debug('App', err);
-          }
+          } catch {}
         })
         .catch(() => {
           if (dataSeq !== feedSeqRef.current.home) return;
@@ -1261,9 +1245,7 @@ export default function App() {
         } else {
           try {
             await invoke('clear_ytm_session_store');
-          } catch (err) {
-            console.debug('App', err);
-          }
+          } catch {}
           clearAuthCache();
         }
         if (!(await isLoggedIn())) {
@@ -1319,15 +1301,11 @@ export default function App() {
       let captured = false;
       try {
         captured = await invoke<boolean>('capture_ytm_login_session');
-      } catch (err) {
-        console.debug('App', err);
-      }
+      } catch {}
       if (!captured) {
         try {
           captured = await invoke<boolean>('sync_ytm_auth_to_main');
-        } catch (err) {
-          console.debug('App', err);
-        }
+        } catch {}
       }
       if (!captured) {
         clearAuthCache();
@@ -1348,15 +1326,11 @@ export default function App() {
       try {
         if (getRememberLogin()) await persistSessionIfWanted();
         else await invoke('forget_ytm_session_file');
-      } catch (err) {
-        console.debug('App', err);
-      }
+      } catch {}
       loginClosingRef.current = true;
       try {
         await invoke('close_google_login');
-      } catch (err) {
-        console.debug('App', err);
-      }
+      } catch {}
       window.setTimeout(() => {
         loginClosingRef.current = false;
       }, 800);
@@ -1371,9 +1345,7 @@ export default function App() {
       void refreshAccountProfile();
       try {
         await appWindow.setFocus();
-      } catch (err) {
-        console.debug('App', err);
-      }
+      } catch {}
     } finally {
       loginFinishingRef.current = false;
     }
@@ -1392,9 +1364,7 @@ export default function App() {
     let captured = false;
     try {
       captured = await invoke<boolean>('capture_ytm_login_session');
-    } catch (err) {
-      console.debug('App', err);
-    }
+    } catch {}
     if (!captured) return;
     await completeLogin();
   }, [completeLogin]);
@@ -1485,12 +1455,9 @@ export default function App() {
       window.setTimeout(() => {
         void invoke<boolean>('capture_ytm_login_session')
           .then((captured) => {
-            if (captured)
-              finalizeLoginFromPopup().catch((err) =>
-                console.debug('App attachLoginWindowHandlers', err)
-              );
+            if (captured) finalizeLoginFromPopup().catch(() => {});
           })
-          .catch((err) => console.debug('App attachLoginWindowHandlers', err));
+          .catch(() => {});
       }, 1200);
 
       WebviewWindow.getByLabel('google-login')
@@ -1504,7 +1471,7 @@ export default function App() {
             pushToast(translations[lang].loginCancelled, 'info');
           });
         })
-        .catch((err) => console.debug('App attachLoginWindowHandlers', err));
+        .catch(() => {});
     };
 
     try {
@@ -1515,9 +1482,7 @@ export default function App() {
         attachLoginWindowHandlers();
         return;
       }
-    } catch (err) {
-      console.debug('App', err);
-    }
+    } catch {}
     try {
       await invoke('open_google_login', { title: t.loginWindowTitle });
     } catch (e) {
@@ -1560,9 +1525,7 @@ export default function App() {
     setLoginBusy(false);
     try {
       await invoke('close_google_login');
-    } catch (err) {
-      console.debug('App', err);
-    }
+    } catch {}
   }, [stopLoginPoll]);
 
   const refreshAuth = useCallback(() => {
@@ -1607,9 +1570,7 @@ export default function App() {
       try {
         const captured = await invoke<boolean>('capture_ytm_login_session');
         if (captured) await finalizeLoginFromPopup();
-      } catch (err) {
-        console.debug('App tick', err);
-      }
+      } catch {}
     };
     void tick();
     const id = window.setInterval(() => {
@@ -1625,7 +1586,7 @@ export default function App() {
     let disposed = false;
     const unsubs: Array<() => void> = [];
     const onCookiesSynced = () => {
-      finalizeLoginFromPopup().catch((err) => console.debug('App onCookiesSynced', err));
+      finalizeLoginFromPopup().catch(() => {});
     };
     listen('ytm-login-cookies-synced', () => {
       onCookiesSynced();
@@ -1746,9 +1707,7 @@ export default function App() {
     let kind: string | null = null;
     try {
       kind = await invoke<string | null>('stream_last_failure');
-    } catch (err) {
-      console.debug('App showStreamStuck', err);
-    }
+    } catch {}
     const msg = streamStuckMessage(translations[L], kind, libAuthedRef.current);
     pushToast(msg, 'error');
   };
@@ -1973,9 +1932,7 @@ export default function App() {
                     autoFadePendingRef.current = false;
                     setBuffering(false);
                     return;
-                  } catch (err) {
-                    console.debug('App loadTrackInner', err);
-                  }
+                  } catch {}
                 }
                 setIsPlaying(false);
                 setBuffering(false);
@@ -2182,18 +2139,14 @@ export default function App() {
       let more: Track[] = [];
       try {
         more = fresh(await getRadioTracks(cur.id, radioLangRef.current));
-      } catch (err) {
-        console.debug('App radio', err);
-      }
+      } catch {}
       if (more.length === 0) {
         try {
           const who = (cur.artist || '').split(' • ')[0];
           more = fresh(
             await getRelatedTracks(`${cur.title} ${who}`.trim(), radioLangRef.current, cur.id)
           );
-        } catch (err) {
-          console.debug('App related', err);
-        }
+        } catch {}
       }
       if (more.length === 0) return 0;
       const latest = queueRef.current;
@@ -2299,7 +2252,7 @@ export default function App() {
       .then((st) => {
         if (st && req === ratingReqRef.current) setTrackRatingState(st);
       })
-      .catch((e) => console.debug('[like] status lookup failed', e));
+      .catch(() => {});
   }, [currentTrack?.id, libAuthed]);
 
   useEffect(() => {
@@ -2503,7 +2456,7 @@ export default function App() {
           position: time,
           isPlaying: isPlayingRef.current,
           hostId: getRoomCode(),
-        }).catch((err) => console.debug('App', err));
+        }).catch(() => {});
       }
     },
     [audio, paintProgressUi]
@@ -2674,7 +2627,7 @@ export default function App() {
               .then((end) => {
                 if (tailRef.current?.id === nearId) tailRef.current = { id: nearId, end };
               })
-              .catch((err) => console.debug('App tail', err));
+              .catch(() => {});
           }
         }
       }
@@ -2720,7 +2673,7 @@ export default function App() {
               .then((u) => {
                 if (u && currentTrackIdRef.current === trackId) audio.preroll(u);
               })
-              .catch((err) => console.debug('App onTimeUpdate', err));
+              .catch(() => {});
           }
         }
         if (plan && trackId && autoFadeTrackRef.current !== trackId) {
@@ -2757,7 +2710,7 @@ export default function App() {
             position: t,
             isPlaying: isPlayingRef.current,
             hostId: getRoomCode(),
-          }).catch((err) => console.debug('App onTimeUpdate', err));
+          }).catch(() => {});
         }
       }
 
@@ -2951,9 +2904,7 @@ export default function App() {
       localStorage.setItem('zenith_saved_tracks', body);
       localStorage.removeItem('zenith_saved');
       persistFavorites(body);
-    } catch (err) {
-      console.debug('App', err);
-    }
+    } catch {}
   }, [savedTracks]);
 
   useEffect(() => {
@@ -3023,9 +2974,7 @@ export default function App() {
       let tab: string | null = null;
       try {
         tab = localStorage.getItem('zenith_ui_tab');
-      } catch (err) {
-        console.debug('App', err);
-      }
+      } catch {}
       const bootLang = (localStorage.getItem('zenith_lang') as Language) || 'en';
       if (tab === 'player' || !isRestoredUi()) {
         openPlayerRef.current();
@@ -3068,7 +3017,7 @@ export default function App() {
           playingFromId: playingFromIdRef.current,
           discordClientId: pluginManager.isEnabled('discord-rpc') ? getDiscordClientId() : null,
         },
-      }).catch((err) => console.debug('App', err));
+      }).catch(() => {});
     }, 150);
     return () => window.clearTimeout(handle);
   }, [queue, queueIndex, loopMode, crossfadeEnabled, crossfadeSecs, playingFrom, pluginStates]);
@@ -3091,9 +3040,7 @@ export default function App() {
           try {
             const r: unknown = p.onEnable?.();
             if (r instanceof Promise) r.catch((e) => console.warn(`[plugins] ${p.id}`, e));
-          } catch (err) {
-            console.debug('App', err);
-          }
+          } catch {}
         }
       }
     }, 900);
@@ -3105,9 +3052,7 @@ export default function App() {
             'get_innertube_config'
           );
           applyInnertubeConfig(cached);
-        } catch (err) {
-          console.debug('App bootstrap', err);
-        }
+        } catch {}
         try {
           const report = await invoke<{
             innertubeVersion?: string;
@@ -3115,9 +3060,7 @@ export default function App() {
             playerVersion?: string;
           }>('refresh_playback_deps');
           applyInnertubeConfig(report);
-        } catch (err) {
-          console.debug('App bootstrap', err);
-        }
+        } catch {}
       })();
 
       if (adoptEngineRef.current()) return;
@@ -3198,9 +3141,7 @@ export default function App() {
       persistQueueNow();
       try {
         localStorage.setItem('zenith_ui_tab', activeTabRef.current);
-      } catch (err) {
-        console.debug('App', err);
-      }
+      } catch {}
     }).then((fn) => {
       unlistenHidden = fn;
     });
@@ -3559,7 +3500,7 @@ export default function App() {
       position: audio.currentTime,
       isPlaying,
       hostId: getRoomCode(),
-    }).catch((err) => console.debug('App', err));
+    }).catch(() => {});
   }, [pluginStates['listening-room'], currentTrack?.id, isPlaying, roomSyncTick, audio]);
 
   useEffect(() => {
@@ -3785,7 +3726,7 @@ export default function App() {
       if (Math.abs(audio.currentTime - targetPos) > 1.25) seekTo(targetPos);
 
       if (state.isPlaying && audio.paused) {
-        void audio.play().catch((err) => console.debug('App', err));
+        void audio.play().catch(() => {});
       } else if (!state.isPlaying && !audio.paused) {
         audio.pause();
       }
@@ -5161,7 +5102,7 @@ export default function App() {
             )}
           </main>
 
-          <footer className="player-bar-premium">
+          <footer className="player-bar">
             <div
               className={`player-now-playing-block ${currentTrack ? 'clickable' : ''}`}
               onClick={() => currentTrack && openPlayer()}
@@ -5469,11 +5410,11 @@ export default function App() {
       {isSettingsOpen && (
         <ModalOverlay onClick={() => setIsSettingsOpen(false)} testId="settings-overlay">
           <div className="glass-modal-container" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header-polished">
+            <div className="modal-header">
               <h2>{t.generalSettings}</h2>
               <X size={26} className="modal-close-icon" onClick={() => setIsSettingsOpen(false)} />
             </div>
-            <div className="modal-body-polished">
+            <div className="modal-body">
               <div className="settings-row-item settings-toggle-row">
                 <div className="settings-account-info">
                   <span className="setting-label">{t.offlineDownloads}</span>
@@ -5506,9 +5447,7 @@ export default function App() {
                     } else {
                       try {
                         await invoke('forget_ytm_session_file');
-                      } catch (err) {
-                        console.debug('App', err);
-                      }
+                      } catch {}
                     }
                   }}
                 >
@@ -5655,11 +5594,7 @@ export default function App() {
                 <button
                   type="button"
                   className="lang-option-btn settings-action-btn"
-                  onClick={() =>
-                    void openUrl(updateStatus?.url || GITHUB_RELEASES).catch((err) =>
-                      console.debug('App', err)
-                    )
-                  }
+                  onClick={() => void openUrl(updateStatus?.url || GITHUB_RELEASES).catch(() => {})}
                 >
                   {t.openRelease}
                 </button>
@@ -5672,7 +5607,7 @@ export default function App() {
                 <button
                   type="button"
                   className="lang-option-btn settings-action-btn"
-                  onClick={() => void openUrl(DONATE_URL).catch((err) => console.debug('App', err))}
+                  onClick={() => void openUrl(DONATE_URL).catch(() => {})}
                 >
                   {t.supportAppBtn}
                 </button>
@@ -5806,11 +5741,11 @@ export default function App() {
       {plEdit && (
         <ModalOverlay onClick={() => !plEditBusy && setPlEdit(null)}>
           <div className="glass-modal-container" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header-polished">
+            <div className="modal-header">
               <h2>{plEdit.mode === 'rename' ? t.renamePlaylist : t.deletePlaylist}</h2>
               <X size={26} className="modal-close-icon" onClick={() => setPlEdit(null)} />
             </div>
-            <div className="modal-body-polished np-modal-body">
+            <div className="modal-body np-modal-body">
               {plEdit.mode === 'rename' ? (
                 <label className="np-field">
                   <span className="np-field-label">{t.npTitle}</span>
@@ -5857,11 +5792,11 @@ export default function App() {
       {fdEdit && (
         <ModalOverlay onClick={() => setFdEdit(null)}>
           <div className="glass-modal-container" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header-polished">
+            <div className="modal-header">
               <h2>{fdEdit.mode === 'rename' ? t.renameFolder : t.moveToFolder}</h2>
               <X size={26} className="modal-close-icon" onClick={() => setFdEdit(null)} />
             </div>
-            <div className="modal-body-polished np-modal-body">
+            <div className="modal-body np-modal-body">
               {fdEdit.mode === 'move' && (
                 <label className="np-field">
                   <span className="np-field-label">{t.folder}</span>
@@ -5917,11 +5852,11 @@ export default function App() {
       {npOpen && (
         <ModalOverlay onClick={() => setNpOpen(false)}>
           <div className="glass-modal-container" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header-polished">
+            <div className="modal-header">
               <h2>{t.newPlaylist}</h2>
               <X size={26} className="modal-close-icon" onClick={() => setNpOpen(false)} />
             </div>
-            <div className="modal-body-polished np-modal-body">
+            <div className="modal-body np-modal-body">
               <label className="np-field">
                 <span className="np-field-label">{t.npTitle}</span>
                 <input

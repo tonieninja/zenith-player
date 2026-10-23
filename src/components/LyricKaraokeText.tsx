@@ -66,9 +66,7 @@ function watchLayout(fill: HTMLElement, rebuild: () => void): () => void {
       : null;
   ro?.observe(fill);
   let alive = true;
-  document.fonts?.ready
-    .then(() => alive && rebuild())
-    .catch((err) => console.debug('LyricKaraokeText watchLayout', err));
+  document.fonts?.ready.then(() => alive && rebuild()).catch(() => {});
   return () => {
     alive = false;
     ro?.disconnect();

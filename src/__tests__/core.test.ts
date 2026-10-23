@@ -43,7 +43,7 @@ import {
   toPlainPlaylistId,
   type Track,
 } from '../api/youtube';
-import { audioOrKnownDuration, barDurationForTrack, knownDurationSec } from '../utils/formatTime';
+import { barDurationForTrack, knownDurationSec } from '../utils/formatTime';
 import { streamStuckMessage } from '../i18n';
 import {
   committedPlaylistDescription,
@@ -147,9 +147,6 @@ describe('youtube ids', () => {
     expect(knownDurationSec({ durationSec: 248 })).toBe(248);
     expect(knownDurationSec({ durationSec: 0 }, 201)).toBe(201);
     expect(knownDurationSec({})).toBe(0);
-    expect(audioOrKnownDuration(Number.NaN, 248)).toBe(248);
-    expect(audioOrKnownDuration(0, 248)).toBe(248);
-    expect(audioOrKnownDuration(249.2, 248)).toBe(249.2);
     expect(barDurationForTrack(249, 241, false)).toBe(249);
     expect(barDurationForTrack(249, 250.4, true)).toBe(250.4);
     expect(barDurationForTrack(0, 241, false)).toBe(0);

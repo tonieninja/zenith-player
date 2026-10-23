@@ -110,9 +110,7 @@ export function QueueDrawer({
     stopAutoScroll();
     try {
       e.currentTarget.releasePointerCapture(e.pointerId);
-    } catch (err) {
-      console.debug('QueueDrawer finishDrag', err);
-    }
+    } catch {}
     dragRef.current = null;
     setDrag(null);
     if (!commit || !cur.moved || !onReorder) return;

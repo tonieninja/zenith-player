@@ -26,11 +26,11 @@ export const HeroSection = memo(function HeroSection({
           {...coverAttrs(track, 'large')}
         />
         <div className="hero-text-block">
-          <span className="hero-badge-premium">{t.bestResult}</span>
+          <span className="hero-badge">{t.bestResult}</span>
           <h1 className="hero-title-massive">{track.title}</h1>
           <h2 className="hero-artist-name">{track.artist}</h2>
           <div className="hero-action-buttons">
-            <button type="button" className="play-button-premium" onClick={onPlay}>
+            <button type="button" className="play-button" onClick={onPlay}>
               <Play size={26} fill="currentColor" /> {t.play}
             </button>
           </div>
