@@ -86,9 +86,6 @@ pub fn user_agent() -> &'static str {
     }
 }
 
-pub const START_URL: &str =
-    "https://accounts.google.com/ServiceLogin?service=youtube&passive=true&continue=https%3A%2F%2Fmusic.youtube.com%2F";
-
 pub const LOADING_PAGE: &str = "login-loading.html";
 
 pub fn is_loading_page(url: &url::Url) -> bool {
@@ -185,6 +182,8 @@ mod tests {
     #[test]
     fn start_url_matches_loading_page() {
         let html = include_str!("../../public/login-loading.html").replace("&amp;", "&");
-        assert!(html.contains(START_URL));
+        assert!(html.contains(
+            "https://accounts.google.com/ServiceLogin?service=youtube&passive=true&continue=https%3A%2F%2Fmusic.youtube.com%2F"
+        ));
     }
 }
