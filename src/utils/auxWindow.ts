@@ -59,7 +59,7 @@ export function startWindowDrag(e: ReactMouseEvent) {
   e.preventDefault();
   void getCurrentWindow()
     .startDragging()
-    .catch((err) => console.debug('auxWindow startWindowDrag', err));
+    .catch(() => {});
 }
 
 export async function closeThisWindow() {
@@ -69,9 +69,7 @@ export async function closeThisWindow() {
   } catch {
     try {
       await win.destroy();
-    } catch (err) {
-      console.debug('auxWindow closeThisWindow', err);
-    }
+    } catch {}
   }
 }
 
@@ -92,7 +90,5 @@ export function markOpaqueAuxWindow() {
     if (document.body) document.body.style.background = '#0a0b10';
     const root = document.getElementById('root');
     if (root) root.style.background = '#0a0b10';
-  } catch (err) {
-    console.debug('auxWindow markOpaqueAuxWindow', err);
-  }
+  } catch {}
 }

@@ -85,10 +85,6 @@ export async function checkSignedUpdate(
   }
 }
 
-export function hasPendingUpdate(): boolean {
-  return pendingUpdate !== null;
-}
-
 export async function installPendingUpdate(
   onProgress?: (pct: number | null) => void
 ): Promise<void> {

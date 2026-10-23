@@ -89,9 +89,7 @@ function readJson<T>(key: string, fallback: T): T {
 function writeJson(key: string, value: unknown) {
   try {
     localStorage.setItem(key, JSON.stringify(value));
-  } catch (err) {
-    console.debug('musixmatch writeJson', err);
-  }
+  } catch {}
 }
 
 let staleKeysDropped = false;
@@ -100,9 +98,7 @@ function dropStaleKeys() {
   staleKeysDropped = true;
   try {
     for (const k of STALE_KEYS) localStorage.removeItem(k);
-  } catch (err) {
-    console.debug('musixmatch dropStaleKeys', err);
-  }
+  } catch {}
 }
 
 type TokenEntry = { token: string; at: number };
@@ -144,9 +140,7 @@ export function clientOrder(): Client[] {
   let last = '';
   try {
     last = localStorage.getItem(LAST_CLIENT_KEY) || '';
-  } catch (err) {
-    console.debug('musixmatch clientOrder', err);
-  }
+  } catch {}
   const first = MXM_CLIENTS.find((c) => c.id === last);
   return first ? [first, ...MXM_CLIENTS.filter((c) => c !== first)] : [...MXM_CLIENTS];
 }
@@ -154,9 +148,7 @@ export function clientOrder(): Client[] {
 function rememberClient(client: Client) {
   try {
     localStorage.setItem(LAST_CLIENT_KEY, client.id);
-  } catch (err) {
-    console.debug('musixmatch rememberClient', err);
-  }
+  } catch {}
 }
 
 type Reply = { status: number; ok: boolean; text: string };
@@ -174,7 +166,7 @@ async function get(url: string, headers: Record<string, string>): Promise<Reply>
     const res = await fetch(url, { method: 'GET', headers, signal: controller.signal });
     return { status: res.status, ok: res.ok, text: await res.text() };
   })();
-  reply.catch((err) => console.debug('musixmatch get', err));
+  reply.catch(() => {});
   try {
     return await Promise.race([reply, timeout]);
   } finally {
@@ -195,9 +187,7 @@ async function request(
   let message: Message | undefined;
   try {
     message = JSON.parse(res.text)?.message;
-  } catch (err) {
-    console.debug('musixmatch request', err);
-  }
+  } catch {}
   if (!message?.header) throw new Error(`${endpoint} returned no json`);
   return message;
 }
@@ -604,9 +594,7 @@ async function webCall(
   let message: Message | undefined;
   try {
     message = JSON.parse(res.text)?.message;
-  } catch (err) {
-    console.debug('musixmatch webCall', err);
-  }
+  } catch {}
   if (!message?.header) throw new Error('Community API unavailable');
   const status = message.header.status_code;
   if (status === 401 && !retried) return webCall(endpoint, params, true);
@@ -722,7 +710,5 @@ export function resetMusixmatchState() {
   try {
     for (const k of [TOKENS_KEY, LAST_CLIENT_KEY, SECRET_KEY, WEB_DOWN_KEY])
       localStorage.removeItem(k);
-  } catch (err) {
-    console.debug('musixmatch resetMusixmatchState', err);
-  }
+  } catch {}
 }

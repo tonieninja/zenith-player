@@ -15,11 +15,6 @@ export function knownDurationSec(
   return Number.isFinite(fallback) && fallback > 0 ? fallback : 0;
 }
 
-export function audioOrKnownDuration(audioDuration: number, known: number): number {
-  if (Number.isFinite(audioDuration) && audioDuration > 0) return audioDuration;
-  return Number.isFinite(known) && known > 0 ? known : 0;
-}
-
 export function barDurationForTrack(
   trackKnownSec: number,
   audioDuration: number,

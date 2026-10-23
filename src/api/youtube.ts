@@ -247,9 +247,7 @@ async function buildAuthHeaders(lang: Language): Promise<Record<string, string>>
     headers.Authorization = authorization;
     headers['X-Origin'] = YTM_ORIGIN;
     headers['X-Goog-AuthUser'] = '0';
-  } catch (err) {
-    console.debug('youtube buildAuthHeaders', err);
-  }
+  } catch {}
   return headers;
 }
 
@@ -565,9 +563,7 @@ export function preloadImage(url: string): Promise<void> {
 
 export function prefetchCovers(tracks: Track[]) {
   tracks.slice(0, 1).forEach((t) => {
-    preloadImage(t.coverSmall || t.cover).catch((err) =>
-      console.debug('youtube prefetchCovers', err)
-    );
+    preloadImage(t.coverSmall || t.cover).catch(() => {});
   });
 }
 
@@ -678,10 +674,6 @@ export function getOptimizedCover(
   return u;
 }
 
-export async function getHome(lang: Language): Promise<Section[]> {
-  return await fetchBrowse('FEmusic_home', lang);
-}
-
 export interface HomeFeed {
   sections: Section[];
   quickPicks: Track[];
@@ -752,43 +744,6 @@ export async function getExplore(lang: Language): Promise<Section[]> {
   }
   const merged = dedupeSections(explore);
   return orderExploreSectionsData(merged.filter((s) => s.items.length > 0));
-}
-
-export async function getNewReleasesAlbums(lang: Language): Promise<Track[]> {
-  try {
-    const sections = await fetchBrowse('FEmusic_new_releases', lang);
-    const all = sections.flatMap((s) => s.items);
-    const unique = new Map<string, Track>();
-    for (const t of all) if (!unique.has(t.id)) unique.set(t.id, t);
-    return Array.from(unique.values()).slice(0, 80);
-  } catch {
-    return [];
-  }
-}
-
-export async function getNewReleasesVideos(lang: Language): Promise<Track[]> {
-  try {
-    const sections = await fetchBrowse('FEmusic_new_releases', lang);
-    const videoKeywords = ['video', 'teledysk', 'clip', 'wideo'];
-    const videoSections = sections.filter((s) =>
-      videoKeywords.some((k) => s.title.toLowerCase().includes(k))
-    );
-    const source = videoSections.length > 0 ? videoSections : sections;
-    const all = source.flatMap((s) => s.items);
-    const unique = new Map<string, Track>();
-    for (const t of all) if (!unique.has(t.id)) unique.set(t.id, t);
-    return Array.from(unique.values()).slice(0, 60);
-  } catch {
-    return [];
-  }
-}
-
-export async function getQuickPicks(lang: Language): Promise<Track[]> {
-  try {
-    return (await getHomeFeed(lang)).quickPicks;
-  } catch {
-    return [];
-  }
 }
 
 export async function getMoodPlaylist(browseId: string, lang: Language): Promise<Section[]> {
@@ -1210,10 +1165,6 @@ export async function getRadioTracks(videoId: string, lang: Language): Promise<T
   );
 }
 
-export async function getPlaylistItems(browseId: string, lang: Language): Promise<Track[]> {
-  return (await loadPlaylistItems(browseId, lang)).items;
-}
-
 const MIX_CONTINUATION_PAGES = 2;
 const PLAYLIST_CONTINUATION_PAGES = 50;
 
@@ -1299,9 +1250,7 @@ export async function loadPlaylistItems(
         }
         if (tracks.length) return { items: tracks, status: 'ok' };
         sawEmpty = true;
-      } catch (err) {
-        console.debug('youtube loadPlaylistItems', err);
-      }
+      } catch {}
     }
     if (generated) {
       try {
@@ -1310,9 +1259,7 @@ export async function loadPlaylistItems(
           onPage?.(queue);
           return { items: queue, status: 'ok' };
         }
-      } catch (err) {
-        console.debug('youtube loadPlaylistItems', err);
-      }
+      } catch {}
     }
   }
   return { items: [], status: sawEmpty ? 'empty' : 'failed' };
@@ -1420,9 +1367,7 @@ export function prefetchLibrary(lang: Language, except?: LibraryCategory) {
       if (cat === except) continue;
       try {
         await getLibrary(cat, lang);
-      } catch (err) {
-        console.debug('youtube prefetchLibrary', err);
-      }
+      } catch {}
     }
   })();
 }
@@ -1795,14 +1740,6 @@ export async function getTrackLikeStatus(
   }
 }
 
-export async function setTrackLiked(
-  videoId: string,
-  liked: boolean,
-  lang: Language
-): Promise<void> {
-  await setTrackRating(videoId, liked ? 'LIKE' : 'INDIFFERENT', lang);
-}
-
 export interface RelatedResult {
   sections: Section[];
   about: string | null;
@@ -1971,9 +1908,7 @@ export async function getLyrics(
   let smart = '1';
   try {
     smart = localStorage.getItem('zenith_smart_lyrics') === '0' ? '0' : '1';
-  } catch (err) {
-    console.debug('youtube getLyrics', err);
-  }
+  } catch {}
   const cacheKey = `${track.id}:${preferred || 'Auto'}:${lang}:${smart}`;
   const cached = lyricsCache.get(cacheKey);
   if (cached && Date.now() - cached.ts < (cached.ok ? LYRICS_OK_TTL : LYRICS_FAIL_TTL)) {
@@ -2233,9 +2168,7 @@ async function fetchTimedtextVtt(url: string, videoId: string): Promise<LyricsLi
   try {
     const cookie = await getYtmCookie();
     if (cookie) headers.Cookie = cookie;
-  } catch (err) {
-    console.debug('youtube fetchTimedtextVtt', err);
-  }
+  } catch {}
   const response = await fetch(withVttFmt(url), { method: 'GET', headers });
   if (!response.ok) return null;
   const raw = await response.text();
@@ -2254,9 +2187,7 @@ async function getYoutubeTimedtext(videoId: string, lang: Language): Promise<Lyr
         const url = `https://www.youtube.com/api/timedtext?v=${encodeURIComponent(videoId)}&fmt=vtt&lang=${trackLang}${kind}`;
         const synced = await fetchTimedtextVtt(url, videoId);
         if (synced) return synced;
-      } catch (err) {
-        console.debug('youtube getYoutubeTimedtext', err);
-      }
+      } catch {}
     }
   }
   return null;
@@ -2280,9 +2211,7 @@ async function getYouTubeMusicLyrics(track: Track, lang: Language): Promise<Lyri
       if (fromPlayer?.length) {
         return { provider: 'YouTube Music', text: null, synced: fromPlayer, matchScore: 3 };
       }
-    } catch (err) {
-      console.debug('youtube getYouTubeMusicLyrics', err);
-    }
+    } catch {}
   }
   const browseId = findLyricsBrowseId(data, lang);
   if (!browseId) throw new Error('This video has no Lyrics tab on YouTube Music');
@@ -2611,9 +2540,7 @@ function cleanQueryTitle(title: string, artist?: string): string {
 export function lyricsSearchTitle(title: string, artist = ''): string {
   try {
     if (localStorage.getItem('zenith_smart_lyrics') === '0') return title.trim();
-  } catch (err) {
-    console.debug('youtube lyricsSearchTitle', err);
-  }
+  } catch {}
   return cleanQueryTitle(title, artist)
     .replace(/\s*[(\[]\s*(feat\.?|ft\.?|featuring|with)\s+[^)\]]+[)\]]/gi, '')
     .replace(/\s*[-–,;]?\s+(feat\.?|ft\.?|featuring)\s+[^()\[\]]+(?=[)\]])/gi, '')
@@ -2632,9 +2559,7 @@ export function lyricsCreditArtist(artist: string): string {
 export function lyricsSearchArtist(artist: string): string {
   try {
     if (localStorage.getItem('zenith_smart_lyrics') === '0') return firstArtist(artist);
-  } catch (err) {
-    console.debug('youtube lyricsSearchArtist', err);
-  }
+  } catch {}
   return firstArtist(artist)
     .replace(/\s*[(\[]\s*(feat\.?|ft\.?|featuring|with)\s+[^)\]]+[)\]]/gi, '')
     .replace(/\s+(feat\.?|ft\.?|featuring)\s+.+$/gi, '')

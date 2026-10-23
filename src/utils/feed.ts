@@ -1,5 +1,4 @@
-import type { Track } from '../api/youtube';
-import type { Section } from '../api/youtube';
+import type { Section, Track } from '../api/youtube';
 
 export type FeedItemIdentity = { id: string; type: Track['type'] };
 
@@ -10,28 +9,6 @@ export type ResolveFeedItemInput = {
   subtitle?: string | null;
   primaryIsBrowse?: boolean;
 };
-
-export function extractBrowsePageType(endpoint: unknown): string | undefined {
-  const pt = (endpoint as any)?.browseEndpoint?.browseEndpointContextSupportedConfigs
-    ?.browseEndpointContextMusicConfig?.pageType;
-  return typeof pt === 'string' && pt ? pt : undefined;
-}
-
-export function pickRendererPageType(renderer: any): string | undefined {
-  const spots = [
-    renderer?.navigationEndpoint,
-    renderer?.title?.runs?.[0]?.navigationEndpoint,
-    renderer?.flexColumns?.[0]?.musicResponsiveListItemFlexColumnRenderer?.text?.runs?.[0]
-      ?.navigationEndpoint,
-    renderer?.doubleTapCommand,
-    renderer,
-  ];
-  for (const spot of spots) {
-    const pt = extractBrowsePageType(spot);
-    if (pt) return pt;
-  }
-  return undefined;
-}
 
 export function resolveFeedItem(input: ResolveFeedItemInput): FeedItemIdentity | null {
   const videoId = input.videoId || undefined;
