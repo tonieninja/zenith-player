@@ -1881,7 +1881,7 @@ export default function App() {
               audio.releaseInactive();
               scheduleOutputCheck(gen);
               return;
-            } catch (e) {
+            } catch {
               if (stale()) return;
               audio.abortAll();
               progressRef.current = 0;
@@ -1914,7 +1914,7 @@ export default function App() {
               autoFadePendingRef.current = false;
               setBuffering(false);
               return;
-            } catch (e) {
+            } catch {
               audio.load();
               const ready = await audio.waitReady(5000);
               if (stale()) return;
@@ -2914,14 +2914,14 @@ export default function App() {
   }, [activeTab, activeMood, savedTracks, accountLikes, t.favs]);
 
   useEffect(() => {
-    (window as any).__zenithCacheCleanup = clearCaches;
+    window.__zenithCacheCleanup = clearCaches;
     return () => {
       audio.pause();
       audio.src = '';
       audio.load();
       clearCaches();
       streamCacheRef.current.clear();
-      (window as any).__zenithCacheCleanup = undefined;
+      window.__zenithCacheCleanup = undefined;
     };
   }, [audio]);
   const loadTrackRef = useLatest(loadTrack);
@@ -5344,7 +5344,7 @@ export default function App() {
             queueIndex={queueIndex}
             t={t}
             onClose={() => setQueueOpen(false)}
-            onSelectTrack={(idx, _track) => {
+            onSelectTrack={(idx) => {
               if (idx !== queueIndex) void playByIndex(idx);
             }}
             onRemoveTrack={(idx) => {

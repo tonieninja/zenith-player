@@ -696,7 +696,7 @@ async function lookup(q: MxmQuery): Promise<MxmLyrics> {
   } catch (e) {
     if (e instanceof MxmMiss) throw e;
     markWebDown();
-    throw new Error(`app API: ${appError}; web API: ${message(e)}`);
+    throw new Error(`app API: ${appError}; web API: ${message(e)}`, { cause: e });
   }
 }
 

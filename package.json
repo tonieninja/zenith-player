@@ -18,6 +18,7 @@
     "format": "prettier --write \"src/**/*.{ts,tsx,css}\" \"*.{html,ts,json}\"",
     "format:check": "prettier --check \"src/**/*.{ts,tsx,css}\" \"*.{html,ts,json}\"",
     "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
     "codesign:dev": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/gen-dev-codesign-cert.ps1",
     "codesign:trust": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/trust-local-publisher.ps1",
     "dist": "pnpm tauri build",
@@ -38,14 +39,19 @@
     "react-dom": "^19.3.1"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@playwright/test": "^1.65.1",
     "@tauri-apps/cli": "^2",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^4.7.0",
+    "eslint": "^10.15.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^17.14.0",
     "jsdom": "^25.0.1",
     "prettier": "^3.10.1",
     "typescript": "~5.8.3",
+    "typescript-eslint": "^8.72.2",
     "vite": "^7.3.8",
     "vitest": "^3.2.7"
   }

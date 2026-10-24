@@ -144,7 +144,7 @@ class PluginManager {
   }
 
   private readStored() {
-    let stored: Record<string, boolean> = {};
+    let stored: Record<string, boolean>;
     try {
       stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
     } catch {
