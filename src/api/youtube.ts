@@ -284,12 +284,7 @@ export interface LyricsResult {
 }
 
 export type LyricsProvider =
-  | 'Auto'
-  | 'LRCLib'
-  | 'Musixmatch'
-  | 'YouTube Music'
-  | 'LyricsGenius'
-  | 'Lyrics.ovh';
+  'Auto' | 'LRCLib' | 'Musixmatch' | 'YouTube Music' | 'LyricsGenius' | 'Lyrics.ovh';
 
 export const MOOD_BROWSE_ID = 'FEmusic_moods_and_genres_category';
 const BROWSE_PARAMS_SEP = '::';
