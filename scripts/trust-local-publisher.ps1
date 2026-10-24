@@ -62,5 +62,5 @@ Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue
 Write-Host "Publisher trusted: $($cert.Subject)"
 Write-Host "Thumbprint: $($cert.Thumbprint)"
 Write-Host 'Locally built, signed Zenith installers on this PC should no longer trip SmartScreen'
-Write-Host 'GitHub downloads on other PCs still need Azure Trusted Signing or an OV/EV Authenticode cert'
+Write-Host 'GitHub releases are signed by SignPath, this cert only helps builds made on this PC'
 exit 0

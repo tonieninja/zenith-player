@@ -119,8 +119,7 @@ function Invoke-SignTool {
 $material = Get-SignMaterial
 if (-not $material) {
   if ($env:GITHUB_ACTIONS -eq 'true') {
-    Write-Warning '[sign] no certificate on CI - artifact stays unsigned'
-    Write-Warning '[sign] set ZENITH_CODESIGN_PFX_BASE64 + ZENITH_CODESIGN_PASSWORD, or Azure Trusted Signing secrets'
+    Write-Warning '[sign] no certificate on CI - release builds get signed by SignPath in the release job'
     exit 0
   }
   Write-Warning "[sign] no certificate - leaving unsigned: $FilePath"

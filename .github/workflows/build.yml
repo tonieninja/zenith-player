@@ -7,6 +7,7 @@ on:
   workflow_dispatch:
 permissions:
   contents: write
+  actions: read
 env:
   TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
   TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
@@ -35,6 +36,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm test
       - run: pnpm typecheck
+      - run: pnpm lint
+      - run: pnpm format:check
       - run: cargo test --manifest-path src-tauri/Cargo.toml
       - name: e2e (phone remote page, Playwright)
         run: |
@@ -161,6 +164,45 @@ jobs:
             esac
           done
           find bundle -type f | sort
+      - name: collect windows files for signing
+        if: startsWith(github.ref, 'refs/tags/v') && vars.SIGNPATH_ORGANIZATION_ID != ''
+        run: |
+          mkdir -p to-sign
+          cp bundle/nsis/*-setup.exe bundle/msi/*.msi bundle/portable/*.exe to-sign/
+          echo "VERSION=$(node -p "require('./src-tauri/tauri.conf.json').version")" >> "$GITHUB_ENV"
+      - name: upload unsigned windows files
+        id: unsigned
+        if: startsWith(github.ref, 'refs/tags/v') && vars.SIGNPATH_ORGANIZATION_ID != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-unsigned
+          path: to-sign
+      # SignPath Foundation zatwierdza każde wydanie ręcznie, stąd godzina na kliknięcie
+      - name: sign with SignPath
+        if: startsWith(github.ref, 'refs/tags/v') && vars.SIGNPATH_ORGANIZATION_ID != ''
+        uses: signpath/github-action-submit-signing-request@v3
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_POLICY_SLUG }}
+          github-artifact-id: ${{ steps.unsigned.outputs.artifact-id }}
+          wait-for-completion: true
+          wait-for-completion-timeout-in-seconds: 3600
+          output-artifact-directory: signed
+          parameters: |
+            version: ${{ toJSON(env.VERSION) }}
+      # podpis Authenticode zmienia bajty, więc stare .sig aktualizatora już nie pasują
+      - name: put signed files back
+        if: startsWith(github.ref, 'refs/tags/v') && vars.SIGNPATH_ORGANIZATION_ID != ''
+        run: |
+          cp signed/*-setup.exe bundle/nsis/
+          cp signed/*.msi bundle/msi/
+          cp signed/*_portable.exe bundle/portable/
+          for f in bundle/nsis/*-setup.exe bundle/msi/*.msi; do
+            rm -f "$f.sig"
+            npx -y @tauri-apps/cli@2.11 signer sign "$f"
+          done
       - name: latest.json
         if: env.TAURI_SIGNING_PRIVATE_KEY != ''
         run: |

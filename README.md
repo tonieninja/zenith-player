@@ -29,7 +29,8 @@ Grab it from [Releases](https://github.com/tonieninja/zenith-player/releases/lat
 | Any Linux            | `Zenith_4.1.1_amd64.AppImage`                                                    |
 | macOS 11+            | `Zenith_4.1.1_universal.dmg` (built by CI, I don't have a Mac to test it)        |
 
-Windows builds aren't signed with a paid certificate, so SmartScreen will complain. More info, Run anyway.
+Windows builds aren't signed yet, so SmartScreen will complain. More info, Run anyway.
+See the [code signing policy](#code-signing-policy).
 On macOS right click, Open the first time (or System Settings, Privacy & Security, Open Anyway). `SHA256SUMS` is attached to every release.
 
 ## What it does
@@ -88,7 +89,7 @@ Node 20+, pnpm 10, Rust stable. On Linux also
 ```bash
 pnpm install
 pnpm tauri dev
-pnpm test && pnpm typecheck
+pnpm test && pnpm typecheck && pnpm lint
 pnpm tauri build
 ```
 
@@ -99,6 +100,25 @@ but that's life. I hack on this on my knees and it's just easier for me with eve
 
 RAM on Linux sits around 250 MB with the window open and most of that is WebKit itself. Closing to
 the tray drops the UI completely, so the player alone uses a lot less.
+
+## Code signing policy
+
+Free code signing provided by [SignPath.io](https://signpath.io), certificate by
+[SignPath Foundation](https://signpath.org).
+
+- Committers and reviewers: [tonieninja](https://github.com/tonieninja)
+- Approvers: [tonieninja](https://github.com/tonieninja)
+
+Only builds made by the GitHub Actions workflow in this repo get signed, and every release is
+approved by hand. Setup details are in [docs/SIGNING.md](docs/SIGNING.md).
+
+## Privacy
+
+This program will not transfer any information to other networked systems unless specifically
+requested by the user or the person installing or operating it. Playing music talks to YouTube
+Music, lyrics come from lyrics sites, and Discord, Last.fm, Spotify export and the phone remote only
+connect once you turn them on. The update check asks GitHub for the latest release, you can turn it
+off in Settings. Your Google cookies stay on your computer and only go to Google.
 
 ## License
 
