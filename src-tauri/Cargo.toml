@@ -37,6 +37,7 @@ sha1 = "0.10"
 futures-util = "0.3"
 discord-rich-presence = "0.2.5"
 hidapi = "2"
+# TODO: tauri 2.12 chce windows 0.62 i webview2-com 0.39, a vendor/wry i wv2_mem.rs są jeszcze na 0.61/0.38
 tauri-plugin-updater = "~2.12"
 tauri-plugin-process = "~2.3"
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
