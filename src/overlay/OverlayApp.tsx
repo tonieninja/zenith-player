@@ -182,23 +182,21 @@ export default function OverlayApp() {
       const persistKey = `${p.title}|${p.artist}|${p.synced?.length ?? 0}`;
       if (persistKey !== lastPersistKeyRef.current) {
         lastPersistKeyRef.current = persistKey;
-        try {
-          localStorage.setItem(
-            STORAGE_KEY,
-            JSON.stringify({
-              title: p.title,
-              artist: p.artist,
-              coverUrl: p.coverUrl,
-              trackId: p.trackId,
-              syncedLen: p.synced?.length ?? 0,
-              text: p.text ? '[plain]' : null,
-            })
-          );
-        } catch {}
+        localStorage.setItem(
+          STORAGE_KEY,
+          JSON.stringify({
+            title: p.title,
+            artist: p.artist,
+            coverUrl: p.coverUrl,
+            trackId: p.trackId,
+            syncedLen: p.synced?.length ?? 0,
+            text: p.text ? '[plain]' : null,
+          })
+        );
       }
     }).then((fn) => {
       unlisten = fn;
-      void emit('zenith-overlay-ready', currentWindowLabel()).catch(() => {});
+      void emit('zenith-overlay-ready', currentWindowLabel());
     });
     return () => unlisten?.();
   }, []);

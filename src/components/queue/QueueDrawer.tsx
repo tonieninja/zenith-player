@@ -108,9 +108,8 @@ export function QueueDrawer({
     const cur = dragRef.current;
     if (!cur || cur.pointerId !== e.pointerId) return;
     stopAutoScroll();
-    try {
+    if (e.currentTarget.hasPointerCapture(e.pointerId))
       e.currentTarget.releasePointerCapture(e.pointerId);
-    } catch {}
     dragRef.current = null;
     setDrag(null);
     if (!commit || !cur.moved || !onReorder) return;

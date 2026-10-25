@@ -239,7 +239,7 @@ export function PluginsPanel({
   useEffect(() => {
     lastfmStatus()
       .then(setLfm)
-      .catch(() => {});
+      .catch((e) => console.warn('[lastfm] status failed', e));
   }, []);
   const lfmRun = (p: Promise<LastfmStatus>) =>
     p
@@ -732,7 +732,9 @@ export function PluginsPanel({
                     href="#"
                     onClick={(e) => {
                       e.preventDefault();
-                      void openUrl('https://www.last.fm/api/account/create').catch(() => {});
+                      void openUrl('https://www.last.fm/api/account/create').catch((err) =>
+                        console.warn('[lastfm] open link failed', err)
+                      );
                     }}
                   >
                     last.fm/api/account/create
@@ -788,7 +790,9 @@ export function PluginsPanel({
                     onClick={() =>
                       lfmRun(
                         lastfmBeginAuth().then(async (url) => {
-                          await openUrl(url).catch(() => {});
+                          await openUrl(url).catch((e) =>
+                            console.warn('[lastfm] open auth page failed', e)
+                          );
                           return lastfmStatus();
                         })
                       )

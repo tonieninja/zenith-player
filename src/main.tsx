@@ -1,7 +1,5 @@
 // w webview window.close() zamyka całe okno aplikacji, więc żaden skrypt nie może go wywołać
-try {
-  window.close = () => {};
-} catch {}
+window.close = () => {};
 
 import ReactDOM from 'react-dom/client';
 import App from './App';

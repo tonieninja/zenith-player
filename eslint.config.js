@@ -13,8 +13,9 @@ export default defineConfig(
     plugins: { 'react-hooks': reactHooks },
     rules: {
       'react-hooks/rules-of-hooks': 'error',
+      // TODO: ~55 ostrzeżeń, prawie wszystkie w App.tsx, część zależności celowo pominięta
       'react-hooks/exhaustive-deps': 'warn',
-      'no-empty': ['error', { allowEmptyCatch: true }],
+      'no-empty': 'error',
       '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
     },
   },

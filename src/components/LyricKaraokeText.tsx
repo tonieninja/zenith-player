@@ -66,7 +66,7 @@ function watchLayout(fill: HTMLElement, rebuild: () => void): () => void {
       : null;
   ro?.observe(fill);
   let alive = true;
-  document.fonts?.ready.then(() => alive && rebuild()).catch(() => {});
+  void document.fonts?.ready.then(() => alive && rebuild());
   return () => {
     alive = false;
     ro?.disconnect();

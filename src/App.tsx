@@ -501,9 +501,7 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    getVersion()
-      .then(setAppVersion)
-      .catch(() => {});
+    getVersion().then(setAppVersion);
   }, []);
 
   const checkForAppUpdate = useCallback(async () => {
@@ -512,13 +510,11 @@ export default function App() {
     setUpdateStatus(null);
     try {
       let version = appVersion;
-      try {
-        const live = await getVersion();
-        if (live) {
-          version = live;
-          if (live !== appVersion) setAppVersion(live);
-        }
-      } catch {}
+      const live = await getVersion().catch(() => '');
+      if (live) {
+        version = live;
+        if (live !== appVersion) setAppVersion(live);
+      }
       const tr = translations[lang];
       const signed = await checkSignedUpdate(version);
       if (signed) {
@@ -586,7 +582,7 @@ export default function App() {
         {
           label: t.openRelease,
           labelKey: 'openRelease',
-          onClick: () => void openUrl(`${GITHUB_RELEASES}/latest`).catch(() => {}),
+          onClick: () => void openUrl(`${GITHUB_RELEASES}/latest`),
         },
         { key: 'updateInstallFailed' }
       );
@@ -598,10 +594,7 @@ export default function App() {
     if (import.meta.env.DEV || localStorage.getItem('zenith_auto_update_check') === '0') return;
     const id = window.setTimeout(() => {
       void (async () => {
-        let version = '';
-        try {
-          version = await getVersion();
-        } catch {}
+        const version = await getVersion().catch(() => '');
         const u = await checkSignedUpdate(version || undefined);
         if (!u) return;
         const stored = localStorage.getItem('zenith_lang');
@@ -663,10 +656,8 @@ export default function App() {
   );
   const saveDiscordClientId = useCallback((value: string) => {
     setDiscordClientId(value);
-    try {
-      if (value.trim()) localStorage.setItem('zenith_discord_client_id', value.trim());
-      else localStorage.removeItem('zenith_discord_client_id');
-    } catch {}
+    if (value.trim()) localStorage.setItem('zenith_discord_client_id', value.trim());
+    else localStorage.removeItem('zenith_discord_client_id');
   }, []);
 
   const lyricProviders = useMemo<LyricsProvider[]>(
@@ -746,7 +737,6 @@ export default function App() {
           }
           streamCacheSet(streamCacheRef.current, track.id, url, STREAM_CACHE_LIMIT);
         })
-        .catch(() => {})
         .finally(() => {
           prefetchInflightRef.current = Math.max(0, prefetchInflightRef.current - 1);
           const next = prefetchPendingRef.current.shift();
@@ -819,9 +809,7 @@ export default function App() {
   const changeLanguage = useCallback(
     (newLang: Language) => {
       if (newLang === lang) return;
-      try {
-        localStorage.setItem('zenith_lang', newLang);
-      } catch {}
+      localStorage.setItem('zenith_lang', newLang);
       setLang(newLang);
       clearHomeBrowseCache();
       const dataSeq = ++feedSeqRef.current.home;
@@ -834,7 +822,7 @@ export default function App() {
           setHomeSections(stableOrderSections(nextHome));
           setQuickPicks(picks);
         })
-        .catch(() => {})
+        .catch((e) => console.warn('[feed] home reload failed', e))
         .finally(() => {
           if (dataSeq === feedSeqRef.current.home) setFeedTabLoading('home', false);
         });
@@ -844,7 +832,7 @@ export default function App() {
           if (exploreSeq !== feedSeqRef.current.explore) return;
           setExploreSections(stableOrderSections(data));
         })
-        .catch(() => {});
+        .catch((e) => console.warn('[feed] explore reload failed', e));
     },
     [lang, setFeedTabLoading]
   );
@@ -857,7 +845,7 @@ export default function App() {
       next: tt.trayNext,
       show: tt.trayShow,
       quit: tt.trayQuit,
-    }).catch(() => {});
+    });
   }, [lang]);
 
   const debouncedSearch = useDebounce(searchQuery, 400);
@@ -909,18 +897,14 @@ export default function App() {
           const normalizedHome = stableOrderSections(nextHome);
           setHomeSections(normalizedHome);
           setQuickPicks(picks);
-          try {
-            const allTracks = [
-              ...picks,
-              ...normalizedHome.flatMap((s) => s.items).filter((i) => i.type === 'track'),
-            ];
-            startBackgroundPrefetch(allTracks);
-            allTracks.slice(0, 3).forEach((t) => prefetchStream(t));
-          } catch {}
+          const allTracks = [
+            ...picks,
+            ...normalizedHome.flatMap((s) => s.items).filter((i) => i.type === 'track'),
+          ];
+          startBackgroundPrefetch(allTracks);
+          allTracks.slice(0, 3).forEach((t) => prefetchStream(t));
         })
-        .catch(() => {
-          if (dataSeq !== feedSeqRef.current.home) return;
-        })
+        .catch((e) => console.warn('[feed] home load failed', e))
         .finally(() => {
           window.clearTimeout(safety);
           setFeedTabLoading('home', false);
@@ -958,9 +942,7 @@ export default function App() {
           if (dataSeq !== feedSeqRef.current.explore) return;
           setExploreSections(stableOrderSections(data));
         })
-        .catch(() => {
-          if (dataSeq !== feedSeqRef.current.explore) return;
-        })
+        .catch((e) => console.warn('[feed] explore load failed', e))
         .finally(() => {
           window.clearTimeout(safety);
           setFeedTabLoading('explore', false);
@@ -1243,9 +1225,9 @@ export default function App() {
             console.warn('[auth] restore session failed', e);
           }
         } else {
-          try {
-            await invoke('clear_ytm_session_store');
-          } catch {}
+          await invoke('clear_ytm_session_store').catch((e) =>
+            console.warn('[auth] clear session store failed', e)
+          );
           clearAuthCache();
         }
         if (!(await isLoggedIn())) {
@@ -1298,14 +1280,9 @@ export default function App() {
     try {
       clearAuthCache();
       clearHomeBrowseCache();
-      let captured = false;
-      try {
-        captured = await invoke<boolean>('capture_ytm_login_session');
-      } catch {}
+      let captured = await invoke<boolean>('capture_ytm_login_session').catch(() => false);
       if (!captured) {
-        try {
-          captured = await invoke<boolean>('sync_ytm_auth_to_main');
-        } catch {}
+        captured = await invoke<boolean>('sync_ytm_auth_to_main').catch(() => false);
       }
       if (!captured) {
         clearAuthCache();
@@ -1323,14 +1300,16 @@ export default function App() {
       loginDoneRef.current = true;
       setLoginBusy(false);
       stopLoginPoll();
-      try {
-        if (getRememberLogin()) await persistSessionIfWanted();
-        else await invoke('forget_ytm_session_file');
-      } catch {}
+      if (getRememberLogin()) await persistSessionIfWanted();
+      else {
+        await invoke('forget_ytm_session_file').catch((e) =>
+          console.warn('[auth] forget session failed', e)
+        );
+      }
       loginClosingRef.current = true;
-      try {
-        await invoke('close_google_login');
-      } catch {}
+      await invoke('close_google_login').catch((e) =>
+        console.warn('[login] close sign-in window failed', e)
+      );
       window.setTimeout(() => {
         loginClosingRef.current = false;
       }, 800);
@@ -1343,9 +1322,7 @@ export default function App() {
       void loadLibrary('landing');
       void loadUserPlaylists();
       void refreshAccountProfile();
-      try {
-        await appWindow.setFocus();
-      } catch {}
+      void appWindow.setFocus();
     } finally {
       loginFinishingRef.current = false;
     }
@@ -1361,10 +1338,7 @@ export default function App() {
 
   const finalizeLoginFromPopup = useCallback(async () => {
     if (loginFinishingRef.current || loginDoneRef.current) return;
-    let captured = false;
-    try {
-      captured = await invoke<boolean>('capture_ytm_login_session');
-    } catch {}
+    const captured = await invoke<boolean>('capture_ytm_login_session').catch(() => false);
     if (!captured) return;
     await completeLogin();
   }, [completeLogin]);
@@ -1455,23 +1429,21 @@ export default function App() {
       window.setTimeout(() => {
         void invoke<boolean>('capture_ytm_login_session')
           .then((captured) => {
-            if (captured) finalizeLoginFromPopup().catch(() => {});
+            if (captured) return finalizeLoginFromPopup();
           })
-          .catch(() => {});
+          .catch((e) => console.warn('[login] capture after open failed', e));
       }, 1200);
 
-      WebviewWindow.getByLabel('google-login')
-        .then((loginWindow) => {
-          loginWindow?.once('tauri://destroyed', () => {
-            if (loginClosingRef.current || loginFinishingRef.current || loginDoneRef.current) {
-              return;
-            }
-            setLoginBusy(false);
-            clearAuthCache();
-            pushToast(translations[lang].loginCancelled, 'info');
-          });
-        })
-        .catch(() => {});
+      WebviewWindow.getByLabel('google-login').then((loginWindow) => {
+        loginWindow?.once('tauri://destroyed', () => {
+          if (loginClosingRef.current || loginFinishingRef.current || loginDoneRef.current) {
+            return;
+          }
+          setLoginBusy(false);
+          clearAuthCache();
+          pushToast(translations[lang].loginCancelled, 'info');
+        });
+      });
     };
 
     try {
@@ -1482,7 +1454,9 @@ export default function App() {
         attachLoginWindowHandlers();
         return;
       }
-    } catch {}
+    } catch (e) {
+      console.warn('[login] reusing sign-in window failed', e);
+    }
     try {
       await invoke('open_google_login', { title: t.loginWindowTitle });
     } catch (e) {
@@ -1523,9 +1497,9 @@ export default function App() {
     stopLoginPoll();
     loginDoneRef.current = true;
     setLoginBusy(false);
-    try {
-      await invoke('close_google_login');
-    } catch {}
+    await invoke('close_google_login').catch((e) =>
+      console.warn('[login] close sign-in window failed', e)
+    );
   }, [stopLoginPoll]);
 
   const refreshAuth = useCallback(() => {
@@ -1567,10 +1541,10 @@ export default function App() {
     let disposed = false;
     const tick = async () => {
       if (disposed || loginFinishingRef.current || loginDoneRef.current) return;
-      try {
-        const captured = await invoke<boolean>('capture_ytm_login_session');
-        if (captured) await finalizeLoginFromPopup();
-      } catch {}
+      const captured = await invoke<boolean>('capture_ytm_login_session').catch(() => false);
+      if (captured) {
+        await finalizeLoginFromPopup().catch((e) => console.warn('[login] finalize failed', e));
+      }
     };
     void tick();
     const id = window.setInterval(() => {
@@ -1586,7 +1560,7 @@ export default function App() {
     let disposed = false;
     const unsubs: Array<() => void> = [];
     const onCookiesSynced = () => {
-      finalizeLoginFromPopup().catch(() => {});
+      finalizeLoginFromPopup().catch((e) => console.warn('[login] finalize failed', e));
     };
     listen('ytm-login-cookies-synced', () => {
       onCookiesSynced();
@@ -1704,10 +1678,7 @@ export default function App() {
   );
 
   const showStreamStuck = async (L: Language) => {
-    let kind: string | null = null;
-    try {
-      kind = await invoke<string | null>('stream_last_failure');
-    } catch {}
+    const kind = await invoke<string | null>('stream_last_failure').catch(() => null);
     const msg = streamStuckMessage(translations[L], kind, libAuthedRef.current);
     pushToast(msg, 'error');
   };
@@ -1932,7 +1903,9 @@ export default function App() {
                     autoFadePendingRef.current = false;
                     setBuffering(false);
                     return;
-                  } catch {}
+                  } catch (e) {
+                    console.warn('[playback] retry with fresh url failed:', track.id, e);
+                  }
                 }
                 setIsPlaying(false);
                 setBuffering(false);
@@ -2136,17 +2109,14 @@ export default function App() {
       if (!cur) return 0;
       const have = new Set(q.map((t) => t.id));
       const fresh = (list: Track[]) => list.filter((t) => t.type === 'track' && !have.has(t.id));
-      let more: Track[] = [];
-      try {
-        more = fresh(await getRadioTracks(cur.id, radioLangRef.current));
-      } catch {}
+      let more = fresh(await getRadioTracks(cur.id, radioLangRef.current).catch(() => []));
       if (more.length === 0) {
-        try {
-          const who = (cur.artist || '').split(' • ')[0];
-          more = fresh(
-            await getRelatedTracks(`${cur.title} ${who}`.trim(), radioLangRef.current, cur.id)
-          );
-        } catch {}
+        const who = (cur.artist || '').split(' • ')[0];
+        more = fresh(
+          await getRelatedTracks(`${cur.title} ${who}`.trim(), radioLangRef.current, cur.id).catch(
+            () => []
+          )
+        );
       }
       if (more.length === 0) return 0;
       const latest = queueRef.current;
@@ -2252,7 +2222,7 @@ export default function App() {
       .then((st) => {
         if (st && req === ratingReqRef.current) setTrackRatingState(st);
       })
-      .catch(() => {});
+      .catch((e) => console.warn('[like] status fetch failed', e));
   }, [currentTrack?.id, libAuthed]);
 
   useEffect(() => {
@@ -2456,7 +2426,7 @@ export default function App() {
           position: time,
           isPlaying: isPlayingRef.current,
           hostId: getRoomCode(),
-        }).catch(() => {});
+        });
       }
     },
     [audio, paintProgressUi]
@@ -2624,10 +2594,10 @@ export default function App() {
           const src = audio.src;
           if (src) {
             void invoke<number | null>('zaudio_tail', { url: src, d })
+              .catch(() => null)
               .then((end) => {
                 if (tailRef.current?.id === nearId) tailRef.current = { id: nearId, end };
-              })
-              .catch(() => {});
+              });
           }
         }
       }
@@ -2668,12 +2638,9 @@ export default function App() {
           const next = ni >= 0 && ni !== qi ? q[ni] : null;
           if (next) {
             prerollForRef.current = trackId;
-            void resolveStreamUrlRef
-              .current(next.id)
-              .then((u) => {
-                if (u && currentTrackIdRef.current === trackId) audio.preroll(u);
-              })
-              .catch(() => {});
+            void resolveStreamUrlRef.current(next.id).then((u) => {
+              if (u && currentTrackIdRef.current === trackId) audio.preroll(u);
+            });
           }
         }
         if (plan && trackId && autoFadeTrackRef.current !== trackId) {
@@ -2710,7 +2677,7 @@ export default function App() {
             position: t,
             isPlaying: isPlayingRef.current,
             hostId: getRoomCode(),
-          }).catch(() => {});
+          });
         }
       }
 
@@ -2904,7 +2871,9 @@ export default function App() {
       localStorage.setItem('zenith_saved_tracks', body);
       localStorage.removeItem('zenith_saved');
       persistFavorites(body);
-    } catch {}
+    } catch (e) {
+      console.warn('[favorites] save failed', e);
+    }
   }, [savedTracks]);
 
   useEffect(() => {
@@ -2971,10 +2940,7 @@ export default function App() {
       isPlayingRef.current = !snap.paused;
       setBuffering(false);
       paintProgressUiRef.current(snap.t, d);
-      let tab: string | null = null;
-      try {
-        tab = localStorage.getItem('zenith_ui_tab');
-      } catch {}
+      const tab = localStorage.getItem('zenith_ui_tab');
       const bootLang = (localStorage.getItem('zenith_lang') as Language) || 'en';
       if (tab === 'player' || !isRestoredUi()) {
         openPlayerRef.current();
@@ -3017,7 +2983,7 @@ export default function App() {
           playingFromId: playingFromIdRef.current,
           discordClientId: pluginManager.isEnabled('discord-rpc') ? getDiscordClientId() : null,
         },
-      }).catch(() => {});
+      }).catch((e) => console.warn('[engine] plan sync failed', e));
     }, 150);
     return () => window.clearTimeout(handle);
   }, [queue, queueIndex, loopMode, crossfadeEnabled, crossfadeSecs, playingFrom, pluginStates]);
@@ -3040,19 +3006,19 @@ export default function App() {
           try {
             const r: unknown = p.onEnable?.();
             if (r instanceof Promise) r.catch((e) => console.warn(`[plugins] ${p.id}`, e));
-          } catch {}
+          } catch (e) {
+            console.warn(`[plugins] ${p.id}`, e);
+          }
         }
       }
     }, 900);
 
     const bootstrap = async () => {
       void (async () => {
-        try {
-          const cached = await invoke<{ clientVersion?: string; apiKey?: string }>(
-            'get_innertube_config'
-          );
-          applyInnertubeConfig(cached);
-        } catch {}
+        const cached = await invoke<{ clientVersion?: string; apiKey?: string }>(
+          'get_innertube_config'
+        ).catch(() => null);
+        if (cached) applyInnertubeConfig(cached);
         try {
           const report = await invoke<{
             innertubeVersion?: string;
@@ -3060,7 +3026,9 @@ export default function App() {
             playerVersion?: string;
           }>('refresh_playback_deps');
           applyInnertubeConfig(report);
-        } catch {}
+        } catch (e) {
+          console.warn('[innertube] refresh failed', e);
+        }
       })();
 
       if (adoptEngineRef.current()) return;
@@ -3139,9 +3107,7 @@ export default function App() {
     let unlistenHidden: (() => void) | undefined;
     listen('zenith-hidden-to-tray', () => {
       persistQueueNow();
-      try {
-        localStorage.setItem('zenith_ui_tab', activeTabRef.current);
-      } catch {}
+      localStorage.setItem('zenith_ui_tab', activeTabRef.current);
     }).then((fn) => {
       unlistenHidden = fn;
     });
@@ -3500,7 +3466,7 @@ export default function App() {
       position: audio.currentTime,
       isPlaying,
       hostId: getRoomCode(),
-    }).catch(() => {});
+    });
   }, [pluginStates['listening-room'], currentTrack?.id, isPlaying, roomSyncTick, audio]);
 
   useEffect(() => {
@@ -3726,7 +3692,9 @@ export default function App() {
       if (Math.abs(audio.currentTime - targetPos) > 1.25) seekTo(targetPos);
 
       if (state.isPlaying && audio.paused) {
-        void audio.play().catch(() => {});
+        void audio.play().catch((e) => {
+          if (e.name !== 'AbortError') console.warn('[listening-room] play failed', e);
+        });
       } else if (!state.isPlaying && !audio.paused) {
         audio.pause();
       }
@@ -5445,9 +5413,9 @@ export default function App() {
                     if (next) {
                       await persistSessionIfWanted();
                     } else {
-                      try {
-                        await invoke('forget_ytm_session_file');
-                      } catch {}
+                      await invoke('forget_ytm_session_file').catch((e) =>
+                        console.warn('[auth] forget session failed', e)
+                      );
                     }
                   }}
                 >
@@ -5594,7 +5562,7 @@ export default function App() {
                 <button
                   type="button"
                   className="lang-option-btn settings-action-btn"
-                  onClick={() => void openUrl(updateStatus?.url || GITHUB_RELEASES).catch(() => {})}
+                  onClick={() => void openUrl(updateStatus?.url || GITHUB_RELEASES)}
                 >
                   {t.openRelease}
                 </button>
@@ -5607,7 +5575,7 @@ export default function App() {
                 <button
                   type="button"
                   className="lang-option-btn settings-action-btn"
-                  onClick={() => void openUrl(DONATE_URL).catch(() => {})}
+                  onClick={() => void openUrl(DONATE_URL)}
                 >
                   {t.supportAppBtn}
                 </button>

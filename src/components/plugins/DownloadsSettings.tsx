@@ -111,7 +111,9 @@ export function DownloadsSettings({
                   className="np-cancel-btn"
                   aria-label={`${t.dlDelete} ${d.title}`}
                   onClick={async () => {
-                    await deleteDownload(d.id).catch(() => {});
+                    await deleteDownload(d.id).catch((e) =>
+                      console.warn('[downloads] delete failed', e)
+                    );
                     setItems(await listDownloads());
                   }}
                 >
@@ -130,7 +132,7 @@ export function DownloadsSettings({
                   return;
                 }
                 setConfirmClear(false);
-                await clearDownloads().catch(() => 0);
+                await clearDownloads().catch((e) => console.warn('[downloads] clear failed', e));
                 setItems(await listDownloads());
               }}
             >

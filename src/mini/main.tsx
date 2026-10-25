@@ -58,7 +58,7 @@ function MiniApp() {
     let unlisten: (() => void) | undefined;
     listen<MiniPlayerPayload>('zenith-mini-state', (e) => setData(e.payload)).then((fn) => {
       unlisten = fn;
-      void emit('zenith-mini-ready').catch(() => {});
+      void emit('zenith-mini-ready');
     });
     return () => unlisten?.();
   }, []);

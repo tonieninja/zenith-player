@@ -20,11 +20,7 @@ const TEXT = {
 };
 
 function uiText() {
-  try {
-    return localStorage.getItem('zenith_lang') === 'pl' ? TEXT.pl : TEXT.en;
-  } catch {
-    return TEXT.en;
-  }
+  return localStorage.getItem('zenith_lang') === 'pl' ? TEXT.pl : TEXT.en;
 }
 type State = { error: Error | null; copied?: boolean };
 
@@ -40,7 +36,9 @@ export function recordCrash(error: Error, stack?: string | null) {
       component: String(stack || '').slice(0, 2000),
     };
     localStorage.setItem(CRASH_KEY, JSON.stringify([...prev, entry].slice(-20)));
-  } catch {}
+  } catch (e) {
+    console.warn('[crash] record failed', e);
+  }
 }
 
 export class ErrorBoundary extends Component<Props, State> {
@@ -113,7 +111,7 @@ export class ErrorBoundary extends Component<Props, State> {
             navigator.clipboard
               ?.writeText(details)
               .then(() => this.setState({ copied: true }))
-              .catch(() => {});
+              .catch((err) => console.warn('[crash] copy details failed', err));
           }}
           style={{
             border: '1px solid rgba(255,255,255,0.25)',
