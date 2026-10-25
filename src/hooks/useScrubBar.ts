@@ -43,9 +43,8 @@ export function useScrubBar(duration: number, onSeek: (time: number) => void) {
     if (!scrubbingRef.current) return;
     scrubbingRef.current = false;
     setScrubbing(false);
-    try {
+    if (e.currentTarget.hasPointerCapture(e.pointerId))
       e.currentTarget.releasePointerCapture(e.pointerId);
-    } catch {}
   }, []);
 
   useEffect(() => {

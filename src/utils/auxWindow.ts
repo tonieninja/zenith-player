@@ -33,11 +33,7 @@ export const AUX_STRINGS = {
 } as const;
 
 function readLang(): AuxLang {
-  try {
-    return localStorage.getItem('zenith_lang') === 'pl' ? 'pl' : 'en';
-  } catch {
-    return 'en';
-  }
+  return localStorage.getItem('zenith_lang') === 'pl' ? 'pl' : 'en';
 }
 
 export function useAuxLang(): AuxLang {
@@ -57,9 +53,7 @@ export function startWindowDrag(e: ReactMouseEvent) {
   const target = e.target as HTMLElement | null;
   if (target?.closest('button, a, input, select, textarea, [data-no-drag]')) return;
   e.preventDefault();
-  void getCurrentWindow()
-    .startDragging()
-    .catch(() => {});
+  void getCurrentWindow().startDragging();
 }
 
 export async function closeThisWindow() {
@@ -67,9 +61,7 @@ export async function closeThisWindow() {
   try {
     await invoke('close_window', { label: win.label });
   } catch {
-    try {
-      await win.destroy();
-    } catch {}
+    await win.destroy().catch((err) => console.warn('[window] destroy failed', err));
   }
 }
 
@@ -82,13 +74,11 @@ export function currentWindowLabel(): string {
 }
 
 export function markOpaqueAuxWindow() {
-  try {
-    const ua = navigator.userAgent || '';
-    if (!/\bLinux\b/.test(ua) || /Android/.test(ua)) return;
-    document.documentElement.classList.add('opaque-window');
-    document.documentElement.style.background = '#0a0b10';
-    if (document.body) document.body.style.background = '#0a0b10';
-    const root = document.getElementById('root');
-    if (root) root.style.background = '#0a0b10';
-  } catch {}
+  const ua = navigator.userAgent || '';
+  if (!/\bLinux\b/.test(ua) || /Android/.test(ua)) return;
+  document.documentElement.classList.add('opaque-window');
+  document.documentElement.style.background = '#0a0b10';
+  if (document.body) document.body.style.background = '#0a0b10';
+  const root = document.getElementById('root');
+  if (root) root.style.background = '#0a0b10';
 }

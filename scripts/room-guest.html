@@ -149,9 +149,7 @@
         }
         joinBtn.disabled = true;
         if (socket) {
-          try {
-            socket.close();
-          } catch {}
+          socket.close();
           socket = null;
         }
         packets = 0;
@@ -162,9 +160,7 @@
           socket = ws;
           const timer = setTimeout(() => {
             log('Join timeout (12s)');
-            try {
-              ws.close();
-            } catch {}
+            ws.close();
             joinBtn.disabled = false;
           }, 12000);
           ws.onopen = () => {

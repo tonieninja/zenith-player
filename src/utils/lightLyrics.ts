@@ -5,11 +5,7 @@ export const LIGHT_LYRICS_KEY = 'zenith_light_lyrics';
 const listeners = new Set<() => void>();
 
 function read(): boolean {
-  try {
-    return localStorage.getItem(LIGHT_LYRICS_KEY) === '1';
-  } catch {
-    return false;
-  }
+  return localStorage.getItem(LIGHT_LYRICS_KEY) === '1';
 }
 
 let current = read();
@@ -20,9 +16,7 @@ export function isLightLyrics(): boolean {
 
 export function setLightLyrics(on: boolean) {
   current = on;
-  try {
-    localStorage.setItem(LIGHT_LYRICS_KEY, on ? '1' : '0');
-  } catch {}
+  localStorage.setItem(LIGHT_LYRICS_KEY, on ? '1' : '0');
   for (const l of listeners) l();
 }
 

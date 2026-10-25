@@ -29,13 +29,7 @@ type Cmd =
   | { op: 'loop'; a: number | null; b: number | null };
 
 function domError(name: string, message: string) {
-  try {
-    return new DOMException(message, name);
-  } catch {
-    const e = new Error(message);
-    e.name = name;
-    return e;
-  }
+  return new DOMException(message, name);
 }
 
 export class NativeAudio {
@@ -84,7 +78,7 @@ export class NativeAudio {
       .then((s) => {
         if (seq === this.seq) this.take(s);
       })
-      .catch(() => {});
+      .catch((e) => console.warn('[zaudio] cmd failed', cmd.op, e));
   }
 
   get currentTime() {
@@ -135,7 +129,9 @@ export class NativeAudio {
       this.volQueued = true;
       queueMicrotask(() => {
         this.volQueued = false;
-        void invoke('zaudio_cmd', { cmd: { op: 'volume', v: this.master } }).catch(() => {});
+        void invoke('zaudio_cmd', { cmd: { op: 'volume', v: this.master } }).catch((e) =>
+          console.warn('[zaudio] volume failed', e)
+        );
       });
     }
   }
@@ -226,7 +222,10 @@ export class NativeAudio {
   }
 
   preroll(url: string): void {
-    if (url) void invoke<boolean>('zaudio_preroll', { url }).catch(() => false);
+    if (url)
+      void invoke<boolean>('zaudio_preroll', { url }).catch((e) =>
+        console.warn('[zaudio] preroll failed', e)
+      );
   }
 
   async crossfadeTo(url: string, seconds: number): Promise<void> {

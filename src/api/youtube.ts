@@ -238,16 +238,14 @@ async function sha1Hex(input: string): Promise<string> {
 
 async function buildAuthHeaders(lang: Language): Promise<Record<string, string>> {
   const headers: Record<string, string> = { ...buildHeaders(lang) };
-  try {
-    const cookie = await getYtmCookie();
-    const ts = Math.floor(Date.now() / 1000);
-    const authorization = await sapisidAuthorization(cookie, ts);
-    if (!authorization) return headers;
-    headers.Cookie = cookie;
-    headers.Authorization = authorization;
-    headers['X-Origin'] = YTM_ORIGIN;
-    headers['X-Goog-AuthUser'] = '0';
-  } catch {}
+  const cookie = await getYtmCookie();
+  const ts = Math.floor(Date.now() / 1000);
+  const authorization = await sapisidAuthorization(cookie, ts);
+  if (!authorization) return headers;
+  headers.Cookie = cookie;
+  headers.Authorization = authorization;
+  headers['X-Origin'] = YTM_ORIGIN;
+  headers['X-Goog-AuthUser'] = '0';
   return headers;
 }
 
@@ -553,12 +551,6 @@ export function preloadImage(url: string): Promise<void> {
       }
     };
     img.src = url;
-  });
-}
-
-export function prefetchCovers(tracks: Track[]) {
-  tracks.slice(0, 1).forEach((t) => {
-    preloadImage(t.coverSmall || t.cover).catch(() => {});
   });
 }
 
@@ -1245,7 +1237,9 @@ export async function loadPlaylistItems(
         }
         if (tracks.length) return { items: tracks, status: 'ok' };
         sawEmpty = true;
-      } catch {}
+      } catch (e) {
+        console.warn('[playlist] browse failed', id, e);
+      }
     }
     if (generated) {
       try {
@@ -1254,7 +1248,9 @@ export async function loadPlaylistItems(
           onPage?.(queue);
           return { items: queue, status: 'ok' };
         }
-      } catch {}
+      } catch (e) {
+        console.warn('[playlist] watch queue failed', browseId, e);
+      }
     }
   }
   return { items: [], status: sawEmpty ? 'empty' : 'failed' };
@@ -1360,9 +1356,7 @@ export function prefetchLibrary(lang: Language, except?: LibraryCategory) {
   void (async () => {
     for (const cat of LIBRARY_PREFETCH_ORDER) {
       if (cat === except) continue;
-      try {
-        await getLibrary(cat, lang);
-      } catch {}
+      await getLibrary(cat, lang);
     }
   })();
 }
@@ -1900,10 +1894,7 @@ export async function getLyrics(
   preferred?: LyricsProvider,
   onPlain?: (plain: LyricsResult) => void
 ): Promise<LyricsResult | null> {
-  let smart = '1';
-  try {
-    smart = localStorage.getItem('zenith_smart_lyrics') === '0' ? '0' : '1';
-  } catch {}
+  const smart = localStorage.getItem('zenith_smart_lyrics') === '0' ? '0' : '1';
   const cacheKey = `${track.id}:${preferred || 'Auto'}:${lang}:${smart}`;
   const cached = lyricsCache.get(cacheKey);
   if (cached && Date.now() - cached.ts < (cached.ok ? LYRICS_OK_TTL : LYRICS_FAIL_TTL)) {
@@ -2160,13 +2151,16 @@ export function captionTrackUrlsFromPlayer(data: unknown): string[] {
 
 async function fetchTimedtextVtt(url: string, videoId: string): Promise<LyricsLine[] | null> {
   const headers = youtubeTimedtextHeaders(videoId);
+  const cookie = await getYtmCookie();
+  if (cookie) headers.Cookie = cookie;
+  let raw: string;
   try {
-    const cookie = await getYtmCookie();
-    if (cookie) headers.Cookie = cookie;
-  } catch {}
-  const response = await fetch(withVttFmt(url), { method: 'GET', headers });
-  if (!response.ok) return null;
-  const raw = await response.text();
+    const response = await fetch(withVttFmt(url), { method: 'GET', headers });
+    if (!response.ok) return null;
+    raw = await response.text();
+  } catch {
+    return null;
+  }
   if (!raw || raw.length < 20 || !raw.includes('-->')) return null;
   const synced = parseVtt(raw);
   return synced.length >= 4 ? synced : null;
@@ -2178,11 +2172,9 @@ async function getYoutubeTimedtext(videoId: string, lang: Language): Promise<Lyr
   const kinds = ['', '&kind=asr'];
   for (const trackLang of langs) {
     for (const kind of kinds) {
-      try {
-        const url = `https://www.youtube.com/api/timedtext?v=${encodeURIComponent(videoId)}&fmt=vtt&lang=${trackLang}${kind}`;
-        const synced = await fetchTimedtextVtt(url, videoId);
-        if (synced) return synced;
-      } catch {}
+      const url = `https://www.youtube.com/api/timedtext?v=${encodeURIComponent(videoId)}&fmt=vtt&lang=${trackLang}${kind}`;
+      const synced = await fetchTimedtextVtt(url, videoId);
+      if (synced) return synced;
     }
   }
   return null;
@@ -2201,12 +2193,10 @@ async function getYouTubeMusicLyrics(track: Track, lang: Language): Promise<Lyri
   if (!response.ok) throw new Error(`YouTube Music HTTP ${response.status}`);
   const data = JSON.parse(await response.text());
   for (const captionUrl of captionTrackUrlsFromPlayer(data)) {
-    try {
-      const fromPlayer = await fetchTimedtextVtt(captionUrl, track.id);
-      if (fromPlayer?.length) {
-        return { provider: 'YouTube Music', text: null, synced: fromPlayer, matchScore: 3 };
-      }
-    } catch {}
+    const fromPlayer = await fetchTimedtextVtt(captionUrl, track.id);
+    if (fromPlayer?.length) {
+      return { provider: 'YouTube Music', text: null, synced: fromPlayer, matchScore: 3 };
+    }
   }
   const browseId = findLyricsBrowseId(data, lang);
   if (!browseId) throw new Error('This video has no Lyrics tab on YouTube Music');
@@ -2533,9 +2523,7 @@ function cleanQueryTitle(title: string, artist?: string): string {
 }
 
 export function lyricsSearchTitle(title: string, artist = ''): string {
-  try {
-    if (localStorage.getItem('zenith_smart_lyrics') === '0') return title.trim();
-  } catch {}
+  if (localStorage.getItem('zenith_smart_lyrics') === '0') return title.trim();
   return cleanQueryTitle(title, artist)
     .replace(/\s*[([]\s*(feat\.?|ft\.?|featuring|with)\s+[^)\]]+[)\]]/gi, '')
     .replace(/\s*[-–,;]?\s+(feat\.?|ft\.?|featuring)\s+[^()[\]]+(?=[)\]])/gi, '')
@@ -2552,9 +2540,7 @@ export function lyricsCreditArtist(artist: string): string {
 }
 
 export function lyricsSearchArtist(artist: string): string {
-  try {
-    if (localStorage.getItem('zenith_smart_lyrics') === '0') return firstArtist(artist);
-  } catch {}
+  if (localStorage.getItem('zenith_smart_lyrics') === '0') return firstArtist(artist);
   return firstArtist(artist)
     .replace(/\s*[([]\s*(feat\.?|ft\.?|featuring|with)\s+[^)\]]+[)\]]/gi, '')
     .replace(/\s+(feat\.?|ft\.?|featuring)\s+.+$/gi, '')

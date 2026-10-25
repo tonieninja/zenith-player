@@ -18,10 +18,8 @@ function clampVol(v: number): number {
   return Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : 0;
 }
 
-function safeLoad(el: HTMLAudioElement) {
-  try {
-    el.load();
-  } catch {}
+function warnPlay(e: unknown) {
+  if ((e as Error)?.name !== 'AbortError') console.warn('[audio] play failed', e);
 }
 
 function waitUntilCanPlay(
@@ -117,10 +115,8 @@ export class DualAudio {
     const playing = !el.paused;
     const once = () => {
       el.removeEventListener('loadedmetadata', once);
-      try {
-        el.currentTime = t;
-      } catch {}
-      if (playing) void el.play().catch(() => {});
+      el.currentTime = t;
+      if (playing) void el.play().catch(warnPlay);
     };
     el.addEventListener('loadedmetadata', once);
     el.src = src;
@@ -317,9 +313,7 @@ export class DualAudio {
     this.els.forEach((el) => {
       el.pause();
       el.removeAttribute('src');
-      try {
-        el.load();
-      } catch {}
+      el.load();
     });
     this.applyMasterVolume();
   }
@@ -399,7 +393,7 @@ export class DualAudio {
       from.volume = 0;
       from.removeAttribute('src');
       from.preload = 'metadata';
-      safeLoad(from);
+      from.load();
       to.volume = clampVol(this.master);
       this.armLoop();
     };
@@ -438,7 +432,7 @@ export class DualAudio {
       fixed = true;
     }
     if (shouldPlay && this.el.paused && this.el.getAttribute('src') && !this.el.ended) {
-      void this.el.play().catch(() => {});
+      void this.el.play().catch(warnPlay);
       fixed = true;
     }
     return fixed;
@@ -480,8 +474,6 @@ export class DualAudio {
     o.volume = 0;
     o.preload = 'metadata';
     o.removeAttribute('src');
-    try {
-      o.load();
-    } catch {}
+    o.load();
   }
 }

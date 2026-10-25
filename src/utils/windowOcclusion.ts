@@ -58,8 +58,7 @@ export function installWindowOcclusionHandlers(onFocus?: (focused: boolean) => v
     .then((fn) => {
       if (disposed) fn();
       else unlistenFocus = fn;
-    })
-    .catch(() => {});
+    });
 
   void win
     .onResized(() => {
@@ -72,8 +71,7 @@ export function installWindowOcclusionHandlers(onFocus?: (focused: boolean) => v
     .then((fn) => {
       if (disposed) fn();
       else unlistenResize = fn;
-    })
-    .catch(() => {});
+    });
 
   return () => {
     disposed = true;
@@ -102,16 +100,12 @@ export function installMaximizeStateHandler(setMaximized: (v: boolean) => void):
       .then((max) => {
         if (!disposed) setMaximized(max);
       })
-      .catch(() => {})
       .finally(() => {
         maximizePending = false;
       });
   };
 
-  void win
-    .isMaximized()
-    .then(setMaximized)
-    .catch(() => {});
+  void win.isMaximized().then(setMaximized);
 
   void win
     .onResized(() => {
@@ -124,8 +118,7 @@ export function installMaximizeStateHandler(setMaximized: (v: boolean) => void):
     .then((fn) => {
       if (disposed) fn();
       else unlisten = fn;
-    })
-    .catch(() => {});
+    });
 
   return () => {
     disposed = true;

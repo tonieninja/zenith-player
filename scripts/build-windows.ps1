@@ -65,7 +65,7 @@ foreach ($arch in $arches) {
 
 Get-ChildItem $outDir -Recurse -Include *.exe, *.msi -ErrorAction SilentlyContinue |
   ForEach-Object {
-    try { Unblock-File -LiteralPath $_.FullName -ErrorAction SilentlyContinue } catch {}
+    Unblock-File -LiteralPath $_.FullName -ErrorAction SilentlyContinue
   }
 
 Write-Host '== Windows artifacts (1 nsis + 1 msi + 1 portable per arch) =='

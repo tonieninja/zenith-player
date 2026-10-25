@@ -14,9 +14,7 @@ if (-not (Test-Path -LiteralPath $FilePath)) {
   throw "[sign] file not found: $FilePath"
 }
 
-try {
-  Unblock-File -LiteralPath $FilePath -ErrorAction SilentlyContinue
-} catch {}
+Unblock-File -LiteralPath $FilePath -ErrorAction SilentlyContinue
 
 $Description = 'Zenith'
 $ProductUrl = if ($env:ZENITH_CODESIGN_URL) {
@@ -177,9 +175,7 @@ if (-not $signed) {
   }
 }
 
-try {
-  Unblock-File -LiteralPath $FilePath -ErrorAction SilentlyContinue
-} catch {}
+Unblock-File -LiteralPath $FilePath -ErrorAction SilentlyContinue
 
 $check = Get-AuthenticodeSignature -FilePath $FilePath
 Write-Host "[sign] status=$($check.Status) publisher=$($check.SignerCertificate.Subject)"

@@ -123,14 +123,13 @@ export class WebFx {
     });
     this.reloadActive();
     const resume = () => {
-      if (ctx.state !== 'running') void ctx.resume().catch(() => {});
+      if (ctx.state !== 'running') void ctx.resume();
     };
     resume();
     const nap = () => {
       window.clearTimeout(this.sleepTimer);
       this.sleepTimer = window.setTimeout(() => {
-        if (ctx.state === 'running' && this.els.every((el) => el.paused))
-          void ctx.suspend().catch(() => {});
+        if (ctx.state === 'running' && this.els.every((el) => el.paused)) void ctx.suspend();
       }, 4000);
     };
     this.els.forEach((el) => {

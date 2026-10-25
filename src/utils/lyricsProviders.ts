@@ -65,7 +65,9 @@ export function extractMusixmatchSecretFromJs(js: string): string | null {
         if (secret && secret.length >= 8 && secret.length <= 128 && /^[\x20-\x7E]+$/.test(secret)) {
           return secret;
         }
-      } catch {}
+      } catch {
+        continue;
+      }
     }
   }
   return null;

@@ -87,18 +87,14 @@ function readJson<T>(key: string, fallback: T): T {
 }
 
 function writeJson(key: string, value: unknown) {
-  try {
-    localStorage.setItem(key, JSON.stringify(value));
-  } catch {}
+  localStorage.setItem(key, JSON.stringify(value));
 }
 
 let staleKeysDropped = false;
 function dropStaleKeys() {
   if (staleKeysDropped) return;
   staleKeysDropped = true;
-  try {
-    for (const k of STALE_KEYS) localStorage.removeItem(k);
-  } catch {}
+  for (const k of STALE_KEYS) localStorage.removeItem(k);
 }
 
 type TokenEntry = { token: string; at: number };
@@ -137,18 +133,13 @@ function coolDown(app: App) {
 }
 
 export function clientOrder(): Client[] {
-  let last = '';
-  try {
-    last = localStorage.getItem(LAST_CLIENT_KEY) || '';
-  } catch {}
+  const last = localStorage.getItem(LAST_CLIENT_KEY) || '';
   const first = MXM_CLIENTS.find((c) => c.id === last);
   return first ? [first, ...MXM_CLIENTS.filter((c) => c !== first)] : [...MXM_CLIENTS];
 }
 
 function rememberClient(client: Client) {
-  try {
-    localStorage.setItem(LAST_CLIENT_KEY, client.id);
-  } catch {}
+  localStorage.setItem(LAST_CLIENT_KEY, client.id);
 }
 
 type Reply = { status: number; ok: boolean; text: string };
@@ -166,7 +157,6 @@ async function get(url: string, headers: Record<string, string>): Promise<Reply>
     const res = await fetch(url, { method: 'GET', headers, signal: controller.signal });
     return { status: res.status, ok: res.ok, text: await res.text() };
   })();
-  reply.catch(() => {});
   try {
     return await Promise.race([reply, timeout]);
   } finally {
@@ -187,7 +177,9 @@ async function request(
   let message: Message | undefined;
   try {
     message = JSON.parse(res.text)?.message;
-  } catch {}
+  } catch (e) {
+    throw new Error(`${endpoint} returned no json`, { cause: e });
+  }
   if (!message?.header) throw new Error(`${endpoint} returned no json`);
   return message;
 }
@@ -594,7 +586,9 @@ async function webCall(
   let message: Message | undefined;
   try {
     message = JSON.parse(res.text)?.message;
-  } catch {}
+  } catch (e) {
+    throw new Error('Community API unavailable', { cause: e });
+  }
   if (!message?.header) throw new Error('Community API unavailable');
   const status = message.header.status_code;
   if (status === 401 && !retried) return webCall(endpoint, params, true);
@@ -707,8 +701,6 @@ export function resetMusixmatchState() {
   secretMemo = null;
   webDownUntil = 0;
   staleKeysDropped = false;
-  try {
-    for (const k of [TOKENS_KEY, LAST_CLIENT_KEY, SECRET_KEY, WEB_DOWN_KEY])
-      localStorage.removeItem(k);
-  } catch {}
+  for (const k of [TOKENS_KEY, LAST_CLIENT_KEY, SECRET_KEY, WEB_DOWN_KEY])
+    localStorage.removeItem(k);
 }
