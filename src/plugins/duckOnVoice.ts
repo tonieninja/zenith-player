@@ -157,7 +157,7 @@ export function stopDuckMonitor() {
 
 export const duckOnVoicePlugin: ZenithPlugin = {
   id: 'duck-on-voice',
-  name: 'Duck on voice',
+  name: 'Voice ducking',
   category: 'sound',
   description: 'Lowers music volume when your microphone detects speech (Discord, calls).',
   defaultEnabled: false,

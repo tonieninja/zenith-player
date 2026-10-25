@@ -29,7 +29,7 @@ whatever you had.
 | Loudness normalization | `loudness-normalization` | no            | Evens out volume between tracks: loud masters are turned down to a common level (never boosted, so no clipping). |
 | Fade on pause          | `fade-on-pause`          | no            | Fades the volume out on pause and back in on resume.                                                             |
 | Smooth volume          | `smooth-volume`          | no            | Ramps volume changes smoothly instead of jumping instantly.                                                      |
-| Duck on voice          | `duck-on-voice`          | no            | Lowers music volume when your microphone detects speech (Discord, calls).                                        |
+| Voice ducking          | `duck-on-voice`          | no            | Lowers music volume when your microphone detects speech (Discord, calls).                                        |
 
 ### Lyrics
 
@@ -46,7 +46,7 @@ whatever you had.
 | Media session               | `media-session`      | yes           | OS Now Playing / lock-screen controls and media keys integration.                                                                                                              |
 | Global hotkeys & media keys | `global-hotkeys`     | yes           | Play/pause, next, previous, volume and like from any app. Defaults Ctrl+Alt+Space and Ctrl+Alt+←/→, every combo can be changed in the plugin settings. Media keys always work. |
 | Keyboard shortcuts          | `keyboard-shortcuts` | yes           | Space = play/pause, ←/→ or P/N = prev/next, Shift+←/→ = seek ±10s, ↑/↓ = volume, M = mute, Ctrl+F or / = search.                                                               |
-| Control by your internet    | `remote-control`     | no            | Control Zenith from your phone or any device on your network: volume, play/pause, skip, seek, queue, like and search in a browser.                                             |
+| Phone remote                | `remote-control`     | no            | Control Zenith from your phone or any device on your network: volume, play/pause, skip, seek, queue, like and search in a browser.                                             |
 | DualSense pad               | `dualsense-pad`      | no            | Control Zenith with a DualSense: touchpad swipe (next/prev/play) + face buttons. LED follows cover art while playing.                                                          |
 | Webhook / Stream Deck       | `webhook`            | no            | POST JSON to a URL on every track change - works with Stream Deck, Home Assistant, n8n.                                                                                        |
 
@@ -72,7 +72,7 @@ whatever you had.
 | Listening stats      | `stats-tracker`     | no            | Tracks total listening time and per-track play counts in the background.                      |
 | Listening history    | `listening-history` | no            | Keeps a rolling log of the last 80 tracks you played (stored locally).                        |
 
-## Control by your internet
+## Phone remote
 
 When enabled, `src/plugins/remoteControl.ts` calls `remote_start` (Rust, `src-tauri/src/remote.rs`),
 which binds `0.0.0.0:<port>` (default 8765, set in the plugin settings) and answers only peers with

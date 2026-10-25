@@ -12,7 +12,7 @@ crossfade, a 15-band EQ, offline downloads, a phone remote and a pile of plugins
 Zenith isn't affiliated with, endorsed by or connected to Google or YouTube in any way. It's just a
 player that talks to YouTube Music. Your account and YouTube's terms still apply.
 
-Privacy: the microphone is only used by the Duck on Voice plugin to lower the music while you talk,
+Privacy: the microphone is only used by the Voice ducking plugin to lower the music while you talk,
 and only while that plugin is on. Nothing gets recorded or sent anywhere, settings, history and
 your session stay on your computer.
 
@@ -58,7 +58,7 @@ Full plugin list: [docs/PLUGINS.md](docs/PLUGINS.md).
 
 ## Phone remote
 
-Turn on _Plugins, Utility, Control by your internet_. You get an address like
+Turn on _Plugins, Utility, Phone remote_. You get an address like
 `http://192.168.x.x:8765/` and a QR code, open it on your phone on the same network.
 Only local addresses get an answer. On Windows allow it on **private** networks when the firewall
 asks, on Linux open the port (`sudo ufw allow 8765/tcp`). With the plugin off there's no server at all.

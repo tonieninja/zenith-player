@@ -192,7 +192,7 @@ function schedulePush() {
 
 export const remoteControlPlugin: ZenithPlugin = {
   id: 'remote-control',
-  name: 'Control by your internet',
+  name: 'Phone remote',
   category: 'control',
   description:
     'Control Zenith from your phone or any device on your network: volume, play/pause, skip, seek, queue, like and search in a browser.',

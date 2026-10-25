@@ -4,127 +4,133 @@ type PluginText = { name: string; desc: string };
 
 const CATALOG: Record<string, Record<Language, PluginText>> = {
   crossfade: {
-    en: { name: 'Crossfade', desc: 'Smooth overlap between tracks.' },
-    pl: { name: 'Płynne przejścia', desc: 'Płynne nakładanie się kończącego i następnego utworu.' },
+    en: { name: 'Crossfade', desc: 'Blends the end of one track into the next.' },
+    pl: { name: 'Płynne przejścia', desc: 'Końcówka utworu płynnie przechodzi w następny.' },
   },
   'sleep-timer': {
-    en: { name: 'Sleep timer', desc: 'Stop playback after a set time.' },
-    pl: { name: 'Wyłącznik czasowy', desc: 'Zatrzymuje odtwarzanie po ustawionym czasie.' },
+    en: { name: 'Sleep timer', desc: 'Stops the music after the time you set.' },
+    pl: { name: 'Wyłącznik czasowy', desc: 'Wyłącza muzykę po czasie, który ustawisz.' },
   },
   'playback-speed': {
-    en: { name: 'Playback speed', desc: 'Change the tempo without changing the pitch.' },
-    pl: { name: 'Prędkość odtwarzania', desc: 'Zmienia tempo bez zmiany wysokości dźwięku.' },
+    en: { name: 'Playback speed', desc: 'Speed it up or slow it down without changing the pitch.' },
+    pl: {
+      name: 'Prędkość odtwarzania',
+      desc: 'Przyspiesz albo zwolnij bez zmiany wysokości dźwięku.',
+    },
   },
   'discord-rpc': {
-    en: { name: 'Discord presence', desc: 'Show what you are listening to on Discord.' },
+    en: { name: 'Discord presence', desc: "Shows what you're listening to on Discord." },
     pl: { name: 'Status na Discordzie', desc: 'Pokazuje na Discordzie, czego słuchasz.' },
   },
   'lyrics-overlay': {
     en: {
       name: 'Lyrics overlay',
-      desc: 'Floating, always-on-top window with synced lyrics. Drag it anywhere, close it with its X.',
+      desc: 'A floating window with synced lyrics that stays on top. Drag it anywhere, close it with the X.',
     },
     pl: {
       name: 'Nakładka z tekstem',
-      desc: 'Pływające okno z zsynchronizowanym tekstem, zawsze na wierzchu. Przeciągnij je w dowolne miejsce, zamknij przyciskiem X.',
+      desc: 'Pływające okienko z tekstem na bieżąco, zawsze na wierzchu. Przeciągnij je, gdzie chcesz, a zamkniesz je przyciskiem X.',
     },
   },
   'second-screen-lyrics': {
-    en: { name: 'Second screen lyrics', desc: 'Big lyrics window for a second monitor.' },
+    en: { name: 'Second screen lyrics', desc: 'A big lyrics window for your second monitor.' },
     pl: { name: 'Tekst na drugim ekranie', desc: 'Duże okno z tekstem na drugi monitor.' },
   },
   'mini-player': {
-    en: { name: 'Mini player', desc: 'Compact always-on-top window with transport controls.' },
-    pl: { name: 'Miniodtwarzacz', desc: 'Kompaktowe okno ze sterowaniem, zawsze na wierzchu.' },
+    en: { name: 'Mini player', desc: 'A small window with playback controls that stays on top.' },
+    pl: { name: 'Miniodtwarzacz', desc: 'Małe okienko ze sterowaniem, zawsze na wierzchu.' },
   },
   'preload-next': {
-    en: { name: 'Preload next', desc: 'Buffer upcoming tracks from the queue.' },
-    pl: { name: 'Wczytywanie z wyprzedzeniem', desc: 'Buforuje kolejne utwory z kolejki.' },
+    en: { name: 'Preload next', desc: 'Loads the next tracks in your queue ahead of time.' },
+    pl: { name: 'Wczytywanie z wyprzedzeniem', desc: 'Wczytuje z góry kolejne utwory z kolejki.' },
   },
   'fade-on-pause': {
-    en: { name: 'Fade on pause', desc: 'Fade the volume smoothly when pausing.' },
-    pl: { name: 'Wyciszanie przy pauzie', desc: 'Płynnie ścisza dźwięk przy pauzowaniu.' },
+    en: { name: 'Fade on pause', desc: 'Fades the volume out when you pause.' },
+    pl: { name: 'Wyciszanie przy pauzie', desc: 'Płynnie ścisza muzykę, kiedy dajesz pauzę.' },
   },
   'remote-control': {
     en: {
-      name: 'Control by your internet',
-      desc: 'Control Zenith from a phone or any device on your network (volume, skip, seek, queue, like, search).',
+      name: 'Phone remote',
+      desc: 'Control Zenith from your phone or any device on your network (volume, skip, seek, queue, like, search).',
     },
     pl: {
       name: 'Sterowanie przez sieć',
-      desc: 'Steruj Zenith z telefonu lub dowolnego urządzenia w sieci (głośność, przełączanie, przewijanie, kolejka, polubienia, wyszukiwanie).',
+      desc: 'Steruj Zenith z telefonu albo innego urządzenia w sieci (głośność, przełączanie, przewijanie, kolejka, polubienia, szukanie).',
     },
   },
   equalizer: {
     en: {
       name: 'Equalizer',
-      desc: '15-band graphic equalizer (25 Hz to 16 kHz) with presets, Bass Boost included.',
+      desc: '15-band graphic EQ (25 Hz to 16 kHz) with presets, including Bass Boost.',
     },
     pl: {
       name: 'Korektor (EQ)',
-      desc: '15-pasmowy korektor graficzny (25 Hz do 16 kHz) z presetami, w tym Bass Boost.',
+      desc: '15-pasmowy korektor graficzny (25 Hz do 16 kHz) z gotowymi ustawieniami, w tym Bass Boost.',
     },
   },
   'lastfm-scrobbler': {
     en: {
-      name: 'Last.fm Scrobbler',
-      desc: 'Scrobbles what you listen to to your Last.fm profile.',
+      name: 'Last.fm scrobbler',
+      desc: 'Scrobbles what you listen to on your Last.fm profile.',
     },
-    pl: { name: 'Last.fm Scrobbler', desc: 'Zapisuje słuchane utwory na Twoim profilu Last.fm.' },
+    pl: { name: 'Last.fm Scrobbler', desc: 'Wrzuca to, czego słuchasz, na twój profil Last.fm.' },
   },
   'loudness-normalization': {
     en: {
       name: 'Loudness normalization',
-      desc: 'Evens out volume between tracks (loud ones are turned down, never boosted).',
+      desc: 'Evens out volume between tracks (loud ones get turned down, never up).',
     },
     pl: {
       name: 'Normalizacja głośności',
-      desc: 'Wyrównuje głośność między utworami (głośne są ściszane, nigdy podgłaśniane).',
+      desc: 'Wyrównuje głośność między utworami (głośne są ściszane, cichych nie podgłaśnia).',
     },
   },
   webhook: {
-    en: { name: 'Webhook', desc: 'Send track changes to a URL (POST).' },
-    pl: { name: 'Webhook', desc: 'Wysyła informację o zmianie utworu na podany adres URL (POST).' },
+    en: { name: 'Webhook', desc: 'Sends a POST to your URL every time the track changes.' },
+    pl: { name: 'Webhook', desc: 'Przy każdej zmianie utworu wysyła POST na podany adres URL.' },
   },
   'duck-on-voice': {
-    en: { name: 'Duck on voice', desc: 'Lower the music while you speak (uses the microphone).' },
+    en: { name: 'Voice ducking', desc: 'Turns the music down while you talk (uses your mic).' },
     pl: {
       name: 'Ściszanie przy mówieniu',
-      desc: 'Ścisza muzykę, gdy mówisz (korzysta z mikrofonu).',
+      desc: 'Ścisza muzykę, kiedy mówisz (korzysta z mikrofonu).',
     },
   },
   'ab-loop': {
-    en: { name: 'A-B loop', desc: 'Repeat a section of the track.' },
-    pl: { name: 'Pętla A-B', desc: 'Powtarza wybrany fragment utworu.' },
+    en: { name: 'A-B loop', desc: 'Loops any part of a track.' },
+    pl: { name: 'Pętla A-B', desc: 'Zapętla wybrany fragment utworu.' },
   },
   'share-card': {
-    en: { name: 'Share card', desc: 'Copy a rich card of the current track.' },
-    pl: { name: 'Karta udostępniania', desc: 'Kopiuje do schowka kartę z bieżącym utworem.' },
+    en: { name: 'Share card', desc: 'Copies a nice-looking card of the current track.' },
+    pl: {
+      name: 'Karta udostępniania',
+      desc: 'Kopiuje do schowka ładną kartę z tym, co teraz leci.',
+    },
   },
   'listening-room': {
     en: {
       name: 'Listening room',
-      desc: 'Local room on this machine: share a code and sync playback.',
+      desc: 'A local room on this computer: share the code and listen in sync.',
     },
     pl: {
       name: 'Pokój słuchania',
-      desc: 'Lokalny pokój na tym komputerze: udostępnij kod i słuchajcie razem.',
+      desc: 'Lokalny pokój na tym komputerze: podaj kod i słuchajcie razem.',
     },
   },
   'smart-lyrics': {
     en: {
       name: 'Smart lyrics search',
-      desc: "Cleans titles (drops 'Artist -' and 'feat.') before looking up lyrics.",
+      desc: "Cleans up titles (drops 'Artist -' and 'feat.') before looking up lyrics.",
     },
     pl: {
       name: 'Inteligentne szukanie tekstów',
-      desc: 'Czyści tytuły (usuwa „Wykonawca -” i „feat.”) przed szukaniem tekstu.',
+      desc: 'Zanim poszuka tekstu, czyści tytuł (wywala „Wykonawca -” i „feat.”).',
     },
   },
   'zenith-stage': {
     en: {
       name: 'Zenith Stage',
-      desc: 'Streamer pack: lyrics overlay + share card in one toggle.',
+      desc: 'For streamers: lyrics overlay and share card with one switch.',
     },
     pl: {
       name: 'Zenith Stage',
@@ -134,31 +140,31 @@ const CATALOG: Record<string, Record<Language, PluginText>> = {
   'dualsense-pad': {
     en: {
       name: 'DualSense controller',
-      desc: 'Touchpad swipes and buttons control playback; the LED follows the cover.',
+      desc: 'Control playback with touchpad swipes and buttons. The LED matches the cover.',
     },
     pl: {
       name: 'Kontroler DualSense',
-      desc: 'Gesty na touchpadzie i przyciski sterują odtwarzaniem; dioda LED przyjmuje kolor okładki.',
+      desc: 'Sterujesz muzyką gestami na touchpadzie i przyciskami, a dioda świeci w kolorze okładki.',
     },
   },
   'offline-downloads': {
     en: {
       name: 'Offline downloads',
-      desc: 'Save tracks to disk and play them without internet. Manage or delete them here.',
+      desc: 'Save tracks to your drive and play them without internet. Manage or delete them here.',
     },
     pl: {
       name: 'Pobrane offline',
-      desc: 'Zapisuje utwory na dysku i gra je bez internetu. Tutaj nimi zarządzasz i je usuwasz.',
+      desc: 'Zapisuje utwory na dysku, żeby grały bez internetu. Tutaj nimi zarządzasz i je usuwasz.',
     },
   },
   'global-hotkeys': {
     en: {
       name: 'Global hotkeys',
-      desc: 'Play/pause, next, previous, volume and like from any app. Every combo can be changed; ones already taken by the system are skipped.',
+      desc: 'Play/pause, next, previous, volume and like from any app. You can change every combo, and ones the system already uses get skipped.',
     },
     pl: {
       name: 'Globalne skróty',
-      desc: 'Odtwarzaj/pauza, następny, poprzedni, głośność i polubienie z dowolnej aplikacji. Każdy skrót można zmienić, a te zajęte przez system są pomijane.',
+      desc: 'Play/pauza, następny, poprzedni, głośność i polubienie z każdej aplikacji. Każdy skrót możesz zmienić, a te zajęte przez system są pomijane.',
     },
   },
   'keyboard-shortcuts': {
@@ -168,42 +174,48 @@ const CATALOG: Record<string, Record<Language, PluginText>> = {
     },
     pl: {
       name: 'Skróty klawiszowe',
-      desc: 'Spacja odtwarzaj/pauza, ←/→ lub P/N poprzedni/następny, Shift+←/→ przewijanie ±10 s, ↑/↓ głośność, M wyciszenie.',
+      desc: 'Spacja play/pauza, ←/→ albo P/N poprzedni/następny, Shift+←/→ przewijanie ±10 s, ↑/↓ głośność, M wyciszenie.',
     },
   },
   'queue-persist': {
-    en: { name: 'Remember queue', desc: 'Restore the queue and position after a restart.' },
+    en: { name: 'Remember queue', desc: 'Brings back your queue and spot after a restart.' },
     pl: {
       name: 'Zapamiętywanie kolejki',
-      desc: 'Przywraca kolejkę i pozycję po ponownym uruchomieniu.',
+      desc: 'Po restarcie wracasz do tej samej kolejki i miejsca w utworze.',
     },
   },
   'remember-volume': {
-    en: { name: 'Remember volume', desc: 'Keep the volume between sessions.' },
-    pl: { name: 'Zapamiętywanie głośności', desc: 'Zachowuje głośność między sesjami.' },
+    en: { name: 'Remember volume', desc: 'Keeps your volume the same next time you open the app.' },
+    pl: {
+      name: 'Zapamiętywanie głośności',
+      desc: 'Przy następnym uruchomieniu głośność zostaje taka sama.',
+    },
   },
   'auto-pause-blur': {
-    en: { name: 'Pause when unfocused', desc: 'Pause when the app loses focus.' },
+    en: { name: 'Pause when unfocused', desc: 'Pauses when you switch to another window.' },
     pl: {
       name: 'Pauza po utracie fokusu',
-      desc: 'Wstrzymuje odtwarzanie, gdy okno aplikacji traci fokus.',
+      desc: 'Pauzuje muzykę, kiedy przełączysz się na inne okno.',
     },
   },
   'ambient-glow': {
-    en: { name: 'Ambient glow', desc: 'Subtle glow taken from the cover art.' },
+    en: { name: 'Ambient glow', desc: 'A soft glow in the colors of the cover art.' },
     pl: { name: 'Poświata z okładki', desc: 'Delikatna poświata w kolorach okładki.' },
   },
   'smooth-volume': {
-    en: { name: 'Smooth volume', desc: 'Gradual volume changes.' },
-    pl: { name: 'Płynna głośność', desc: 'Stopniowe zmiany głośności.' },
+    en: { name: 'Smooth volume', desc: 'Volume changes gradually instead of jumping.' },
+    pl: { name: 'Płynna głośność', desc: 'Głośność zmienia się płynnie, bez skoków.' },
   },
   'stats-tracker': {
-    en: { name: 'Listening stats', desc: 'Keep listening statistics locally.' },
-    pl: { name: 'Statystyki słuchania', desc: 'Zapisuje lokalnie statystyki słuchania.' },
+    en: { name: 'Listening stats', desc: 'Keeps your listening stats on this device.' },
+    pl: {
+      name: 'Statystyki słuchania',
+      desc: 'Zbiera statystyki słuchania, tylko na tym komputerze.',
+    },
   },
   'listening-history': {
-    en: { name: 'Listening history', desc: 'Log recently played tracks.' },
-    pl: { name: 'Historia słuchania', desc: 'Zapisuje ostatnio odtwarzane utwory.' },
+    en: { name: 'Listening history', desc: 'Keeps a list of what you played recently.' },
+    pl: { name: 'Historia słuchania', desc: 'Zapisuje ostatnio słuchane utwory.' },
   },
   'media-session': {
     en: {
@@ -212,28 +224,28 @@ const CATALOG: Record<string, Record<Language, PluginText>> = {
     },
     pl: {
       name: 'Sterowanie multimediami',
-      desc: 'Systemowy panel „Teraz odtwarzane”, ekran blokady i klawisze multimedialne (MPRIS w Linuksie).',
+      desc: 'Systemowy panel „Teraz odtwarzane”, ekran blokady i klawisze multimedialne (MPRIS na Linuksie).',
     },
   },
   'window-title': {
-    en: { name: 'Window title', desc: 'Show the current track in the window title.' },
-    pl: { name: 'Tytuł okna', desc: 'Pokazuje bieżący utwór w tytule okna.' },
+    en: { name: 'Window title', desc: "Shows what's playing in the window title." },
+    pl: { name: 'Tytuł okna', desc: 'Pokazuje w tytule okna, co teraz leci.' },
   },
   'copy-track-link': {
     en: {
       name: 'Copy track link',
-      desc: 'Right click the cover in the player to copy a clean link, also from the current time.',
+      desc: 'Right-click the cover in the player to copy a clean link, or one that starts at the current time.',
     },
     pl: {
       name: 'Kopiowanie linku',
-      desc: 'Prawy przycisk na okładce w odtwarzaczu kopiuje czysty link, też od bieżącego momentu.',
+      desc: 'Kliknij prawym na okładkę w odtwarzaczu i skopiuj czysty link, też od bieżącego momentu.',
     },
   },
   'system-tray': {
     en: { name: 'System tray', desc: 'Closing the window keeps Zenith playing in the tray.' },
     pl: {
       name: 'Zasobnik systemowy',
-      desc: 'Zamknięcie okna zostawia Zenith grający w zasobniku systemowym.',
+      desc: 'Po zamknięciu okna Zenith dalej gra w zasobniku systemowym.',
     },
   },
 };

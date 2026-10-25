@@ -25,4 +25,4 @@ LangString webview2Downloading ${LANG_ENGLISH} "Downloading WebView2 bootstrappe
 LangString webview2InstallError ${LANG_ENGLISH} "Error: Installing WebView2 failed with exit code $1"
 LangString webview2InstallSuccess ${LANG_ENGLISH} "WebView2 installed successfully"
 LangString deleteAppData ${LANG_ENGLISH} "Delete the application data"
-LangString zenithFirewallAsk ${LANG_ENGLISH} "Allow controlling Zenith from your phone (the Control by your internet plugin) through Windows Firewall?$\n$\nOnly devices on your own local network can connect, even if Windows calls the network Public. Windows will ask for administrator approval.$\n$\nYou can skip this and allow it later from the plugin settings."
+LangString zenithFirewallAsk ${LANG_ENGLISH} "Allow controlling Zenith from your phone (the Phone remote plugin) through Windows Firewall?$\n$\nOnly devices on your own local network can connect, even if Windows calls the network Public. Windows will ask for administrator approval.$\n$\nYou can skip this and allow it later from the plugin settings."

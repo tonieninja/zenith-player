@@ -3,6 +3,6 @@
 <plist version="1.0">
 <dict>
   <key>NSMicrophoneUsageDescription</key>
-  <string>Zenith listens to the microphone only when Duck on Voice is on, to lower the music while you talk.</string>
+  <string>Zenith listens to the microphone only when Voice ducking is on, to lower the music while you talk.</string>
 </dict>
 </plist>
