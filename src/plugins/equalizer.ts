@@ -65,25 +65,22 @@ export function getEqBands(): number[] {
         return fromLegacyBands(v).map(clampDb);
       }
     }
-  } catch {}
+  } catch (e) {
+    console.warn('[equalizer] bad stored bands', e);
+  }
   return flat();
 }
 
 export function getEqBass(): number {
-  try {
-    const raw = localStorage.getItem(EQ_BASS_KEY);
-    if (raw === null) return EQ_PRESET_BASS[getEqPreset()] ?? 0;
-    const v = Number(raw);
-    if (Number.isFinite(v)) return Math.max(0, Math.min(EQ_BASS_MAX_DB, v));
-  } catch {}
+  const raw = localStorage.getItem(EQ_BASS_KEY);
+  if (raw === null) return EQ_PRESET_BASS[getEqPreset()] ?? 0;
+  const v = Number(raw);
+  if (Number.isFinite(v)) return Math.max(0, Math.min(EQ_BASS_MAX_DB, v));
   return 0;
 }
 
 export function getEqPreset(): string {
-  try {
-    return localStorage.getItem(EQ_PRESET_KEY) || 'flat';
-  } catch {}
-  return 'flat';
+  return localStorage.getItem(EQ_PRESET_KEY) || 'flat';
 }
 
 type FxTarget = { setFx(bands: number[] | null, norm: boolean, bass: number): void };
@@ -104,11 +101,9 @@ export function bindFx(audio: FxTarget, eq: boolean, norm: boolean) {
 }
 
 export function setEqBands(bands: number[], preset: string, bass = getEqBass()) {
-  try {
-    localStorage.setItem(EQ_BANDS_KEY, JSON.stringify(bands));
-    localStorage.setItem(EQ_PRESET_KEY, preset);
-    localStorage.setItem(EQ_BASS_KEY, String(bass));
-  } catch {}
+  localStorage.setItem(EQ_BANDS_KEY, JSON.stringify(bands));
+  localStorage.setItem(EQ_PRESET_KEY, preset);
+  localStorage.setItem(EQ_BASS_KEY, String(bass));
   push();
 }
 

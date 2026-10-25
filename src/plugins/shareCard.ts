@@ -147,7 +147,9 @@ export async function copyShareCardToClipboard(info: NowPlayingInfo): Promise<bo
     const { writeImage } = await import('@tauri-apps/plugin-clipboard-manager');
     await writeImage(new Uint8Array(await blob.arrayBuffer()));
     return true;
-  } catch {}
+  } catch (err) {
+    console.warn('[share-card] tauri clipboard failed', err);
+  }
   try {
     await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
     return true;

@@ -6,11 +6,7 @@ const DEFAULT_CLIENT_ID = '1514342633374486709';
 const MIN_UPDATE_INTERVAL_MS = 4000;
 
 export function getDiscordClientId(): string {
-  try {
-    return localStorage.getItem('zenith_discord_client_id') || DEFAULT_CLIENT_ID;
-  } catch {
-    return DEFAULT_CLIENT_ID;
-  }
+  return localStorage.getItem('zenith_discord_client_id') || DEFAULT_CLIENT_ID;
 }
 
 let lastSentKey = '';
@@ -51,7 +47,7 @@ export const discordPresencePlugin: ZenithPlugin = {
     }
     if (!info) {
       lastSentKey = '';
-      invoke('discord_clear_presence').catch(() => {});
+      void invoke('discord_clear_presence');
       return;
     }
     const key = `${info.id}|${info.isPlaying}|${Math.round(info.duration)}|${info.context ?? ''}`;
@@ -75,6 +71,6 @@ export const discordPresencePlugin: ZenithPlugin = {
       pendingTimer = null;
     }
     lastSentKey = '';
-    invoke('discord_disconnect').catch(() => {});
+    void invoke('discord_disconnect');
   },
 };

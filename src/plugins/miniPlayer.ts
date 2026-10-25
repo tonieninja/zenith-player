@@ -15,9 +15,7 @@ export interface MiniPlayerPayload {
 }
 
 export async function pushMiniPlayerState(payload: MiniPlayerPayload) {
-  try {
-    await emit('zenith-mini-state', payload);
-  } catch {}
+  await emit('zenith-mini-state', payload);
 }
 
 async function openMini() {
@@ -27,7 +25,9 @@ async function openMini() {
       await existing.show();
       return;
     }
-  } catch {}
+  } catch (e) {
+    console.warn('[mini-player] show failed', e);
+  }
   await invoke('open_mini_player');
 }
 
@@ -35,10 +35,8 @@ async function closeMini() {
   try {
     await invoke('close_window', { label: 'mini-player' });
   } catch {
-    try {
-      const win = await WebviewWindow.getByLabel('mini-player');
-      if (win) await win.destroy();
-    } catch {}
+    const win = await WebviewWindow.getByLabel('mini-player');
+    if (win) await win.destroy();
   }
 }
 

@@ -4,17 +4,12 @@ import { NowPlayingInfo, ZenithPlugin } from './types';
 export const WEBHOOK_URL_KEY = 'zenith_webhook_url';
 
 export function getWebhookUrl(): string {
-  try {
-    return localStorage.getItem(WEBHOOK_URL_KEY) || '';
-  } catch {}
-  return '';
+  return localStorage.getItem(WEBHOOK_URL_KEY) || '';
 }
 
 export function setWebhookUrl(url: string) {
-  try {
-    if (url.trim()) localStorage.setItem(WEBHOOK_URL_KEY, url.trim());
-    else localStorage.removeItem(WEBHOOK_URL_KEY);
-  } catch {}
+  if (url.trim()) localStorage.setItem(WEBHOOK_URL_KEY, url.trim());
+  else localStorage.removeItem(WEBHOOK_URL_KEY);
 }
 
 async function postWebhook(info: NowPlayingInfo) {

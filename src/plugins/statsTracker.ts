@@ -41,7 +41,9 @@ function saveStats(stats: ListenStats) {
   try {
     stats.trackPlays = pruneTrackPlays(stats.trackPlays);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(stats));
-  } catch {}
+  } catch (e) {
+    console.warn('[stats] save failed', e);
+  }
 }
 
 let activeId: string | null = null;
@@ -88,9 +90,7 @@ function markStarted() {
 }
 
 export function resetListenStats() {
-  try {
-    localStorage.removeItem(STORAGE_KEY);
-  } catch {}
+  localStorage.removeItem(STORAGE_KEY);
 }
 
 export const statsTrackerPlugin: ZenithPlugin = {

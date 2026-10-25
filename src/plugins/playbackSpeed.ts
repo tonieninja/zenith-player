@@ -5,17 +5,13 @@ export const PLAYBACK_SPEEDS = [0.75, 0.85, 1, 1.15, 1.25, 1.5, 1.75, 2] as cons
 
 export function getPlaybackSpeed(enabled: boolean): number {
   if (!enabled) return 1;
-  try {
-    const v = Number(localStorage.getItem(PLAYBACK_SPEED_KEY));
-    if (PLAYBACK_SPEEDS.includes(v as (typeof PLAYBACK_SPEEDS)[number])) return v;
-  } catch {}
+  const v = Number(localStorage.getItem(PLAYBACK_SPEED_KEY));
+  if (PLAYBACK_SPEEDS.includes(v as (typeof PLAYBACK_SPEEDS)[number])) return v;
   return 1;
 }
 
 export function setPlaybackSpeed(rate: number) {
-  try {
-    localStorage.setItem(PLAYBACK_SPEED_KEY, String(rate));
-  } catch {}
+  localStorage.setItem(PLAYBACK_SPEED_KEY, String(rate));
 }
 
 export const playbackSpeedPlugin: ZenithPlugin = {

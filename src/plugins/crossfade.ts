@@ -15,17 +15,13 @@ export const CROSSFADE_MIN_SECS = 2;
 export const CROSSFADE_MAX_SECS = 12;
 
 export function getCrossfadeSeconds(): number {
-  try {
-    const raw = Number(localStorage.getItem(CROSSFADE_SECS_KEY));
-    if (Number.isFinite(raw) && raw >= CROSSFADE_MIN_SECS && raw <= CROSSFADE_MAX_SECS) return raw;
-  } catch {}
+  const raw = Number(localStorage.getItem(CROSSFADE_SECS_KEY));
+  if (Number.isFinite(raw) && raw >= CROSSFADE_MIN_SECS && raw <= CROSSFADE_MAX_SECS) return raw;
   return CROSSFADE_DEFAULT_SECS;
 }
 
 export function saveCrossfadeSeconds(secs: number) {
-  try {
-    localStorage.setItem(CROSSFADE_SECS_KEY, String(secs));
-  } catch {}
+  localStorage.setItem(CROSSFADE_SECS_KEY, String(secs));
 }
 
 export const GAPLESS_ALBUMS_KEY = 'zenith_gapless_albums';
@@ -34,16 +30,11 @@ export const GAPLESS_BLEND_SECS = 0.08;
 export const GAPLESS_PREROLL_SECS = 12;
 
 export function getGaplessAlbums(): boolean {
-  try {
-    return localStorage.getItem(GAPLESS_ALBUMS_KEY) !== '0';
-  } catch {}
-  return true;
+  return localStorage.getItem(GAPLESS_ALBUMS_KEY) !== '0';
 }
 
 export function saveGaplessAlbums(on: boolean) {
-  try {
-    localStorage.setItem(GAPLESS_ALBUMS_KEY, on ? '1' : '0');
-  } catch {}
+  localStorage.setItem(GAPLESS_ALBUMS_KEY, on ? '1' : '0');
 }
 
 export type AutoTransition = { at: number; fade: number } | null;

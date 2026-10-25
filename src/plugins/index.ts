@@ -162,9 +162,7 @@ class PluginManager {
   }
 
   private persist() {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(this.enabled));
-    } catch {}
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(this.enabled));
   }
 
   subscribe(fn: PluginListener): () => void {
@@ -179,7 +177,9 @@ class PluginManager {
     for (const fn of this.listeners) {
       try {
         fn(snapshot);
-      } catch {}
+      } catch (err) {
+        console.warn('[plugins] listener failed', err);
+      }
     }
   }
 

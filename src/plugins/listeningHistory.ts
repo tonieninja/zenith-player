@@ -25,9 +25,7 @@ export function getListeningHistory(): HistoryEntry[] {
 }
 
 export function clearListeningHistory() {
-  try {
-    localStorage.removeItem(STORAGE_KEY);
-  } catch {}
+  localStorage.removeItem(STORAGE_KEY);
 }
 
 export const listeningHistoryPlugin: ZenithPlugin = {
@@ -48,7 +46,9 @@ export const listeningHistoryPlugin: ZenithPlugin = {
         playedAt: Date.now(),
       });
       localStorage.setItem(STORAGE_KEY, JSON.stringify(list.slice(0, LIMIT)));
-    } catch {}
+    } catch (e) {
+      console.warn('[listening-history] save failed', e);
+    }
   },
   onDisable() {},
 };

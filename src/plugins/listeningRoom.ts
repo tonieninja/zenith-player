@@ -102,7 +102,9 @@ export async function joinRoom(code: string): Promise<boolean> {
       try {
         const state = JSON.parse(String(ev.data)) as RoomState;
         if (state?.trackId != null) onSync?.(state);
-      } catch {}
+      } catch (err) {
+        console.warn('[listening-room] bad message', err);
+      }
     };
     ws.onclose = () => onStatus?.('peer-left');
     setRole('guest', cleaned, port);
@@ -117,14 +119,10 @@ export async function joinRoom(code: string): Promise<boolean> {
 
 export async function leaveRoom() {
   if (guestSocket) {
-    try {
-      guestSocket.close();
-    } catch {}
+    guestSocket.close();
     guestSocket = null;
   }
-  try {
-    if (isRoomHost()) await invoke('room_leave');
-  } catch {}
+  if (isRoomHost()) await invoke('room_leave');
   setRole('', '');
   onStatus?.('left');
 }

@@ -7,14 +7,14 @@ let last: NowPlayingInfo | null = null;
 function pushNative(info: NowPlayingInfo | null, playing?: boolean) {
   if (!isNativeAudio()) return;
   last = info;
-  invoke('mpris_update', {
+  void invoke('mpris_update', {
     title: info?.title ?? null,
     artist: info?.artist ?? null,
     art: info?.coverUrl ?? null,
     playing: playing ?? info?.isPlaying ?? false,
     position: info?.position ?? 0,
     duration: info?.duration ?? 0,
-  }).catch(() => {});
+  });
 }
 
 let handlers: {
@@ -32,31 +32,29 @@ export function registerMediaSessionHandlers(h: typeof handlers) {
 function syncMetadata(info: NowPlayingInfo | null) {
   pushNative(info);
   if (!('mediaSession' in navigator)) return;
-  try {
-    if (!info) {
-      navigator.mediaSession.metadata = null;
-      navigator.mediaSession.playbackState = 'none';
-      return;
-    }
-    navigator.mediaSession.metadata = new MediaMetadata({
-      title: info.title,
-      artist: info.artist,
-      artwork: info.coverUrl
-        ? [
-            { src: info.coverUrl, sizes: '512x512', type: 'image/jpeg' },
-            { src: info.coverUrl, sizes: '256x256', type: 'image/jpeg' },
-          ]
-        : [],
+  if (!info) {
+    navigator.mediaSession.metadata = null;
+    navigator.mediaSession.playbackState = 'none';
+    return;
+  }
+  navigator.mediaSession.metadata = new MediaMetadata({
+    title: info.title,
+    artist: info.artist,
+    artwork: info.coverUrl
+      ? [
+          { src: info.coverUrl, sizes: '512x512', type: 'image/jpeg' },
+          { src: info.coverUrl, sizes: '256x256', type: 'image/jpeg' },
+        ]
+      : [],
+  });
+  navigator.mediaSession.playbackState = info.isPlaying ? 'playing' : 'paused';
+  if (Number.isFinite(info.duration) && info.duration > 0) {
+    navigator.mediaSession.setPositionState?.({
+      duration: info.duration,
+      position: Math.max(0, Math.min(info.position || 0, info.duration)),
+      playbackRate: 1,
     });
-    navigator.mediaSession.playbackState = info.isPlaying ? 'playing' : 'paused';
-    if (Number.isFinite(info.duration) && info.duration > 0) {
-      navigator.mediaSession.setPositionState?.({
-        duration: info.duration,
-        position: Math.min(info.position, info.duration),
-        playbackRate: 1,
-      });
-    }
-  } catch {}
+  }
 }
 
 function wireActions() {
@@ -69,7 +67,9 @@ function wireActions() {
     navigator.mediaSession.setActionHandler('seekto', (details) => {
       if (typeof details.seekTime === 'number') handlers.seek?.(details.seekTime);
     });
-  } catch {}
+  } catch (e) {
+    console.warn('[media-session] action handlers unavailable', e);
+  }
 }
 
 export const mediaSessionPlugin: ZenithPlugin = {
@@ -87,7 +87,9 @@ export const mediaSessionPlugin: ZenithPlugin = {
     for (const action of ['play', 'pause', 'previoustrack', 'nexttrack', 'seekto'] as const) {
       try {
         navigator.mediaSession.setActionHandler(action, null);
-      } catch {}
+      } catch (e) {
+        console.warn('[media-session] clear handler failed', action, e);
+      }
     }
   },
   onNowPlaying(info) {
@@ -100,8 +102,6 @@ export const mediaSessionPlugin: ZenithPlugin = {
   onPlayStateChange(isPlaying) {
     if (last) pushNative({ ...last, isPlaying }, isPlaying);
     if (!('mediaSession' in navigator)) return;
-    try {
-      navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
-    } catch {}
+    navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
   },
 };

@@ -64,7 +64,9 @@ export function savePersistedQueue(
       savedAt: Date.now(),
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
-  } catch {}
+  } catch (e) {
+    console.warn('[queue-persist] save failed', e);
+  }
 }
 
 export const queuePersistPlugin: ZenithPlugin = {

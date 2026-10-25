@@ -30,7 +30,9 @@ export function getHotkeyBindings(): HotkeyBindings {
     if (raw && typeof raw === 'object') {
       for (const a of HOTKEY_ACTIONS) if (typeof raw[a] === 'string') out[a] = raw[a];
     }
-  } catch {}
+  } catch {
+    return { ...DEFAULT_HOTKEYS };
+  }
   return out;
 }
 
@@ -89,9 +91,7 @@ export function prettyAccelerator(acc: string): string {
 }
 
 export async function saveHotkeyBindings(b: HotkeyBindings): Promise<string[]> {
-  try {
-    localStorage.setItem(HOTKEY_BINDINGS_KEY, JSON.stringify(b));
-  } catch {}
+  localStorage.setItem(HOTKEY_BINDINGS_KEY, JSON.stringify(b));
   return pushHotkeyBindings();
 }
 

@@ -3,9 +3,7 @@ import { ZenithPlugin } from './types';
 export const SMART_LYRICS_KEY = 'zenith_smart_lyrics';
 
 export function setSmartLyricsEnabled(on: boolean) {
-  try {
-    localStorage.setItem(SMART_LYRICS_KEY, on ? '1' : '0');
-  } catch {}
+  localStorage.setItem(SMART_LYRICS_KEY, on ? '1' : '0');
 }
 
 export const smartLyricsPlugin: ZenithPlugin = {

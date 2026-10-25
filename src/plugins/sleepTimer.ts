@@ -16,17 +16,11 @@ export function registerSleepTimerCallback(cb: () => void) {
 }
 
 export function getSleepTimerMinutes(): number {
-  try {
-    return Number(localStorage.getItem(SLEEP_TIMER_KEY)) || 30;
-  } catch {
-    return 30;
-  }
+  return Number(localStorage.getItem(SLEEP_TIMER_KEY)) || 30;
 }
 
 export function setSleepTimerMinutes(mins: number) {
-  try {
-    localStorage.setItem(SLEEP_TIMER_KEY, String(mins));
-  } catch {}
+  localStorage.setItem(SLEEP_TIMER_KEY, String(mins));
 }
 
 function armTimer() {

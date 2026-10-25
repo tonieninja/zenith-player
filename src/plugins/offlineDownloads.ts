@@ -51,12 +51,10 @@ export function clearDownloads(): Promise<number> {
 export function onDownloadProgress(cb: (p: DownloadProgress) => void): () => void {
   let un: (() => void) | null = null;
   let dead = false;
-  listen<DownloadProgress>('download-progress', (e) => cb(e.payload))
-    .then((fn) => {
-      if (dead) fn();
-      else un = fn;
-    })
-    .catch(() => {});
+  void listen<DownloadProgress>('download-progress', (e) => cb(e.payload)).then((fn) => {
+    if (dead) fn();
+    else un = fn;
+  });
   return () => {
     dead = true;
     un?.();
