@@ -70,7 +70,9 @@
       },
       "wix": {
         "language": "en-US",
-        "upgradeCode": "c4e8a91b-2f6d-4b70-9e13-7a5c0d18f246"
+        "upgradeCode": "c4e8a91b-2f6d-4b70-9e13-7a5c0d18f246",
+        "bannerPath": "wix/banner.bmp",
+        "dialogImagePath": "wix/dialog.bmp"
       },
       "nsis": {
         "installMode": "currentUser",
