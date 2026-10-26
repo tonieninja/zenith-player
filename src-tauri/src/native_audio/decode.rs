@@ -227,7 +227,7 @@ pub fn audible_end(buf: Arc<Buf>, d: f64) -> Result<Option<f64>, String> {
             }
             continue;
         }
-        for (i, fr) in s.stereo.chunks_exact(2).enumerate() {
+        for (i, fr) in s.stereo.as_chunks::<2>().0.iter().enumerate() {
             let at = pts + i as f64 / sr;
             if at < from {
                 continue;

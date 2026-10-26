@@ -27,7 +27,7 @@ fn hwnd(app: &AppHandle) -> Option<*mut std::ffi::c_void> {
     {
         use tauri::Manager;
         let w = app.get_webview_window("main")?;
-        w.hwnd().ok().map(|h| h.0 as *mut std::ffi::c_void)
+        w.hwnd().ok().map(|h| h.0)
     }
     #[cfg(not(windows))]
     {

@@ -99,14 +99,14 @@ async fn send_upstream(
         tokio::select! {
             r = &mut one => r,
             _ = tokio::time::sleep(Duration::from_millis(1200)) => {
-                crate::timeline::mark("proxy hedge: no headers after 1.2 s, second connection".to_string());
+                crate::mark("proxy hedge: no headers after 1.2 s, second connection".to_string());
                 let two = build(hedge_client(direct_first)).send();
                 tokio::pin!(two);
                 tokio::select! {
                     r = &mut one => match r { Ok(x) => Ok(x), Err(_) => two.await },
                     r = &mut two => match r {
                         Ok(x) => {
-                            crate::timeline::mark("proxy hedge won".to_string());
+                            crate::mark("proxy hedge won".to_string());
                             Ok(x)
                         }
                         Err(_) => one.await,
@@ -374,7 +374,7 @@ async fn proxy_stream(
         return Err(StatusCode::BAD_GATEWAY);
     }
 
-    crate::timeline::mark(format!(
+    crate::mark(format!(
         "proxy request {id} range={:?}",
         headers.get(header::RANGE).and_then(|v| v.to_str().ok())
     ));
@@ -426,7 +426,7 @@ async fn proxy_stream(
     };
 
     let status = upstream_res.status();
-    crate::timeline::mark(format!("proxy upstream headers {id} {}", status.as_u16()));
+    crate::mark(format!("proxy upstream headers {id} {}", status.as_u16()));
     let mut builder = Response::builder()
         .status(status)
         .header(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*");

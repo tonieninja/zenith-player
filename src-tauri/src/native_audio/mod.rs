@@ -450,7 +450,7 @@ fn tick_loop() {
                 looped = Some(to);
             }
         }
-        if looped.is_none() && n % TICKS_PER_UPDATE != 0 {
+        if looped.is_none() && !n.is_multiple_of(TICKS_PER_UPDATE) {
             continue;
         }
         let mut snap = snap_of(&st);
@@ -1295,7 +1295,7 @@ mod engine_tests {
             let t = snapshot().t;
             if t + 0.3 < last {
                 wraps += 1;
-                assert!(t >= 0.95 && t < 1.3, "wrapped to {t}");
+                assert!((0.95..1.3).contains(&t), "wrapped to {t}");
             }
             last = t;
         }

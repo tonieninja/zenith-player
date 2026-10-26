@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
@@ -185,6 +185,112 @@ pub fn graceful_shutdown(app: &AppHandle) {
 
 pub fn is_shutting_down() -> bool {
     SHUTTING_DOWN.load(Ordering::SeqCst)
+}
+
+static HIDE_GEN: AtomicU64 = AtomicU64::new(0);
+
+#[derive(Clone, Copy)]
+struct MainGeo {
+    pos: tauri::PhysicalPosition<i32>,
+    size: tauri::PhysicalSize<u32>,
+    maximized: bool,
+}
+static MAIN_GEO: Mutex<Option<MainGeo>> = Mutex::new(None);
+
+pub fn ui_drop_enabled() -> bool {
+    let default_on = cfg!(target_os = "linux");
+    crate::native_audio::available()
+        && match std::env::var("ZENITH_UI_DROP").as_deref() {
+            Ok("0") => false,
+            Ok("1") => true,
+            _ => default_on,
+        }
+}
+
+fn ui_drop_delay_ms() -> u64 {
+    std::env::var("ZENITH_UI_DROP_MS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(3000)
+}
+
+pub fn main_hidden(app: &AppHandle) {
+    if !ui_drop_enabled() {
+        return;
+    }
+    let gen = HIDE_GEN.fetch_add(1, Ordering::SeqCst) + 1;
+    let app = app.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(ui_drop_delay_ms()));
+        if HIDE_GEN.load(Ordering::SeqCst) != gen || is_shutting_down() {
+            return;
+        }
+        let a = app.clone();
+        let _ = app.run_on_main_thread(move || drop_main(&a));
+    });
+}
+
+pub fn drop_main(app: &AppHandle) {
+    if let Some(w) = app.get_webview_window("main") {
+        if w.is_visible().unwrap_or(true) {
+            return;
+        }
+        if let (Ok(pos), Ok(size)) = (w.outer_position(), w.inner_size()) {
+            *MAIN_GEO.lock().unwrap_or_else(|p| p.into_inner()) = Some(MainGeo {
+                pos,
+                size,
+                maximized: w.is_maximized().unwrap_or(false),
+            });
+        }
+        crate::native_audio::set_headless(true);
+        #[cfg(target_os = "linux")]
+        let _ = w.with_webview(|wv| {
+            use webkit2gtk::WebViewExt;
+            wv.inner().terminate_web_process();
+        });
+        let _ = w.destroy();
+        std::thread::spawn(|| {
+            std::thread::sleep(std::time::Duration::from_millis(1500));
+            #[cfg(target_os = "linux")]
+            unsafe {
+                libc::malloc_trim(0);
+            }
+        });
+    }
+}
+
+pub fn ensure_main(app: &AppHandle) -> bool {
+    HIDE_GEN.fetch_add(1, Ordering::SeqCst);
+    if app.get_webview_window("main").is_some() {
+        return false;
+    }
+    let Some(cfg) = app.config().app.windows.first().cloned() else {
+        return false;
+    };
+    let h = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        let built = WebviewWindowBuilder::from_config(&h, &cfg).map(|b| {
+            b.enable_clipboard_access().initialization_script(
+                "window.__ZENITH_RESTORED__ = true; window.close = function () {};",
+            )
+        });
+        match built.and_then(|b| b.build()) {
+            Ok(w) => {
+                crate::webview_tuning::tune(&w);
+                if let Some(g) = *MAIN_GEO.lock().unwrap_or_else(|p| p.into_inner()) {
+                    let _ = w.set_size(g.size);
+                    let _ = w.set_position(g.pos);
+                    if g.maximized {
+                        let _ = w.maximize();
+                    }
+                }
+                let _ = w.show();
+                let _ = w.set_focus();
+            }
+            Err(e) => eprintln!("[zenith] main window rebuild failed: {e}"),
+        }
+    });
+    true
 }
 
 pub fn aux_windows_use_transparency() -> bool {

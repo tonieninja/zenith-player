@@ -368,7 +368,7 @@ pub async fn get_stream_url(
     let waited = started.elapsed() > Duration::from_millis(200);
     let vid = video_id.clone();
     let r = get_stream_url_locked(app, video_id, fresh.filter(|f| *f && !waited)).await;
-    crate::timeline::mark(format!(
+    crate::mark(format!(
         "get_stream_url end {vid} ok={}",
         matches!(r, Ok(Some(_)))
     ));
@@ -423,7 +423,7 @@ async fn get_stream_url_locked(
         r = &mut innertube => {
             it_done = true;
             if let Some(got) = r {
-                crate::timeline::mark(format!("layer innertube {video_id}"));
+                crate::mark(format!("layer innertube {video_id}"));
                 return remember_and_proxy(&video_id, &got.url, &got.user_agent, now).map(Some);
             }
         }
@@ -455,14 +455,14 @@ async fn get_stream_url_locked(
             r = &mut js_layer, if !js_done => {
                 js_done = true;
                 if let Some(got) = r {
-                    crate::timeline::mark(format!("layer js {video_id}"));
+                    crate::mark(format!("layer js {video_id}"));
                     return remember_and_proxy(&video_id, &got.url, &got.user_agent, now).map(Some);
                 }
             }
             r = &mut innertube, if !it_done => {
                 it_done = true;
                 if let Some(got) = r {
-                    crate::timeline::mark(format!("layer innertube {video_id}"));
+                    crate::mark(format!("layer innertube {video_id}"));
                     return remember_and_proxy(&video_id, &got.url, &got.user_agent, now).map(Some);
                 }
             }
@@ -470,7 +470,7 @@ async fn get_stream_url_locked(
     }
 
     if let Some(got) = escalate(&video_id, signed).await {
-        crate::timeline::mark(format!("layer escalation {video_id}"));
+        crate::mark(format!("layer escalation {video_id}"));
         return remember_and_proxy(&video_id, &got.url, &got.user_agent, now).map(Some);
     }
     note_failure(if player::bot_blocked() {

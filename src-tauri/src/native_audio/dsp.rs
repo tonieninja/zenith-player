@@ -158,7 +158,7 @@ impl Eq {
             self.z = [[[0.0; 4]; 2]; STAGES + 1];
             return;
         }
-        for fr in stereo.chunks_exact_mut(2) {
+        for fr in stereo.as_chunks_mut::<2>().0 {
             if self.tick == 0 {
                 self.glide();
             }
@@ -222,7 +222,7 @@ impl Limiter {
 
     pub fn process(&mut self, stereo: &mut [f32]) {
         let n = self.need.len();
-        for fr in stereo.chunks_exact_mut(2) {
+        for fr in stereo.as_chunks_mut::<2>().0 {
             let peak = fr[0].abs().max(fr[1].abs());
             self.need[self.i] = if peak > LIMIT_CEIL {
                 LIMIT_CEIL / peak
@@ -473,7 +473,7 @@ impl Loudness {
 
     pub fn feed(&mut self, stereo: &[f32]) -> Vec<f64> {
         let mut out = Vec::new();
-        for fr in stereo.chunks_exact(2) {
+        for fr in stereo.as_chunks::<2>().0 {
             self.sum += (fr[0] as f64).powi(2) + (fr[1] as f64).powi(2);
             self.n += 1;
             if self.n >= self.block {
@@ -610,7 +610,9 @@ mod tests {
         let sr = 48000u32;
         let src = sine(200.0, sr, 0.5, 0.3);
         let max_step = |v: &[f32]| {
-            v.chunks_exact(2)
+            v.as_chunks::<2>()
+                .0
+                .iter()
                 .map(|f| f[0])
                 .collect::<Vec<_>>()
                 .windows(2)

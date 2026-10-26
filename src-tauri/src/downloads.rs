@@ -172,7 +172,7 @@ async fn fetch_to_disk(
         .no_proxy()
         .build()
         .map_err(|e| e.to_string())?;
-    if !(meta.duration > 0.0) {
+    if meta.duration.is_nan() || meta.duration <= 0.0 {
         meta.duration = duration_from_url(&url).unwrap_or(0.0);
     }
     let res = client.get(&url).send().await.map_err(|e| e.to_string())?;

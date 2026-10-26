@@ -24,8 +24,6 @@ mod smtc;
 mod spotify_auth;
 mod stream;
 mod stream_proxy;
-mod timeline;
-mod ui_drop;
 #[cfg(windows)]
 mod webview2_check;
 mod webview_tuning;
@@ -43,6 +41,18 @@ use tauri::{
     webview::PageLoadEvent,
     Emitter, Manager, RunEvent, WindowEvent,
 };
+
+pub(crate) fn mark(label: impl Into<String>) {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    if !*ON.get_or_init(|| std::env::var("ZENITH_TRACE").as_deref() == Ok("1")) {
+        return;
+    }
+    let ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+    eprintln!("[trace {ms}] {}", label.into());
+}
 
 #[tauri::command]
 async fn post_webhook(url: String, body: String) -> Result<u16, String> {
@@ -347,7 +357,7 @@ fn debug_log_enabled() -> bool {
 }
 
 pub(crate) fn show_main_window(app: &tauri::AppHandle) {
-    if ui_drop::ensure_main(app) {
+    if windows::ensure_main(app) {
         return;
     }
     if let Some(win) = app.get_webview_window("main") {
@@ -627,7 +637,7 @@ fn install_edit_menu(app: &tauri::AppHandle) -> Result<(), String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    timeline::mark("app start");
+    mark("app start");
     win_proxy::init();
     #[cfg(windows)]
     if !webview2_check::ensure() {
@@ -636,7 +646,7 @@ pub fn run() {
     webview_tuning::early_init();
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-            if ui_drop::ensure_main(app) {
+            if windows::ensure_main(app) {
                 return;
             }
             if let Some(w) = app.get_webview_window("main") {
@@ -716,7 +726,7 @@ pub fn run() {
                         wv2_mem::set_low(&wv, true);
                     }
                     let _ = window.emit_to("main", "zenith-hidden-to-tray", ());
-                    ui_drop::hidden(window.app_handle());
+                    windows::main_hidden(window.app_handle());
                 } else {
                     windows::graceful_shutdown(window.app_handle());
                 }
