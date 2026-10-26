@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useLightLyrics } from '../utils/lightLyrics';
+import { useLightLyrics } from '../lyrics/light';
 
 const COLUMN_PX = 24;
 
@@ -359,11 +359,15 @@ export function LyricKaraokeText({ text, active: activeProp, start, end, getProg
   }, [animate, start, end, getProgress]);
 
   if (!active) {
-    return <span className="lyric-row-text">{text}</span>;
+    return (
+      <span className="lyric-row-text" data-text={text}>
+        {text}
+      </span>
+    );
   }
 
   return (
-    <span className="lyric-row-text lyric-karaoke" ref={wrapRef}>
+    <span className="lyric-row-text lyric-karaoke" data-text={text} ref={wrapRef}>
       <span className="lyric-karaoke-base">{text}</span>
       <span className="lyric-karaoke-fill" aria-hidden="true">
         {text}

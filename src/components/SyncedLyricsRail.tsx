@@ -1,11 +1,9 @@
-import { memo, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
+import { memo, useLayoutEffect, useRef, type CSSProperties } from 'react';
 import { LyricKaraokeText } from './LyricKaraokeText';
-import { LyricsTripleCarousel } from './LyricsTripleCarousel';
-import { useLightLyrics } from '../utils/lightLyrics';
+import { useLightLyrics } from '../lyrics/light';
 import './SyncedLyricsRail.css';
 
-export const SYNCED_LYRICS_SLIDE_MS = 600;
-export { OVERLAY_LYRICS_SLIDE_MS } from './LyricsTripleCarousel';
+const SYNCED_LYRICS_SLIDE_MS = 600;
 
 // ta sama krzywa co --slide-ease w CSS, natywne scrollTo smooth ma własny czas i rozjeżdża się z wierszami
 const SLIDE_EASE = (t: number) => 1 - (1 - t) ** 5;
@@ -39,10 +37,10 @@ type Props = {
   onLineClick?: (time: number) => void;
   className?: string;
   slideMs?: number;
-  mode?: 'rail' | 'full';
-  showPrevious?: boolean;
   getProgress?: () => number;
 };
+
+const WINDOW = 36;
 
 export const SyncedLyricsRail = memo(function SyncedLyricsRail({
   synced,
@@ -50,164 +48,70 @@ export const SyncedLyricsRail = memo(function SyncedLyricsRail({
   onLineClick,
   className = '',
   slideMs = SYNCED_LYRICS_SLIDE_MS,
-  mode = 'rail',
-  showPrevious = false,
   getProgress,
 }: Props) {
-  const displayIdx = idx;
   const light = useLightLyrics();
-  const lightCls = light ? ' synced-lyrics-rail--light' : '';
-  const [renderIdx, setRenderIdx] = useState(displayIdx);
-  const [sliding, setSliding] = useState(false);
   const activeLineRef = useRef<HTMLButtonElement | HTMLDivElement | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
   const trackKey = `${synced.length}:${synced[0]?.time ?? 0}`;
 
   useLayoutEffect(() => {
-    setRenderIdx(displayIdx);
-    setSliding(false);
-    if (mode === 'full') listRef.current?.scrollTo({ top: 0, behavior: 'auto' });
-  }, [trackKey, mode]);
+    listRef.current?.scrollTo({ top: 0, behavior: 'auto' });
+  }, [trackKey]);
 
   useLayoutEffect(() => {
-    if (displayIdx === renderIdx) return;
-    setSliding(true);
-    const id = requestAnimationFrame(() => setRenderIdx(displayIdx));
-    return () => cancelAnimationFrame(id);
-  }, [displayIdx, renderIdx, trackKey]);
-
-  useLayoutEffect(() => {
-    if (!sliding) return;
-    const id = window.setTimeout(() => setSliding(false), slideMs + 180);
-    return () => window.clearTimeout(id);
-  }, [sliding, slideMs]);
-
-  useLayoutEffect(() => {
-    if (mode !== 'full' || renderIdx < 0) return;
+    if (idx < 0) return;
     const list = listRef.current;
     const line = activeLineRef.current;
     if (!list || !line) return;
     smoothScrollToCenter(list, line, slideMs);
-  }, [renderIdx, trackKey, mode, slideMs]);
+  }, [idx, trackKey, slideMs]);
 
   if (!synced.length) return null;
 
-  if (mode === 'full') {
-    const WINDOW = 36;
-    const start = 0;
-    const end = Math.min(synced.length, renderIdx + WINDOW + 1);
-    const visible = synced.slice(start, end);
-    return (
-      <div
-        className={`synced-lyrics-rail synced-lyrics-rail--full${lightCls}${sliding ? ' is-sliding' : ''} ${className}`.trim()}
-        style={{ '--slide-ms': `${slideMs}ms` } as CSSProperties}
-      >
-        <div className="synced-lyrics-full-list" ref={listRef}>
-          {visible.map((line, vi) => {
-            const i = start + vi;
-            let state = ' is-upcoming';
-            if (i === renderIdx && renderIdx >= 0) state = ' is-active';
-            else if (renderIdx >= 0 && i === renderIdx + 1) state = ' is-next';
-            else if (renderIdx >= 0 && i < renderIdx) state = ' is-past';
-            const activeRef = (el: HTMLButtonElement | HTMLDivElement | null) => {
-              if (i === renderIdx) activeLineRef.current = el;
-            };
-            const text = (
-              <LyricKaraokeText
-                text={line.text}
-                active={state === ' is-active'}
-                start={line.time}
-                end={synced[i + 1]?.time ?? line.time + 4}
-                getProgress={getProgress}
-              />
-            );
-            if (onLineClick) {
-              return (
-                <button
-                  key={`${line.time}-${i}`}
-                  ref={activeRef}
-                  type="button"
-                  className={`lyric-row${state}`}
-                  onClick={() => onLineClick(line.time)}
-                >
-                  {text}
-                </button>
-              );
-            }
-            return (
-              <div key={`${line.time}-${i}`} ref={activeRef} className={`lyric-row${state}`}>
-                {text}
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    );
-  }
-
-  if (showPrevious) {
-    return (
-      <LyricsTripleCarousel
-        synced={synced}
-        idx={idx}
-        className={className}
-        onLineClick={onLineClick}
-        getProgress={getProgress}
-      />
-    );
-  }
-
-  const railClass = ['synced-lyrics-rail', className, light ? 'synced-lyrics-rail--light' : '']
-    .filter(Boolean)
-    .join(' ');
-
+  const visible = synced.slice(0, Math.min(synced.length, idx + WINDOW + 1));
   return (
-    <div className={railClass} style={{ '--slide-ms': `${slideMs}ms` } as CSSProperties}>
-      <div
-        className="synced-lyrics-viewport"
-        onTransitionEnd={(e) => {
-          if (e.propertyName === 'transform') setSliding(false);
-        }}
-      >
-        <div
-          className={`synced-lyrics-track${sliding ? ' is-sliding' : ''}`}
-          style={{
-            transform: `translate3d(0, calc(-1 * ${Math.max(0, renderIdx)} * var(--lyric-row-h)), 0)`,
-          }}
-        >
-          {synced.map((line, i) => {
-            let state = ' is-upcoming';
-            if (renderIdx >= 0 && i === renderIdx) state = ' is-active';
-            else if (renderIdx >= 0 && i === renderIdx + 1) state = ' is-next';
-            else if (renderIdx >= 0 && i < renderIdx) state = ' is-past';
-            const text = (
-              <LyricKaraokeText
-                text={line.text}
-                active={state === ' is-active'}
-                start={line.time}
-                end={synced[i + 1]?.time ?? line.time + 4}
-                getProgress={getProgress}
-              />
-            );
-            if (onLineClick) {
-              return (
-                <button
-                  key={`${line.time}-${i}`}
-                  type="button"
-                  className={`lyric-row${state}`}
-                  onClick={() => onLineClick(line.time)}
-                >
-                  {text}
-                </button>
-              );
-            }
+    <div
+      className={`synced-lyrics-rail${light ? ' synced-lyrics-rail--light' : ''} ${className}`.trim()}
+      style={{ '--slide-ms': `${slideMs}ms` } as CSSProperties}
+    >
+      <div className="synced-lyrics-full-list" ref={listRef}>
+        {visible.map((line, i) => {
+          let state = ' is-upcoming';
+          if (i === idx) state = ' is-active';
+          else if (idx >= 0 && i === idx + 1) state = ' is-next';
+          else if (i < idx) state = ' is-past';
+          const activeRef = (el: HTMLButtonElement | HTMLDivElement | null) => {
+            if (i === idx) activeLineRef.current = el;
+          };
+          const text = (
+            <LyricKaraokeText
+              text={line.text}
+              active={state === ' is-active'}
+              start={line.time}
+              end={synced[i + 1]?.time ?? line.time + 4}
+              getProgress={getProgress}
+            />
+          );
+          if (onLineClick) {
             return (
-              <div key={`${line.time}-${i}`} className={`lyric-row${state}`}>
+              <button
+                key={`${line.time}-${i}`}
+                ref={activeRef}
+                type="button"
+                className={`lyric-row${state}`}
+                onClick={() => onLineClick(line.time)}
+              >
                 {text}
-              </div>
+              </button>
             );
-          })}
-        </div>
+          }
+          return (
+            <div key={`${line.time}-${i}`} ref={activeRef} className={`lyric-row${state}`}>
+              {text}
+            </div>
+          );
+        })}
       </div>
     </div>
   );

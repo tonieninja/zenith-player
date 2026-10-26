@@ -78,30 +78,3 @@
   clip-path: none;
   will-change: transform;
 }
-
-@keyframes lyricLineBounce {
-  0% {
-    transform: translate3d(0, -10px, 0) scale(0.97);
-    opacity: 0.55;
-  }
-  58% {
-    transform: translate3d(0, 2px, 0) scale(1.045);
-    opacity: 1;
-  }
-  100% {
-    transform: translate3d(0, 0, 0) scale(1.04);
-    opacity: 1;
-  }
-}
-
-@keyframes lyricTextDrop {
-  0% {
-    transform: translateY(-7px);
-  }
-  62% {
-    transform: translateY(2px);
-  }
-  100% {
-    transform: translateY(0);
-  }
-}
