@@ -29,8 +29,7 @@ Grab it from [Releases](https://github.com/tonieninja/zenith-player/releases/lat
 | Any Linux            | `Zenith_4.1.1_amd64.AppImage`                                                    |
 | macOS 11+            | `Zenith_4.1.1_universal.dmg` (built by CI, I don't have a Mac to test it)        |
 
-Windows builds aren't signed yet, so SmartScreen will complain. More info, Run anyway.
-See the [code signing policy](#code-signing-policy).
+Windows builds aren't signed, so SmartScreen will complain. More info, Run anyway.
 On macOS right click, Open the first time (or System Settings, Privacy & Security, Open Anyway). `SHA256SUMS` is attached to every release.
 
 ## What it does
@@ -100,17 +99,6 @@ but that's life. I hack on this on my knees and it's just easier for me with eve
 
 RAM on Linux sits around 250 MB with the window open and most of that is WebKit itself. Closing to
 the tray drops the UI completely, so the player alone uses a lot less.
-
-## Code signing policy
-
-Free code signing provided by [SignPath.io](https://signpath.io), certificate by
-[SignPath Foundation](https://signpath.org).
-
-- Committers and reviewers: [tonieninja](https://github.com/tonieninja)
-- Approvers: [tonieninja](https://github.com/tonieninja)
-
-Only builds made by the GitHub Actions workflow in this repo get signed, and every release is
-approved by hand. Setup details are in [docs/SIGNING.md](docs/SIGNING.md).
 
 ## Privacy
 

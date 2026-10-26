@@ -117,7 +117,7 @@ function Invoke-SignTool {
 $material = Get-SignMaterial
 if (-not $material) {
   if ($env:GITHUB_ACTIONS -eq 'true') {
-    Write-Warning '[sign] no certificate on CI - release builds get signed by SignPath in the release job'
+    Write-Warning '[sign] no certificate on CI, leaving it unsigned'
     exit 0
   }
   Write-Warning "[sign] no certificate - leaving unsigned: $FilePath"
