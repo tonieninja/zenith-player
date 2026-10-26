@@ -153,7 +153,7 @@ export const myPlugin: ZenithPlugin = {
 ```
 
 2. Register it in `src/plugins/index.ts` (`ALL_PLUGINS`, alphabetical).
-3. Add the Polish name/description in `src/utils/pluginI18n.ts`.
+3. Add the Polish name/description in `src/i18n/plugins.ts`.
 4. Optional settings UI: `src/components/PluginsPanel.tsx` (`renderSettings`).
 5. Keep hooks cheap: `onNowPlaying` runs on every progress tick. Plugins must not
    download media or send data anywhere unless that is their stated purpose.

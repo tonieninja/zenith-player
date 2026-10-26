@@ -59,8 +59,7 @@ function load(url: string): Promise<string | null> {
         blurPixels(data.data, SIZE, SIZE);
         ctx.putImageData(data, 0, 0);
         resolve(canvas.toDataURL('image/png'));
-      } catch (e) {
-        console.debug('[zenith] pre-blur skipped', e);
+      } catch {
         resolve(null);
       }
     };

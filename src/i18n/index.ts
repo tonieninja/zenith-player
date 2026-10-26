@@ -1088,3 +1088,11 @@ export function streamStuckMessage(
 
 export const translations: Record<'en' | 'pl', Record<keyof typeof en, string>> = { en, pl };
 export type Language = keyof typeof translations;
+
+export function currentLang(): Language {
+  return localStorage.getItem('zenith_lang') === 'pl' ? 'pl' : 'en';
+}
+
+export function currentT() {
+  return translations[currentLang()];
+}

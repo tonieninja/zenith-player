@@ -5,7 +5,7 @@ import {
   pickPrevPosition,
   popPlayHistory,
   pushPlayHistory,
-} from '../utils/playbackNav';
+} from '../utils/playback';
 
 describe('decidePrevious', () => {
   it('restarts when past the threshold', () => {

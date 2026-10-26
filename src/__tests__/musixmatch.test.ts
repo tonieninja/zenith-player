@@ -31,8 +31,8 @@ import {
   tokenLooksValid,
 } from '../api/musixmatch';
 import { getLyrics, lyricsCreditArtist, lyricsSearchTitle, type Track } from '../api/youtube';
-import { isAcceptableLyricsMatch, syncLengthFits } from '../utils/lyricsMatch';
-import { localizeLyricsReason } from '../utils/lyricsReasons';
+import { isAcceptableLyricsMatch, syncLengthFits } from '../lyrics/match';
+import { localizeLyricsReason } from '../lyrics/reasons';
 import { scopeAllows } from './helpers/tauriHttp';
 
 const TOKEN = 'fixturetoken0123456789abcdef0123456789abcdef0123456789';

@@ -28,7 +28,7 @@ vi.mock('@tauri-apps/api/event', () => ({
 
 import { ALL_PLUGINS, pluginManager } from '../plugins';
 import { setupKeyboardShortcuts, registerKeyboardHandler } from '../plugins/keyboardShortcuts';
-import { getRememberLogin, setRememberLogin } from '../utils/rememberLogin';
+import { getRememberLogin, setRememberLogin } from '../api/youtube';
 import { loadPersistedQueue, savePersistedQueue } from '../plugins/queuePersist';
 import { formatBytes, entryToTrack } from '../plugins/offlineDownloads';
 import {
@@ -58,7 +58,7 @@ import {
 } from '../plugins/globalHotkeys';
 import { getRemotePairMode, setRemotePairMode } from '../plugins/remoteControl';
 import { normGainDb } from '../audio/webFx';
-import { pluginText } from '../utils/pluginI18n';
+import { pluginText } from '../i18n/plugins';
 import { pluginQueryMatches } from '../utils/pluginSearch';
 import { LIBRARY_CATEGORIES } from '../constants/library';
 

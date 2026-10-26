@@ -34,7 +34,7 @@ export function resetCoverTheme() {
   );
 }
 
-import { cachedCoverUrl } from './imgError';
+import { cachedCoverUrl } from './covers';
 
 type Rgb = [number, number, number];
 
@@ -155,8 +155,8 @@ export function applyCoverTheme(coverUrl: string | undefined | null) {
       );
       const app = document.querySelector('.zenith-app') as HTMLElement | null;
       app?.style.setProperty('--ambient-color', `rgb(${r}, ${g}, ${b})`);
-    } catch (err) {
-      console.warn('[cover-theme] sampling failed', err);
+    } catch {
+      resetCoverTheme();
     }
   };
   img.onerror = () => {

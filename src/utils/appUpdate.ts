@@ -79,8 +79,7 @@ export async function checkSignedUpdate(
     }
     pendingUpdate = upd;
     return upd ? { version: upd.version } : null;
-  } catch (e) {
-    console.warn('[update] signed check failed', e);
+  } catch {
     return null;
   }
 }

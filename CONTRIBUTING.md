@@ -1,7 +1,7 @@
 # Contributing
 
 PRs are welcome. Run `pnpm test`, `pnpm typecheck`, `pnpm lint` and `cargo test` (in `src-tauri`)
-before sending one. Keep the UI in English and Polish, both strings live in `src/i18n.ts`.
+before sending one. Keep the UI in English and Polish, both strings live in `src/i18n/index.ts`.
 
 Please don't add YouTube or Google logos or call the app official.
 

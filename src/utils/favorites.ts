@@ -32,22 +32,17 @@ export function mergeFavoriteTracks(local: Track[], account: Track[]): Track[] {
 const KEY = 'zenith_saved_tracks';
 
 export async function initFavoritesStore(): Promise<void> {
-  try {
-    const disk = await invoke<string>('favorites_load');
-    const fromDisk = readSavedTracks(disk);
-    const local = readSavedTracks(localStorage.getItem(KEY));
-    if (local.length === 0 && fromDisk.length > 0) {
-      localStorage.setItem(KEY, JSON.stringify(fromDisk));
-    } else if (local.length > 0 && fromDisk.length === 0) {
-      await invoke('favorites_save', { body: JSON.stringify(local.slice(0, 500)) });
-    }
-  } catch (err) {
-    console.warn('[favorites] disk sync failed', err);
+  const disk = await invoke<string>('favorites_load').catch(() => null);
+  if (disk === null) return;
+  const fromDisk = readSavedTracks(disk);
+  const local = readSavedTracks(localStorage.getItem(KEY));
+  if (local.length === 0 && fromDisk.length > 0) {
+    localStorage.setItem(KEY, JSON.stringify(fromDisk));
+  } else if (local.length > 0 && fromDisk.length === 0) {
+    persistFavorites(JSON.stringify(local.slice(0, 500)));
   }
 }
 
 export function persistFavorites(tracksJson: string) {
-  void invoke('favorites_save', { body: tracksJson }).catch((err) =>
-    console.warn('[favorites] save failed', err)
-  );
+  void invoke('favorites_save', { body: tracksJson });
 }

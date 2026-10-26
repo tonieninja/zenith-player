@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { translations } from '../i18n';
-import { lastfmErrorText } from '../utils/lastfmErrors';
+import { lastfmErrorText } from '../plugins/lastfm';
 
 const en = translations.en as unknown as Record<string, string>;
 const pl = translations.pl as unknown as Record<string, string>;

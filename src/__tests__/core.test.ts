@@ -11,10 +11,10 @@ vi.mock('@tauri-apps/api/webviewWindow', () => ({
 }));
 vi.mock('@tauri-apps/plugin-http', () => ({ fetch: vi.fn() }));
 
-import { translations } from '../i18n';
-import { getActiveLyricIndex } from '../utils/activeLyric';
-import { localizeLyricsReason } from '../utils/lyricsReasons';
-import { pluginText } from '../utils/pluginI18n';
+import { translations, streamStuckMessage } from '../i18n';
+import { getActiveLyricIndex } from '../lyrics/active';
+import { localizeLyricsReason } from '../lyrics/reasons';
+import { pluginText } from '../i18n/plugins';
 import { smartShuffle } from '../utils/smartShuffle';
 import { getListenStats } from '../plugins/statsTracker';
 import { getListeningHistory } from '../plugins/listeningHistory';
@@ -43,13 +43,12 @@ import {
   toPlainPlaylistId,
   type Track,
 } from '../api/youtube';
-import { barDurationForTrack, knownDurationSec } from '../utils/formatTime';
-import { streamStuckMessage } from '../i18n';
+import { barDurationForTrack, knownDurationSec } from '../utils/playback';
 import {
   committedPlaylistDescription,
   committedPlaylistTitle,
   isCommitKey,
-} from '../utils/playlistForm';
+} from '../utils/playlists';
 import { AB_LOOP_EARLY_S, abLoopSeekTarget } from '../plugins/abLoop';
 
 const track = (id: string, artist = 'A'): Track => ({

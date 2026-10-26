@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { ALL_PLUGINS, PLUGIN_ORDER, pluginManager } from '../plugins';
 import { PLUGIN_CATEGORY_LABELS, PLUGIN_CATEGORY_ORDER } from '../plugins/types';
-import { pluginText } from '../utils/pluginI18n';
+import { pluginText } from '../i18n/plugins';
 
 const CORE_ON = [
   'preload-next',

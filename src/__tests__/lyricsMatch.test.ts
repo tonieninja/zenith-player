@@ -4,14 +4,14 @@ import {
   pickBestSyncedLyrics,
   scoreLyricsMatch,
   shouldShowEarlyPlain,
-} from '../utils/lyricsMatch';
+} from '../lyrics/match';
 import {
   collectMusixmatchBundleUrls,
   extractMusixmatchSecretFromJs,
   geniusHttpError,
   MXM_SECRET_MISSING,
-} from '../utils/lyricsProviders';
-import { localizeLyricsReason } from '../utils/lyricsReasons';
+} from '../lyrics/providers';
+import { localizeLyricsReason } from '../lyrics/reasons';
 
 const lucky = { title: 'Get Lucky', artist: 'Daft Punk' };
 const around = { title: 'Around the World', artist: 'Daft Punk' };

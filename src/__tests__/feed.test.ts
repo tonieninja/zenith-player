@@ -1,11 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { resolveFeedItem, bylineFromRuns, tidyByline } from '../utils/feed';
-import {
-  browseMoodId,
-  isViewingPlaylist,
-  itemClickPlan,
-  sidebarClickPlan,
-} from '../utils/itemClick';
+import { browseMoodId, isViewingPlaylist, itemClickPlan, sidebarClickPlan } from '../utils/tracks';
 
 describe('search / feed item identity', () => {
   it('opens an artist page rather than playing the overlay song (Instant Crush)', () => {

@@ -2,12 +2,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { PopoverMenu, popoverMenuCoords } from '../components/ui/PopoverMenu';
-import {
-  ctxTrackAttr,
-  isVideoTrackId,
-  parseCtxTrackAttr,
-  isPrimaryButton,
-} from '../utils/ctxTrack';
+import { ctxTrackAttr, isVideoTrackId, parseCtxTrackAttr, isPrimaryButton } from '../utils/tracks';
 
 describe('song context menu payload', () => {
   it('serializes real songs so Add to playlist can open the picker', () => {

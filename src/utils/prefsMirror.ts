@@ -19,9 +19,7 @@ function scheduleSave() {
   if (timer !== undefined) window.clearTimeout(timer);
   timer = window.setTimeout(() => {
     timer = undefined;
-    void invoke('prefs_save', { prefs: snapshot() }).catch((err) =>
-      console.warn('[prefs] mirror save failed', err)
-    );
+    void invoke('prefs_save', { prefs: snapshot() });
   }, 1000);
 }
 

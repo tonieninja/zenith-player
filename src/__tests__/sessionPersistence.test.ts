@@ -8,7 +8,7 @@ vi.mock('@tauri-apps/api/event', () => ({
 }));
 vi.mock('@tauri-apps/plugin-http', () => ({ fetch: vi.fn() }));
 
-import { getRememberLogin, setRememberLogin } from '../utils/rememberLogin';
+import { getRememberLogin, setRememberLogin } from '../api/youtube';
 import { loadPersistedQueue, savePersistedQueue } from '../plugins/queuePersist';
 import { ALL_PLUGINS, pluginManager } from '../plugins';
 

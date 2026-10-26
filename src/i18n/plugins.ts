@@ -1,4 +1,4 @@
-import type { Language } from '../i18n';
+import type { Language } from '.';
 
 type PluginText = { name: string; desc: string };
 
@@ -61,7 +61,7 @@ const CATALOG: Record<string, Record<Language, PluginText>> = {
   equalizer: {
     en: {
       name: 'Equalizer',
-      desc: '15-band graphic EQ (25 Hz to 16 kHz) with presets, including Bass Boost.',
+      desc: '15-band graphic EQ (25 Hz to 16 kHz) with presets, including bass boost.',
     },
     pl: {
       name: 'Korektor (EQ)',
@@ -73,7 +73,7 @@ const CATALOG: Record<string, Record<Language, PluginText>> = {
       name: 'Last.fm scrobbler',
       desc: 'Scrobbles what you listen to on your Last.fm profile.',
     },
-    pl: { name: 'Last.fm Scrobbler', desc: 'Wrzuca to, czego słuchasz, na twój profil Last.fm.' },
+    pl: { name: 'Last.fm scrobbler', desc: 'Wrzuca to, czego słuchasz, na twój profil Last.fm.' },
   },
   'loudness-normalization': {
     en: {

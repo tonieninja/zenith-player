@@ -61,7 +61,7 @@ export async function closeThisWindow() {
   try {
     await invoke('close_window', { label: win.label });
   } catch {
-    await win.destroy().catch((err) => console.warn('[window] destroy failed', err));
+    await win.destroy();
   }
 }
 

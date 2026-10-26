@@ -5,7 +5,7 @@ import {
   moveToFolder,
   removeFolder,
   renameFolder,
-} from '../utils/playlistFolders';
+} from '../utils/playlists';
 
 describe('playlist folders', () => {
   it('groups, renames and removes without losing playlists', () => {

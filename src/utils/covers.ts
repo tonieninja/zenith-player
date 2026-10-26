@@ -1,3 +1,5 @@
+import { invoke } from '@tauri-apps/api/core';
+
 const FALLBACK_AVATAR =
   'https://ui-avatars.com/api/?name=?&background=111827&color=6b7280&size=240';
 
@@ -13,13 +15,8 @@ let coverBase = '';
 
 export async function initCoverCache(): Promise<void> {
   if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window)) return;
-  try {
-    const { invoke } = await import('@tauri-apps/api/core');
-    const base = await invoke<string>('cover_cache_base');
-    if (/^http:\/\/127\.0\.0\.1:\d+\/cover\/[^/]+\/$/.test(base)) coverBase = base;
-  } catch (err) {
-    console.warn('[covers] cache unavailable', err);
-  }
+  const base = await invoke<string>('cover_cache_base').catch(() => '');
+  if (/^http:\/\/127\.0\.0\.1:\d+\/cover\/[^/]+\/$/.test(base)) coverBase = base;
 }
 
 export function cachedCoverUrl(src: string, px: 120 | 240 | 544): string {
