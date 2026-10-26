@@ -19,16 +19,12 @@ export async function pushMiniPlayerState(payload: MiniPlayerPayload) {
 }
 
 async function openMini() {
-  try {
-    const existing = await WebviewWindow.getByLabel('mini-player');
-    if (existing) {
-      await existing.show();
-      return;
-    }
-  } catch (e) {
-    console.warn('[mini-player] show failed', e);
-  }
-  await invoke('open_mini_player');
+  const existing = await WebviewWindow.getByLabel('mini-player').catch(() => null);
+  const shown = await existing?.show().then(
+    () => true,
+    () => false
+  );
+  if (!shown) await invoke('open_mini_player');
 }
 
 async function closeMini() {

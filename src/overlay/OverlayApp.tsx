@@ -3,8 +3,8 @@ import { emit, listen } from '@tauri-apps/api/event';
 import { LyricKaraokeText } from '../components/LyricKaraokeText';
 import type { OverlayPayload } from './types';
 import { getLyricsSyncOffset } from '../plugins/lyricsOverlay';
-import { getActiveLyricIndex } from '../utils/activeLyric';
-import { imgErr, isYouTubeVideoId } from '../utils/imgError';
+import { getActiveLyricIndex } from '../lyrics/active';
+import { imgErr, isYouTubeVideoId } from '../utils/covers';
 import {
   AUX_STRINGS,
   closeThisWindow,

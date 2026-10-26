@@ -37,12 +37,13 @@ function pruneTrackPlays(trackPlays: Record<string, number>) {
   return Object.fromEntries(entries.slice(0, MAX_TRACK_ENTRIES));
 }
 
-function saveStats(stats: ListenStats) {
+function saveStats(stats: ListenStats): boolean {
   try {
     stats.trackPlays = pruneTrackPlays(stats.trackPlays);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(stats));
-  } catch (e) {
-    console.warn('[stats] save failed', e);
+    return true;
+  } catch {
+    return false;
   }
 }
 

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import { GripVertical, Trash2, X } from 'lucide-react';
 import type { Track } from '../../api/youtube';
-import { coverAttrs } from '../../utils/imgError';
+import { coverAttrs } from '../../utils/covers';
 import { useWindowedList } from '../../hooks/useWindowedList';
 
 type QueueDrawerProps = {
@@ -35,12 +35,13 @@ export function QueueDrawer({
   const dragRef = useRef<DragState | null>(null);
   const scrollRaf = useRef(0);
   const win = useWindowedList(open ? queue.length : 0, { scrollSelf: true });
+  const winListRef = win.listRef;
   const setListRef = useCallback(
     (el: HTMLDivElement | null) => {
       listRef.current = el;
-      win.listRef(el);
+      winListRef(el);
     },
-    [win.listRef]
+    [winListRef]
   );
 
   const indexAtY = useCallback((clientY: number): number => {

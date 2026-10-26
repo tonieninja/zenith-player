@@ -18,10 +18,6 @@ function clampVol(v: number): number {
   return Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : 0;
 }
 
-function warnPlay(e: unknown) {
-  if ((e as Error)?.name !== 'AbortError') console.warn('[audio] play failed', e);
-}
-
 function waitUntilCanPlay(
   el: HTMLAudioElement,
   token: number,
@@ -116,7 +112,7 @@ export class DualAudio {
     const once = () => {
       el.removeEventListener('loadedmetadata', once);
       el.currentTime = t;
-      if (playing) void el.play().catch(warnPlay);
+      if (playing) void el.play().catch(() => undefined);
     };
     el.addEventListener('loadedmetadata', once);
     el.src = src;
@@ -432,7 +428,7 @@ export class DualAudio {
       fixed = true;
     }
     if (shouldPlay && this.el.paused && this.el.getAttribute('src') && !this.el.ended) {
-      void this.el.play().catch(warnPlay);
+      void this.el.play().catch(() => undefined);
       fixed = true;
     }
     return fixed;

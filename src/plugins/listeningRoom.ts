@@ -99,12 +99,8 @@ export async function joinRoom(code: string): Promise<boolean> {
       };
     });
     ws.onmessage = (ev) => {
-      try {
-        const state = JSON.parse(String(ev.data)) as RoomState;
-        if (state?.trackId != null) onSync?.(state);
-      } catch (err) {
-        console.warn('[listening-room] bad message', err);
-      }
+      const state = JSON.parse(String(ev.data)) as RoomState;
+      if (state?.trackId != null) onSync?.(state);
     };
     ws.onclose = () => onStatus?.('peer-left');
     setRole('guest', cleaned, port);
@@ -130,22 +126,18 @@ export async function leaveRoom() {
 export async function broadcastRoom(state: RoomState) {
   if (!isRoomHost()) return;
   const payload = { ...state, sentAt: Date.now() };
-  try {
-    await invoke('room_broadcast', {
-      state: {
-        trackId: payload.trackId,
-        title: payload.title,
-        artist: payload.artist,
-        coverUrl: payload.coverUrl ?? null,
-        position: payload.position,
-        isPlaying: payload.isPlaying,
-        hostId: payload.hostId,
-        sentAt: payload.sentAt,
-      },
-    });
-  } catch (err) {
-    console.warn('[listening-room] broadcast failed', err);
-  }
+  await invoke('room_broadcast', {
+    state: {
+      trackId: payload.trackId,
+      title: payload.title,
+      artist: payload.artist,
+      coverUrl: payload.coverUrl ?? null,
+      position: payload.position,
+      isPlaying: payload.isPlaying,
+      hostId: payload.hostId,
+      sentAt: payload.sentAt,
+    },
+  });
 }
 
 export function roomPeerCount(): number {

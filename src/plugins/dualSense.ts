@@ -126,8 +126,8 @@ async function startHid() {
   }
   try {
     await invoke('dualsense_start');
-  } catch (err) {
-    console.warn('[dualsense] HID start failed - gamepad fallback only', err);
+  } catch {
+    hidConnected = false;
   }
   if (gen !== hidGen) {
     void invoke('dualsense_stop');

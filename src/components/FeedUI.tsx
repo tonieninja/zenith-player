@@ -1,13 +1,12 @@
 import { memo, useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 import { BarChart3, ChevronLeft, ChevronRight, Flame, Play, Smile } from 'lucide-react';
 import type { Section, Track } from '../api/youtube';
-import type { Language } from '../i18n';
+import { type Language, currentT } from '../i18n';
 import { usePager } from '../hooks/usePager';
 import { useResponsivePageSize } from '../hooks/useResponsivePageSize';
-import { coverAttrs } from '../utils/imgError';
-import { getExploreLayout } from '../utils/pluginI18n';
+import { coverAttrs } from '../utils/covers';
+import { getExploreLayout } from '../i18n/plugins';
 import { preBlur, preBlurred } from '../utils/preBlur';
-import { currentT } from '../utils/uiLang';
 
 export { coverAttrs };
 
@@ -25,7 +24,7 @@ function HeroBackdrop({ track }: { track: Track }) {
     return () => {
       live = false;
     };
-  }, [key]);
+  }, [key, attrs.src, orig]);
   if (blurred === undefined) return null;
   if (blurred) return <img alt="" className="feed-hero-bg pre-blurred" aria-hidden src={blurred} />;
   return (

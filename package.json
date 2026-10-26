@@ -18,7 +18,7 @@
     "format": "prettier --write \"src/**/*.{ts,tsx,css}\" \"*.{html,ts,json}\"",
     "format:check": "prettier --check \"src/**/*.{ts,tsx,css}\" \"*.{html,ts,json}\"",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint .",
+    "lint": "eslint . --max-warnings 0",
     "codesign:dev": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/gen-dev-codesign-cert.ps1",
     "codesign:trust": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/trust-local-publisher.ps1",
     "dist": "pnpm tauri build",

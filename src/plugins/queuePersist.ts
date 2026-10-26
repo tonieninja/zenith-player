@@ -1,6 +1,6 @@
 import { Track } from '../api/youtube';
 import { tidyByline } from '../utils/feed';
-import { knownDurationSec } from '../utils/formatTime';
+import { knownDurationSec } from '../utils/playback';
 import { ZenithPlugin } from './types';
 
 const STORAGE_KEY = 'zenith_queue_persist';
@@ -48,7 +48,7 @@ export function savePersistedQueue(
   progress = 0,
   wasPlaying = false,
   playingFromId: string | null = null
-) {
+): boolean {
   try {
     const LIMIT = 200;
     const safeIndex = Math.max(0, Math.min(index, queue.length - 1));
@@ -64,8 +64,9 @@ export function savePersistedQueue(
       savedAt: Date.now(),
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
-  } catch (e) {
-    console.warn('[queue-persist] save failed', e);
+    return true;
+  } catch {
+    return false;
   }
 }
 

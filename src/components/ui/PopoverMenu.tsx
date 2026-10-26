@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 
@@ -57,11 +57,11 @@ export function PopoverMenu({
   const rootRef = useRef<HTMLDivElement | null>(null);
   const listRef = useRef<HTMLUListElement | null>(null);
 
-  const place = () => {
+  const place = useCallback(() => {
     const r = rootRef.current?.getBoundingClientRect();
     if (!r) return;
     setCoords(popoverMenuCoords(r, items.length, align));
-  };
+  }, [items.length, align]);
 
   useLayoutEffect(() => {
     if (!open) {
@@ -69,7 +69,7 @@ export function PopoverMenu({
       return;
     }
     place();
-  }, [open, items.length, align]);
+  }, [open, place]);
 
   useEffect(() => {
     if (!open) return;
@@ -94,7 +94,7 @@ export function PopoverMenu({
       window.removeEventListener('resize', place);
       window.removeEventListener('scroll', place, true);
     };
-  }, [open, items.length, align]);
+  }, [open, place]);
 
   const list =
     open && coords ? (

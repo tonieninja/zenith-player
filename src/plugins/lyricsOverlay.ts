@@ -101,16 +101,12 @@ export function setSecondScreenHideMeta(hide: boolean) {
 }
 
 async function openOverlayWindow() {
-  try {
-    const existing = await WebviewWindow.getByLabel('lyrics-overlay');
-    if (existing) {
-      await existing.show();
-      return;
-    }
-  } catch (e) {
-    console.warn('[lyrics-overlay] show failed', e);
-  }
-  await invoke('open_lyrics_overlay');
+  const existing = await WebviewWindow.getByLabel('lyrics-overlay').catch(() => null);
+  const shown = await existing?.show().then(
+    () => true,
+    () => false
+  );
+  if (!shown) await invoke('open_lyrics_overlay');
 }
 
 async function closeOverlayWindow() {

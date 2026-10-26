@@ -6,6 +6,7 @@ import {
   type ComponentProps,
   useCallback,
   useEffect,
+  useEffectEvent,
   useMemo,
   useRef,
   useState,
@@ -66,6 +67,8 @@ import {
   type Section,
   type Track,
   type AccountProfile,
+  getRememberLogin,
+  setRememberLogin,
 } from './api/youtube';
 import {
   createAudio,
@@ -97,8 +100,9 @@ import {
   isViewingPlaylist,
   itemClickPlan,
   sidebarClickPlan,
-} from './utils/itemClick';
-import { ctxTrackAttr, parseCtxTrackAttr } from './utils/ctxTrack';
+  ctxTrackAttr,
+  parseCtxTrackAttr,
+} from './utils/tracks';
 import { SyncedLyricsRail } from './components/SyncedLyricsRail';
 import { LIB_EMPTY_KEYS, LIBRARY_CATEGORIES, nextLibraryViewState } from './constants/library';
 import {
@@ -137,7 +141,10 @@ import {
   saveFolders,
   toggleFolder,
   type FolderState,
-} from './utils/playlistFolders';
+  committedPlaylistDescription,
+  committedPlaylistTitle,
+  isCommitKey,
+} from './utils/playlists';
 import {
   getCrossfadeSeconds,
   getGaplessAlbums,
@@ -195,17 +202,19 @@ import {
   secondsUntilLyricChange,
   setActiveLyricLine,
   useActiveLyricLine,
-} from './utils/activeLyric';
+} from './lyrics/active';
 import { applyCoverTheme, resetCoverTheme } from './utils/coverTheme';
-import { barDurationForTrack, formatTime, knownDurationSec } from './utils/formatTime';
 import {
-  committedPlaylistDescription,
-  committedPlaylistTitle,
-  isCommitKey,
-} from './utils/playlistForm';
-import { localizeLyricsReason } from './utils/lyricsReasons';
-import { getRememberLogin, setRememberLogin } from './utils/rememberLogin';
-import { setLightLyrics, useLightLyrics } from './utils/lightLyrics';
+  barDurationForTrack,
+  formatTime,
+  knownDurationSec,
+  decidePrevious,
+  pickPrevPosition,
+  popPlayHistory,
+  pushPlayHistory,
+} from './utils/playback';
+import { localizeLyricsReason } from './lyrics/reasons';
+import { setLightLyrics, useLightLyrics } from './lyrics/light';
 import {
   checkGithubUpdate,
   checkSignedUpdate,
@@ -215,12 +224,6 @@ import {
 } from './utils/appUpdate';
 import { resetOnboarding, shouldShowOnboarding } from './utils/onboarding';
 import { smartShuffle } from './utils/smartShuffle';
-import {
-  decidePrevious,
-  pickPrevPosition,
-  popPlayHistory,
-  pushPlayHistory,
-} from './utils/playbackNav';
 import { stableOrderSections } from './utils/feed';
 import { streamCacheSet } from './utils/streamCache';
 import {
@@ -493,16 +496,35 @@ export default function App() {
 
   const persistSessionIfWanted = useCallback(async () => {
     if (!getRememberLogin()) return;
-    try {
-      await invoke('persist_ytm_session');
-    } catch (e) {
-      console.warn('[auth] persist session failed', e);
-    }
+    await invoke('persist_ytm_session').catch(() => undefined);
   }, []);
 
   useEffect(() => {
     getVersion().then(setAppVersion);
   }, []);
+
+  const installAppUpdate = useCallback(async () => {
+    if (updateInstalling !== false) return;
+    setUpdateInstalling(null);
+    pushToast(t.updateDownloading, 'info', 3200, undefined, { key: 'updateDownloading' });
+    try {
+      await installPendingUpdate((pct) => setUpdateInstalling(pct));
+    } catch {
+      setUpdateInstalling(false);
+      pushToast(
+        t.updateInstallFailed,
+        'error',
+        8000,
+        {
+          label: t.openRelease,
+          labelKey: 'openRelease',
+          onClick: () => void openUrl(`${GITHUB_RELEASES}/latest`),
+        },
+        { key: 'updateInstallFailed' }
+      );
+    }
+  }, [t, updateInstalling]);
+  const installAppUpdateRef = useLatest(installAppUpdate);
 
   const checkForAppUpdate = useCallback(async () => {
     if (updateBusy) return;
@@ -555,8 +577,7 @@ export default function App() {
         setUpdateStatus({ kind: 'unpublished' });
         pushToast(tr.updateNotPublished, 'info', 3200, undefined, { key: 'updateNotPublished' });
       }
-    } catch (e) {
-      console.warn('[update]', e);
+    } catch {
       setUpdateStatus({ kind: 'failed' });
       pushToast(translations[lang].updateCheckFailed, 'error', 3200, undefined, {
         key: 'updateCheckFailed',
@@ -564,31 +585,7 @@ export default function App() {
     } finally {
       setUpdateBusy(false);
     }
-  }, [appVersion, lang, updateBusy]);
-
-  const installAppUpdate = useCallback(async () => {
-    if (updateInstalling !== false) return;
-    setUpdateInstalling(null);
-    pushToast(t.updateDownloading, 'info', 3200, undefined, { key: 'updateDownloading' });
-    try {
-      await installPendingUpdate((pct) => setUpdateInstalling(pct));
-    } catch (e) {
-      console.warn('[update] install failed', e);
-      setUpdateInstalling(false);
-      pushToast(
-        t.updateInstallFailed,
-        'error',
-        8000,
-        {
-          label: t.openRelease,
-          labelKey: 'openRelease',
-          onClick: () => void openUrl(`${GITHUB_RELEASES}/latest`),
-        },
-        { key: 'updateInstallFailed' }
-      );
-    }
-  }, [t, updateInstalling]);
-  const installAppUpdateRef = useLatest(installAppUpdate);
+  }, [appVersion, lang, updateBusy, installAppUpdateRef]);
 
   useEffect(() => {
     if (import.meta.env.DEV || localStorage.getItem('zenith_auto_update_check') === '0') return;
@@ -614,7 +611,7 @@ export default function App() {
       })();
     }, 20000);
     return () => window.clearTimeout(id);
-  }, []);
+  }, [installAppUpdateRef]);
 
   const [pluginStates, setPluginStates] = useState<Record<string, boolean>>(() =>
     pluginManager.getStates()
@@ -649,6 +646,7 @@ export default function App() {
   const panelTabRef = useLatest<'upnext' | 'related'>(panelTab);
   const currentTrackIdRef = useLatest<string | null>(currentTrack?.id ?? null);
   const loopModeRef = useLatest<LoopMode>(loopMode);
+  const lyricsRef = useLatest<LyricsResult | null>(lyrics);
   const [speedRate] = useState(() => getPlaybackSpeed(pluginManager.isEnabled('playback-speed')));
 
   const [discordClientId, setDiscordClientId] = useState(
@@ -676,45 +674,11 @@ export default function App() {
     [providerIndex, lyricProviders]
   );
 
-  const debugLyricsProviders = useCallback(
-    (track: Track) => {
-      if (localStorage.getItem('zenith_lyrics_debug') !== '1') return;
-      const providers = lyricProviders.filter((p) => p !== 'Auto');
-      const label = `${track.title} - ${track.artist}`;
-      const started = performance.now();
-      console.groupCollapsed(`[lyrics-debug] ${label}`);
-      console.debug('[lyrics-debug] providers', providers);
-      Promise.allSettled(
-        providers.map(async (provider) => {
-          const start = performance.now();
-          const res = await getLyrics(track, lang, provider);
-          const ms = Math.round(performance.now() - start);
-          return {
-            provider,
-            ok: Boolean(res?.synced?.length || res?.text),
-            via: res?.via || '',
-            syncedLines: res?.synced?.length || 0,
-            textChars: res?.text ? res.text.length : 0,
-            ms,
-          };
-        })
-      ).then((results) => {
-        const rows = results.map((result, idx) => {
-          if (result.status === 'fulfilled') return result.value;
-          return { provider: providers[idx], ok: false, error: true, ms: 0 };
-        });
-        console.table(rows);
-        console.debug('[lyrics-debug] total ms', Math.round(performance.now() - started));
-        console.groupEnd();
-      });
-    },
-    [lang, lyricProviders]
-  );
-
   const prefetchInflightRef = useRef(0);
   const prefetchPausedUntilRef = useRef(0);
   const prefetchPendingRef = useRef<Track[]>([]);
   const foregroundResolvingRef = useRef(false);
+  const prefetchStreamRef = useRef<((t: Track | undefined) => void) | null>(null);
   const prefetchStream = useCallback(
     (track: Track | undefined) => {
       if (!track) return;
@@ -745,7 +709,7 @@ export default function App() {
     },
     [lang]
   );
-  const prefetchStreamRef = useLatest<((t: Track | undefined) => void) | null>(prefetchStream);
+  prefetchStreamRef.current = prefetchStream;
 
   if (!audioRef.current) {
     audioRef.current = createAudio();
@@ -822,7 +786,7 @@ export default function App() {
           setHomeSections(stableOrderSections(nextHome));
           setQuickPicks(picks);
         })
-        .catch((e) => console.warn('[feed] home reload failed', e))
+        .catch(() => undefined)
         .finally(() => {
           if (dataSeq === feedSeqRef.current.home) setFeedTabLoading('home', false);
         });
@@ -832,7 +796,7 @@ export default function App() {
           if (exploreSeq !== feedSeqRef.current.explore) return;
           setExploreSections(stableOrderSections(data));
         })
-        .catch((e) => console.warn('[feed] explore reload failed', e));
+        .catch(() => undefined);
     },
     [lang, setFeedTabLoading]
   );
@@ -879,6 +843,28 @@ export default function App() {
     [lang, navigateTo, setFeedTabLoading]
   );
 
+  const startBackgroundPrefetch = useCallback((tracks: Track[]) => {
+    if (!tracks || tracks.length === 0) {
+      setPrefetchComplete(true);
+      return;
+    }
+    const covers = tracks
+      .filter((t) => Boolean(t.cover))
+      .slice(0, 2)
+      .map((t) => preloadImage(t.coverSmall || t.cover));
+    setPrefetchTotal(covers.length || 1);
+    setPrefetchDone(0);
+    setPrefetchComplete(false);
+    if (!covers.length) {
+      setPrefetchComplete(true);
+      return;
+    }
+    covers.forEach((p) => p.finally(() => setPrefetchDone((prev) => prev + 1)));
+    Promise.allSettled(covers).then(() => {
+      if (mountedRef.current) setPrefetchComplete(true);
+    });
+  }, []);
+
   const loadHome = useCallback(
     (language: Language = lang, navigate = true) => {
       const dataSeq = ++feedSeqRef.current.home;
@@ -904,13 +890,13 @@ export default function App() {
           startBackgroundPrefetch(allTracks);
           allTracks.slice(0, 3).forEach((t) => prefetchStream(t));
         })
-        .catch((e) => console.warn('[feed] home load failed', e))
+        .catch(() => undefined)
         .finally(() => {
           window.clearTimeout(safety);
           setFeedTabLoading('home', false);
         });
     },
-    [lang, navigateTo, setFeedTabLoading, prefetchStream]
+    [lang, navigateTo, setFeedTabLoading, prefetchStream, startBackgroundPrefetch]
   );
 
   const searchLangRef = useRef(lang);
@@ -920,7 +906,7 @@ export default function App() {
     if (!debouncedSearch.trim()) return;
     if (langChanged && activeTabRef.current !== 'search') return;
     handleSearch(debouncedSearch, lang);
-  }, [debouncedSearch, lang, handleSearch]);
+  }, [debouncedSearch, lang, handleSearch, activeTabRef]);
 
   useEffect(() => {
     if (searchQuery.trim() !== '' || activeTab !== 'search') return;
@@ -942,7 +928,7 @@ export default function App() {
           if (dataSeq !== feedSeqRef.current.explore) return;
           setExploreSections(stableOrderSections(data));
         })
-        .catch((e) => console.warn('[feed] explore load failed', e))
+        .catch(() => undefined)
         .finally(() => {
           window.clearTimeout(safety);
           setFeedTabLoading('explore', false);
@@ -1036,8 +1022,7 @@ export default function App() {
         }
         setSections([]);
         setBrowseEmptyKind(res.status === 'failed' ? null : emptyKind);
-      } catch (e) {
-        console.warn('[playlist] open page failed', e);
+      } catch {
         if (dataSeq === feedSeqRef.current.mood) {
           setSections([]);
           setBrowseEmptyKind(emptyKind);
@@ -1179,8 +1164,7 @@ export default function App() {
           if (reqId !== libReqIdRef.current) return;
           if (more !== sections) setLibSections(more);
         });
-      } catch (e) {
-        console.warn('[library] load failed', e);
+      } catch {
         if (reqId === libReqIdRef.current && !cached?.length) {
           setLibSections([]);
           setLibError(translations[lang].libraryLoadError);
@@ -1195,9 +1179,12 @@ export default function App() {
     [lang, libCategory, loadUserPlaylists, refreshAccountProfile]
   );
 
+  const loadLibraryOnOpen = useEffectEvent((category: LibraryCategory) => {
+    void loadLibrary(category);
+  });
   useEffect(() => {
     if (activeTab === 'library' && libAuthed && !authBootstrapping) {
-      void loadLibrary(libCategory);
+      loadLibraryOnOpen(libCategory);
     }
   }, [activeTab, libAuthed, authBootstrapping, libCategory]);
 
@@ -1218,16 +1205,10 @@ export default function App() {
             void refreshAccountProfile();
           }, 1500);
         if (getRememberLogin()) {
-          try {
-            restored = await invoke<boolean>('restore_ytm_session');
-            clearAuthCache();
-          } catch (e) {
-            console.warn('[auth] restore session failed', e);
-          }
+          restored = await invoke<boolean>('restore_ytm_session').catch(() => false);
+          clearAuthCache();
         } else {
-          await invoke('clear_ytm_session_store').catch((e) =>
-            console.warn('[auth] clear session store failed', e)
-          );
+          await invoke('clear_ytm_session_store').catch(() => undefined);
           clearAuthCache();
         }
         if (!(await isLoggedIn())) {
@@ -1291,7 +1272,6 @@ export default function App() {
       clearAuthCache();
       let authed = await waitForLogin(lang, 8, 500);
       if (!authed && captured && lastSessionCheckWasNetworkError() && (await isLoggedIn())) {
-        console.warn('[login] session check unreachable, accepting popup cookies');
         authed = true;
       }
       if (!authed) {
@@ -1301,15 +1281,9 @@ export default function App() {
       setLoginBusy(false);
       stopLoginPoll();
       if (getRememberLogin()) await persistSessionIfWanted();
-      else {
-        await invoke('forget_ytm_session_file').catch((e) =>
-          console.warn('[auth] forget session failed', e)
-        );
-      }
+      else await invoke('forget_ytm_session_file').catch(() => undefined);
       loginClosingRef.current = true;
-      await invoke('close_google_login').catch((e) =>
-        console.warn('[login] close sign-in window failed', e)
-      );
+      await invoke('close_google_login').catch(() => undefined);
       window.setTimeout(() => {
         loginClosingRef.current = false;
       }, 800);
@@ -1382,11 +1356,7 @@ export default function App() {
         'clear_ytm_session_store',
         'clear_login_webview_data',
       ]) {
-        try {
-          await invoke(cmd);
-        } catch (e) {
-          console.warn(`[logout] ${cmd} failed`, e);
-        }
+        await invoke(cmd).catch(() => undefined);
       }
       clearAuthCache();
       clearCaches();
@@ -1431,7 +1401,7 @@ export default function App() {
           .then((captured) => {
             if (captured) return finalizeLoginFromPopup();
           })
-          .catch((e) => console.warn('[login] capture after open failed', e));
+          .catch(() => undefined);
       }, 1200);
 
       WebviewWindow.getByLabel('google-login').then((loginWindow) => {
@@ -1446,16 +1416,19 @@ export default function App() {
       });
     };
 
-    try {
-      const existing = await WebviewWindow.getByLabel('google-login');
-      if (existing) {
-        await existing.show();
-        await existing.setFocus();
+    const existing = await WebviewWindow.getByLabel('google-login').catch(() => null);
+    if (existing) {
+      const shown = await existing
+        .show()
+        .then(() => existing.setFocus())
+        .then(
+          () => true,
+          () => false
+        );
+      if (shown) {
         attachLoginWindowHandlers();
         return;
       }
-    } catch (e) {
-      console.warn('[login] reusing sign-in window failed', e);
     }
     try {
       await invoke('open_google_login', { title: t.loginWindowTitle });
@@ -1486,7 +1459,6 @@ export default function App() {
   }, [
     lang,
     t.loginWindowTitle,
-    completeLogin,
     finalizeLoginFromPopup,
     loadHome,
     loadLibrary,
@@ -1497,9 +1469,7 @@ export default function App() {
     stopLoginPoll();
     loginDoneRef.current = true;
     setLoginBusy(false);
-    await invoke('close_google_login').catch((e) =>
-      console.warn('[login] close sign-in window failed', e)
-    );
+    await invoke('close_google_login').catch(() => undefined);
   }, [stopLoginPoll]);
 
   const refreshAuth = useCallback(() => {
@@ -1543,7 +1513,7 @@ export default function App() {
       if (disposed || loginFinishingRef.current || loginDoneRef.current) return;
       const captured = await invoke<boolean>('capture_ytm_login_session').catch(() => false);
       if (captured) {
-        await finalizeLoginFromPopup().catch((e) => console.warn('[login] finalize failed', e));
+        await finalizeLoginFromPopup().catch(() => undefined);
       }
     };
     void tick();
@@ -1560,7 +1530,7 @@ export default function App() {
     let disposed = false;
     const unsubs: Array<() => void> = [];
     const onCookiesSynced = () => {
-      finalizeLoginFromPopup().catch((e) => console.warn('[login] finalize failed', e));
+      finalizeLoginFromPopup().catch(() => undefined);
     };
     listen('ytm-login-cookies-synced', () => {
       onCookiesSynced();
@@ -1620,7 +1590,6 @@ export default function App() {
         !track.durationSec && durationRef.current > 0
           ? { ...track, durationSec: durationRef.current }
           : track;
-      debugLyricsProviders(lyricsTrack);
       getLyrics(lyricsTrack, lang, provider, (plain) => {
         if (reqId !== lyricsReqIdRef.current) return;
         setLyrics(plain);
@@ -1654,7 +1623,7 @@ export default function App() {
           });
       }
     },
-    [lang, lyricsProvider]
+    [lang, durationRef, lyricsRef, panelTabRef]
   );
 
   const fetchRelatedForTrack = useCallback(
@@ -1677,11 +1646,14 @@ export default function App() {
     [lang]
   );
 
-  const showStreamStuck = async (L: Language) => {
-    const kind = await invoke<string | null>('stream_last_failure').catch(() => null);
-    const msg = streamStuckMessage(translations[L], kind, libAuthedRef.current);
-    pushToast(msg, 'error');
-  };
+  const showStreamStuck = useCallback(
+    async (L: Language) => {
+      const kind = await invoke<string | null>('stream_last_failure').catch(() => null);
+      const msg = streamStuckMessage(translations[L], kind, libAuthedRef.current);
+      pushToast(msg, 'error');
+    },
+    [libAuthedRef]
+  );
 
   const resolveStreamUrl = useCallback(
     async (trackId: string, forceFresh = false) => {
@@ -1696,6 +1668,33 @@ export default function App() {
     if (c && Date.now() - c.ts < STREAM_CACHE_TTL) return c.url;
     return resolveStreamUrl(id);
   });
+
+  const progressScrubRef = useRef(false);
+
+  const paintProgressUi = useCallback(
+    (t: number, d = durationRef.current) => {
+      const pct = d > 0 ? (t / d) * 100 : 0;
+      progressFillRef.current?.style.setProperty('width', `${pct}%`);
+      progressHandleRef.current?.style.setProperty('left', `${pct}%`);
+      if (!progressScrubRef.current) {
+        progressTimeElRef.current?.replaceChildren(document.createTextNode(formatTime(t)));
+      }
+      if (showRemainingRef.current && d > 0) {
+        durationTimeElRef.current?.replaceChildren(
+          document.createTextNode(`-${formatTime(Math.max(0, d - t))}`)
+        );
+      } else {
+        durationTimeElRef.current?.replaceChildren(
+          document.createTextNode(d > 0 ? formatTime(d) : '0:00')
+        );
+      }
+    },
+    [durationRef, showRemainingRef]
+  );
+  const paintProgressUiRef = useLatest<(t: number, d?: number) => void>(paintProgressUi);
+  const playByIndexRef = useRef<(index: number, fadeSeconds?: number) => Promise<void>>(() =>
+    Promise.resolve()
+  );
 
   const loadTrack = useCallback(
     async (track: Track, autoPlay = true, fadeSeconds?: number, startAt = 0) => {
@@ -1830,7 +1829,6 @@ export default function App() {
             if (stale()) return;
           }
           if (!streamUrl) {
-            console.warn('[playback] stream unavailable:', track.id);
             audio.abortAll();
             audioDurationTrackIdRef.current = null;
             setIsPlaying(false);
@@ -1894,8 +1892,11 @@ export default function App() {
                 if (fresh && gen === loadGenRef.current) {
                   audio.src = fresh;
                   audio.volume = volumeRef.current;
-                  try {
-                    await audio.play();
+                  const played = await audio.play().then(
+                    () => true,
+                    () => false
+                  );
+                  if (played) {
                     if (stale()) return;
                     setIsPlaying(true);
                     streamFailStreakRef.current = 0;
@@ -1903,8 +1904,6 @@ export default function App() {
                     autoFadePendingRef.current = false;
                     setBuffering(false);
                     return;
-                  } catch (e) {
-                    console.warn('[playback] retry with fresh url failed:', track.id, e);
                   }
                 }
                 setIsPlaying(false);
@@ -1923,16 +1922,28 @@ export default function App() {
           streamErrorRetryRef.current = null;
           autoFadePendingRef.current = false;
           setBuffering(false);
-        } catch (err) {
+        } catch {
           if (stale()) return;
-          console.warn('[playback] load failed:', track.id, err);
           setIsPlaying(false);
           setBuffering(false);
           skipOnFail();
         }
       }
     },
-    [audio, crossfadeEnabled, resolveStreamUrl, hydratePanels]
+    [
+      audio,
+      crossfadeEnabled,
+      resolveStreamUrl,
+      hydratePanels,
+      showStreamStuck,
+      currentTrackIdRef,
+      durationRef,
+      isPlayingRef,
+      paintProgressUiRef,
+      queueIndexRef,
+      queueRef,
+      volumeRef,
+    ]
   );
 
   const playByIndex = useCallback(
@@ -1955,10 +1966,9 @@ export default function App() {
       setQueueIndex(index);
       await loadTrack(nextTrack, true, manualFade);
     },
-    [loadTrack, crossfadeEnabled]
+    [loadTrack, crossfadeEnabled, currentTrackIdRef, queueIndexRef, queueRef]
   );
-  const playByIndexRef =
-    useLatest<(index: number, fadeSeconds?: number) => Promise<void>>(playByIndex);
+  playByIndexRef.current = playByIndex;
 
   const collectionReqRef = useRef(0);
   const handleCollectionClick = useCallback(
@@ -2011,8 +2021,7 @@ export default function App() {
         playingAlbumRef.current = collection.type === 'album' || isAlbumCollectionId(collection.id);
         openPlayer();
         await loadTrack(itemsWithCover[0]);
-      } catch (e) {
-        console.warn('[playlist] open failed', e);
+      } catch {
         if (req === collectionReqRef.current) pushToast(L.playlistOpenFailed, 'error');
       } finally {
         window.clearTimeout(slowHint);
@@ -2133,7 +2142,7 @@ export default function App() {
       radioBusyRef.current = null;
     });
     return job;
-  }, []);
+  }, [queueIndexRef, queueRef, radioLangRef]);
 
   const playNext = useCallback(() => {
     const idx = queueIndexRef.current;
@@ -2146,7 +2155,7 @@ export default function App() {
         if (added > 0 && queueIndexRef.current === idx) void playByIndexRef.current(at);
       });
     }
-  }, [playByIndex, loopMode, extendQueueWithRadio]);
+  }, [playByIndex, loopMode, extendQueueWithRadio, queueIndexRef, queueRef]);
 
   const playPrev = useCallback(() => {
     if (!currentTrack) return;
@@ -2172,7 +2181,16 @@ export default function App() {
       playHistoryRef.current = popped.history;
       playByIndex(decision.index, undefined, false);
     }
-  }, [audio, currentTrack, playByIndex, loopMode, shuffleOn]);
+  }, [
+    audio,
+    currentTrack,
+    playByIndex,
+    loopMode,
+    shuffleOn,
+    paintProgressUiRef,
+    queueIndexRef,
+    queueRef,
+  ]);
 
   const toggleMute = useCallback(() => {
     setIsMuted((m) => {
@@ -2213,17 +2231,20 @@ export default function App() {
   }, [queue, queueIndex, shuffleOn, currentTrack]);
 
   const ratingReqRef = useRef(0);
+  const fetchTrackRating = useEffectEvent((id: string, req: number) => {
+    getTrackLikeStatus(id, lang)
+      .then((st) => {
+        if (st && req === ratingReqRef.current) setTrackRatingState(st);
+      })
+      .catch(() => undefined);
+  });
   useEffect(() => {
     const id = currentTrack?.id;
     const req = ++ratingReqRef.current;
     setTrackRatingState(id && likedIdSetRef.current.has(id) ? 'LIKE' : 'INDIFFERENT');
     if (!id || !libAuthed || !/^[\w-]{11}$/.test(id)) return;
-    getTrackLikeStatus(id, lang)
-      .then((st) => {
-        if (st && req === ratingReqRef.current) setTrackRatingState(st);
-      })
-      .catch((e) => console.warn('[like] status fetch failed', e));
-  }, [currentTrack?.id, libAuthed]);
+    fetchTrackRating(id, req);
+  }, [currentTrack?.id, libAuthed, likedIdSetRef]);
 
   useEffect(() => {
     const id = currentTrack?.id;
@@ -2258,8 +2279,7 @@ export default function App() {
         setSavedTracks((prev) => prev.filter((x) => x.id !== track.id));
       }
       if (libAuthed && /^[\w-]{11}$/.test(track.id)) {
-        setTrackRating(track.id, next, lang).catch((e) => {
-          console.warn('[like] sync failed', e);
+        setTrackRating(track.id, next, lang).catch(() => {
           pushToast(
             translations[lang][next === 'DISLIKE' ? 'dislikeSyncFailed' : 'likeSyncFailed'],
             'error'
@@ -2283,6 +2303,9 @@ export default function App() {
     applyTrackRating(nextLikeStatus(trackRating, 'dislike'));
   }, [applyTrackRating, trackRating]);
 
+  const addCurrentToPlaylistRef = useRef<
+    (pl: Track, allowDuplicate?: boolean, picked?: Track) => Promise<void>
+  >(() => Promise.resolve());
   const addCurrentToPlaylist = useCallback(
     async (pl: Track, allowDuplicate = false, picked?: Track) => {
       const track = picked ?? currentTrack;
@@ -2299,13 +2322,12 @@ export default function App() {
           });
           return;
         }
-        console.warn('[playlist] add failed', e);
         pushToast(L.addToPlaylistFailed, 'error');
       }
     },
     [currentTrack, lang]
   );
-  const addCurrentToPlaylistRef = useLatest(addCurrentToPlaylist);
+  addCurrentToPlaylistRef.current = addCurrentToPlaylist;
 
   const submitPlaylistEdit = useCallback(async () => {
     if (!plEdit || plEditBusy) return;
@@ -2353,8 +2375,7 @@ export default function App() {
       setPlEdit(null);
       void loadUserPlaylists();
       if (activeTab === 'library') void loadLibrary(libCategory);
-    } catch (e) {
-      console.warn('[playlist] edit failed', e);
+    } catch {
       setPlEditError(true);
     } finally {
       setPlEditBusy(false);
@@ -2372,31 +2393,12 @@ export default function App() {
     navigateTo,
   ]);
 
+  const fetchRelatedForCurrent = useEffectEvent(() => {
+    if (currentTrack) fetchRelatedForTrack(currentTrack);
+  });
   useEffect(() => {
-    if (panelTab !== 'related' || !currentTrack) return;
-    fetchRelatedForTrack(currentTrack);
+    if (panelTab === 'related') fetchRelatedForCurrent();
   }, [panelTab, currentTrack?.id, fetchRelatedForTrack]);
-
-  const progressScrubRef = useRef(false);
-
-  const paintProgressUi = useCallback((t: number, d = durationRef.current) => {
-    const pct = d > 0 ? (t / d) * 100 : 0;
-    progressFillRef.current?.style.setProperty('width', `${pct}%`);
-    progressHandleRef.current?.style.setProperty('left', `${pct}%`);
-    if (!progressScrubRef.current) {
-      progressTimeElRef.current?.replaceChildren(document.createTextNode(formatTime(t)));
-    }
-    if (showRemainingRef.current && d > 0) {
-      durationTimeElRef.current?.replaceChildren(
-        document.createTextNode(`-${formatTime(Math.max(0, d - t))}`)
-      );
-    } else {
-      durationTimeElRef.current?.replaceChildren(
-        document.createTextNode(d > 0 ? formatTime(d) : '0:00')
-      );
-    }
-  }, []);
-  const paintProgressUiRef = useLatest<(t: number, d?: number) => void>(paintProgressUi);
 
   const getLyricProgress = useCallback(
     () =>
@@ -2429,7 +2431,7 @@ export default function App() {
         });
       }
     },
-    [audio, paintProgressUi]
+    [audio, paintProgressUi, activeTabRef, currentTrackIdRef, isPlayingRef, lyricsRef]
   );
 
   const {
@@ -2487,7 +2489,7 @@ export default function App() {
     };
     el.addEventListener('wheel', onWheel, { passive: false });
     return () => el.removeEventListener('wheel', onWheel);
-  }, []);
+  }, [setVolumeToRef, volumeNowRef]);
 
   const coverWheelHandler = useLatest((e: WheelEvent) => {
     const delta = e.deltaY > 0 ? -0.03 : 0.03;
@@ -2515,7 +2517,7 @@ export default function App() {
     };
     el.addEventListener('wheel', onWheel, { passive: false });
     return () => el.removeEventListener('wheel', onWheel);
-  }, [activeTab, hasTrack]);
+  }, [activeTab, hasTrack, coverWheelHandler]);
 
   useEffect(() => {
     let lastUiAt = 0;
@@ -2863,16 +2865,30 @@ export default function App() {
     paintProgressUi,
     resolveStreamUrl,
     extendQueueWithRadio,
+    showStreamStuck,
+    activeTabRef,
+    crossfadeEnabledRef,
+    crossfadeSecsRef,
+    currentTrackIdRef,
+    durationRef,
+    isPlayingRef,
+    loopModeRef,
+    lyricsRef,
+    queueIndexRef,
+    queueRef,
+    resolveStreamUrlRef,
+    showRemainingRef,
+    volumeRef,
   ]);
 
   useEffect(() => {
+    const body = JSON.stringify(savedTracks.slice(0, 500));
+    localStorage.removeItem('zenith_saved');
+    persistFavorites(body);
     try {
-      const body = JSON.stringify(savedTracks.slice(0, 500));
       localStorage.setItem('zenith_saved_tracks', body);
-      localStorage.removeItem('zenith_saved');
-      persistFavorites(body);
-    } catch (e) {
-      console.warn('[favorites] save failed', e);
+    } catch {
+      localStorage.removeItem('zenith_saved_tracks');
     }
   }, [savedTracks]);
 
@@ -2883,13 +2899,14 @@ export default function App() {
   }, [activeTab, activeMood, savedTracks, accountLikes, t.favs]);
 
   useEffect(() => {
+    const streamCache = streamCacheRef.current;
     window.__zenithCacheCleanup = clearCaches;
     return () => {
       audio.pause();
       audio.src = '';
       audio.load();
       clearCaches();
-      streamCacheRef.current.clear();
+      streamCache.clear();
       window.__zenithCacheCleanup = undefined;
     };
   }, [audio]);
@@ -2983,7 +3000,7 @@ export default function App() {
           playingFromId: playingFromIdRef.current,
           discordClientId: pluginManager.isEnabled('discord-rpc') ? getDiscordClientId() : null,
         },
-      }).catch((e) => console.warn('[engine] plan sync failed', e));
+      }).catch(() => undefined);
     }, 150);
     return () => window.clearTimeout(handle);
   }, [queue, queueIndex, loopMode, crossfadeEnabled, crossfadeSecs, playingFrom, pluginStates]);
@@ -2999,18 +3016,13 @@ export default function App() {
     void pushHotkeyBindings();
 
     const pluginTimer = window.setTimeout(() => {
+      const started: Promise<void>[] = [];
       for (const p of pluginManager.plugins) {
         if (AUX_WINDOW_PLUGINS[p.id]) continue;
         if (p.id === 'system-tray' || p.id === 'global-hotkeys') continue;
-        if (pluginManager.isEnabled(p.id)) {
-          try {
-            const r: unknown = p.onEnable?.();
-            if (r instanceof Promise) r.catch((e) => console.warn(`[plugins] ${p.id}`, e));
-          } catch (e) {
-            console.warn(`[plugins] ${p.id}`, e);
-          }
-        }
+        if (pluginManager.isEnabled(p.id)) started.push((async () => p.onEnable?.())());
       }
+      void Promise.allSettled(started);
     }, 900);
 
     const bootstrap = async () => {
@@ -3019,16 +3031,12 @@ export default function App() {
           'get_innertube_config'
         ).catch(() => null);
         if (cached) applyInnertubeConfig(cached);
-        try {
-          const report = await invoke<{
-            innertubeVersion?: string;
-            innertubeKey?: string;
-            playerVersion?: string;
-          }>('refresh_playback_deps');
-          applyInnertubeConfig(report);
-        } catch (e) {
-          console.warn('[innertube] refresh failed', e);
-        }
+        const report = await invoke<{
+          innertubeVersion?: string;
+          innertubeKey?: string;
+          playerVersion?: string;
+        }>('refresh_playback_deps').catch(() => null);
+        if (report) applyInnertubeConfig(report);
       })();
 
       if (adoptEngineRef.current()) return;
@@ -3056,7 +3064,7 @@ export default function App() {
             openPlayerRef.current();
             loadHomeRef.current((localStorage.getItem('zenith_lang') as Language) || 'en', false);
             hydratePanelsRef.current(track);
-            saved.queue.slice(idx, idx + 3).forEach((t) => prefetchStream(t));
+            saved.queue.slice(idx, idx + 3).forEach((t) => prefetchStreamRef.current?.(t));
             await loadTrackRef.current(track, saved.wasPlaying, undefined, saved.progress);
             return;
           }
@@ -3067,7 +3075,17 @@ export default function App() {
     void bootstrap();
 
     return () => window.clearTimeout(pluginTimer);
-  }, []);
+  }, [
+    adoptEngineRef,
+    durationRef,
+    hydratePanelsRef,
+    loadHomeRef,
+    loadTrackRef,
+    openPlayerRef,
+    playingFromRef,
+    queueIndexRef,
+    queueRef,
+  ]);
 
   useEffect(() => {
     let unlisten: (() => void) | undefined;
@@ -3118,7 +3136,7 @@ export default function App() {
       unlistenHidden?.();
       window.removeEventListener('beforeunload', persistQueueNow);
     };
-  }, []);
+  }, [activeTabRef, durationRef, isPlayingRef, playingFromRef, queueIndexRef, queueRef]);
 
   useEffect(() => {
     if (activeTab !== 'search' || !sections.length) return;
@@ -3135,6 +3153,7 @@ export default function App() {
     return () => window.clearTimeout(timer);
   }, [activeTab, sections, prefetchStream]);
 
+  const preloadNextOn = pluginStates['preload-next'];
   useEffect(() => {
     if (!pluginManager.isEnabled('preload-next')) return;
     const depth = getPreloadDepth();
@@ -3148,7 +3167,7 @@ export default function App() {
       preloadDoneRef.current.add(item.id);
       prefetchStream(item);
     }
-  }, [prefetchStream, queue, queueIndex, pluginStates['preload-next']]);
+  }, [prefetchStream, queue, queueIndex, preloadNextOn]);
 
   useEffect(() => {
     audio.volume = volume;
@@ -3179,33 +3198,14 @@ export default function App() {
     }
   }, [prefetchComplete, minSplashElapsed]);
 
-  const startBackgroundPrefetch = useCallback((tracks: Track[]) => {
-    if (!tracks || tracks.length === 0) {
-      setPrefetchComplete(true);
-      return;
-    }
-    const covers = tracks
-      .filter((t) => Boolean(t.cover))
-      .slice(0, 2)
-      .map((t) => preloadImage(t.coverSmall || t.cover));
-    setPrefetchTotal(covers.length || 1);
-    setPrefetchDone(0);
-    setPrefetchComplete(false);
-    if (!covers.length) {
-      setPrefetchComplete(true);
-      return;
-    }
-    covers.forEach((p) => p.finally(() => setPrefetchDone((prev) => prev + 1)));
-    Promise.allSettled(covers).then(() => {
-      if (mountedRef.current) setPrefetchComplete(true);
-    });
-  }, []);
-
-  useEffect(() => {
-    lyricsProviderRef.current = lyricsProvider;
+  const rehydrateCurrent = useEffectEvent(() => {
     if (!currentTrack) return;
     if (lastHydrateKeyRef.current === `${currentTrack.id}|${lyricsProvider}|${lang}`) return;
     hydratePanels(currentTrack);
+  });
+  useEffect(() => {
+    lyricsProviderRef.current = lyricsProvider;
+    rehydrateCurrent();
   }, [lyricsProvider, lang]);
 
   const presenceSyncRef = useRef({ sentAt: 0, sentPos: 0 });
@@ -3231,13 +3231,9 @@ export default function App() {
     pluginManager.notifyTrackChange(info);
   }, [audio, currentTrack, duration, isPlaying, playingFrom]);
 
+  const broadcastOnChange = useEffectEvent(() => broadcastPlayback());
   useEffect(() => {
-    if (!currentTrack) {
-      pluginManager.notifyNowPlaying(null);
-      pluginManager.notifyTrackChange(null);
-      return;
-    }
-    broadcastPlayback();
+    broadcastOnChange();
   }, [currentTrack?.id, isPlaying]);
 
   useEffect(() => {
@@ -3274,12 +3270,13 @@ export default function App() {
       );
     }, 12000);
     return () => window.clearInterval(iv);
-  }, [currentTrack, pluginStates]);
+  }, [currentTrack, pluginStates, isPlayingRef, playingFromRef, queueIndexRef, queueRef]);
   const togglePlayRef = useLatest(togglePlay);
   const playNextRef = useLatest(playNext);
   const playPrevRef = useLatest(playPrev);
   const seekToRef = useLatest(seekTo);
   const toggleMuteRef = useLatest(toggleMute);
+  const toggleSaveRef = useLatest(toggleSave);
 
   useEffect(() => {
     registerMediaSessionHandlers({
@@ -3293,7 +3290,7 @@ export default function App() {
       prev: () => playPrevRef.current(),
       seek: (t) => seekToRef.current(t),
     });
-  }, []);
+  }, [isPlayingRef, playNextRef, playPrevRef, seekToRef, togglePlayRef]);
 
   useEffect(() => {
     registerSleepTimerCallback(() => {
@@ -3329,7 +3326,18 @@ export default function App() {
     };
     hotkeyActionRef.current = onHotkey;
     registerKeyboardHandler(onHotkey);
-  }, [audio]);
+  }, [
+    audio,
+    durationRef,
+    isPlayingRef,
+    playNextRef,
+    playPrevRef,
+    seekToRef,
+    toggleMuteRef,
+    togglePlayRef,
+    toggleSaveRef,
+    volumeRef,
+  ]);
 
   useEffect(() => {
     return setupKeyboardShortcuts(pluginManager.isEnabled('keyboard-shortcuts'));
@@ -3375,7 +3383,7 @@ export default function App() {
     };
     window.addEventListener('keydown', onKey, true);
     return () => window.removeEventListener('keydown', onKey, true);
-  }, []);
+  }, [overlayStackRef]);
 
   const currentTrackLatest = useLatest(currentTrack);
   useEffect(() => {
@@ -3409,7 +3417,7 @@ export default function App() {
       window.removeEventListener('contextmenu', onContext, true);
       window.removeEventListener('auxclick', onAuxClick, true);
     };
-  }, []);
+  }, [currentTrackLatest]);
 
   useEffect(() => {
     if (!pluginManager.isEnabled('duck-on-voice')) {
@@ -3423,7 +3431,7 @@ export default function App() {
       }
     );
     return () => stopDuckMonitor();
-  }, [audio, pluginStates]);
+  }, [audio, pluginStates, volumeRef]);
 
   useEffect(() => {
     let unlistenTray: (() => void) | undefined;
@@ -3455,7 +3463,8 @@ export default function App() {
     registerRoomStatusHandler(() => setRoomSyncTick((n) => n + 1));
   }, []);
 
-  useEffect(() => {
+  const listeningRoomOn = pluginStates['listening-room'];
+  const pushRoomTrack = useEffectEvent(() => {
     if (!pluginManager.isEnabled('listening-room') || !isRoomHost() || !currentTrack) return;
     lastRoomPushRef.current = Date.now();
     void broadcastRoom({
@@ -3467,7 +3476,10 @@ export default function App() {
       isPlaying,
       hostId: getRoomCode(),
     });
-  }, [pluginStates['listening-room'], currentTrack?.id, isPlaying, roomSyncTick, audio]);
+  });
+  useEffect(() => {
+    pushRoomTrack();
+  }, [listeningRoomOn, currentTrack?.id, isPlaying, roomSyncTick, audio]);
 
   useEffect(() => {
     bindFx(
@@ -3478,7 +3490,6 @@ export default function App() {
   }, [audio, pluginStates]);
 
   const remoteEnabled = Boolean(pluginStates['remote-control']);
-  const toggleSaveRef = useLatest(toggleSave);
   const toggleShuffleRef = useLatest(toggleShuffle);
   const cycleLoopRef = useLatest(cycleLoop);
   const handleItemClickRef = useLatest(handleItemClick);
@@ -3529,6 +3540,7 @@ export default function App() {
     shuffleOn,
     queue,
     queueIndex,
+    remoteSnapRef,
   ]);
   useEffect(() => {
     if (!remoteEnabled) return;
@@ -3649,7 +3661,6 @@ export default function App() {
         if (!cancelled) remoteSnapRef.current();
       })
       .catch((e) => {
-        console.warn('[remote] start failed', e);
         pushToast(`${translations[langRef.current].remoteError}: ${String(e)}`, 'error');
       });
     return () => {
@@ -3657,7 +3668,26 @@ export default function App() {
       registerRemotePusher(null);
       void stopRemote();
     };
-  }, [remoteEnabled, audio]);
+  }, [
+    remoteEnabled,
+    audio,
+    currentTrackIdRef,
+    cycleLoopRef,
+    durationRef,
+    handleItemClickRef,
+    isPlayingRef,
+    langRef,
+    playNextRef,
+    playPrevRef,
+    queueIndexRef,
+    queueRef,
+    remoteSnapRef,
+    seekToRef,
+    toggleMuteRef,
+    togglePlayRef,
+    toggleSaveRef,
+    toggleShuffleRef,
+  ]);
 
   useEffect(() => {
     if (!pluginManager.isEnabled('listening-room')) {
@@ -3692,15 +3722,13 @@ export default function App() {
       if (Math.abs(audio.currentTime - targetPos) > 1.25) seekTo(targetPos);
 
       if (state.isPlaying && audio.paused) {
-        void audio.play().catch((e) => {
-          if (e.name !== 'AbortError') console.warn('[listening-room] play failed', e);
-        });
+        void audio.play().catch(() => undefined);
       } else if (!state.isPlaying && !audio.paused) {
         audio.pause();
       }
     });
     return () => unregisterRoomSyncHandler();
-  }, [pluginStates, audio, playByIndex, seekTo]);
+  }, [pluginStates, audio, playByIndex, seekTo, queueIndexRef, queueRef]);
 
   useEffect(() => {
     registerDualSenseHandler((action) => {
@@ -3709,7 +3737,7 @@ export default function App() {
       else if (action === 'next') playNextRef.current();
       else if (action === 'prev') playPrevRef.current();
     });
-  }, []);
+  }, [playNextRef, playPrevRef, togglePlayRef]);
 
   useEffect(() => {
     let unlisten: (() => void) | undefined;
@@ -3742,7 +3770,7 @@ export default function App() {
       if (Math.abs(progressRef.current - expected) > 4) broadcastPlayback();
     }, 3000);
     return () => window.clearInterval(iv);
-  }, [currentTrack?.id, isPlaying, broadcastPlayback]);
+  }, [currentTrack, isPlaying, broadcastPlayback]);
 
   useEffect(() => {
     return () => {
@@ -3773,7 +3801,7 @@ export default function App() {
     if (activeTabRef.current === 'player') {
       setActiveLyricLine(idx);
     }
-  }, [lyrics]);
+  }, [lyrics, activeTabRef]);
 
   useEffect(() => {
     const onSyncOffset = () => {
@@ -3804,9 +3832,7 @@ export default function App() {
     };
     window.addEventListener('zenith-lyrics-sync-changed', onSyncOffset);
     return () => window.removeEventListener('zenith-lyrics-sync-changed', onSyncOffset);
-  }, []);
-
-  const lyricsRef = useLatest<LyricsResult | null>(lyrics);
+  }, [audio, isPlayingRef, lyricsRef]);
 
   useEffect(() => {
     if (!isPlaying || !lyrics?.synced?.length) return;
@@ -3899,11 +3925,11 @@ export default function App() {
       cancelAnimationFrame(raf);
       window.clearTimeout(timer);
     };
-  }, [isPlaying, lyrics, audio]);
+  }, [isPlaying, lyrics, audio, activeTabRef, lyricsRef]);
 
   useEffect(() => {
     const overlayOn = pluginStates['lyrics-overlay'] || pluginStates['second-screen-lyrics'];
-    if (!overlayOn || !currentTrack) return;
+    if (!overlayOn || !currentTrack?.id) return;
     const m = overlayMetaRef.current;
     const lyr = lyricsRef.current;
     pushLyricsOverlay(
@@ -3920,7 +3946,7 @@ export default function App() {
       },
       { secondScreen: secondScreenLyricsRef.current, force: true }
     );
-  }, [isPlaying, pluginStates, currentTrack?.id]);
+  }, [isPlaying, pluginStates, currentTrack?.id, lyricsRef]);
 
   useEffect(() => {
     if (!currentTrack) return;
@@ -3964,7 +3990,7 @@ export default function App() {
         isPlaying: isPlayingRef.current,
       });
     }
-  }, [pluginStates, currentTrack, lyrics, isPlaying]);
+  }, [pluginStates, currentTrack, lyrics, isPlaying, durationRef, isPlayingRef]);
 
   useEffect(() => {
     const overlayOn = pluginStates['lyrics-overlay'] || pluginStates['second-screen-lyrics'];
@@ -3995,7 +4021,7 @@ export default function App() {
       clearInterval(iv);
       evs.forEach((ev) => audio.removeEventListener(ev, send));
     };
-  }, [pluginStates, audio]);
+  }, [pluginStates, audio, currentTrackIdRef, durationRef]);
 
   useEffect(() => {
     const pushOverlayNow = () => {
@@ -4044,7 +4070,7 @@ export default function App() {
       unlisteners.forEach((fn) => fn());
       window.removeEventListener(OVERLAY_SETTINGS_EVENT, pushOverlayNow);
     };
-  }, []);
+  }, [currentTrackIdRef, durationRef, isPlayingRef, lyricsRef]);
 
   const handleShareCard = useCallback(async () => {
     if (!currentTrack) return;
@@ -4105,18 +4131,14 @@ export default function App() {
     return () => window.clearTimeout(t);
   }, [showSplash]);
 
+  const ambientGlowOn = pluginStates['ambient-glow'];
   useEffect(() => {
-    if (pluginStates['ambient-glow']) {
+    if (ambientGlowOn) {
       applyCoverTheme(currentTrack?.coverLarge || currentTrack?.cover);
     } else {
       resetCoverTheme();
     }
-  }, [
-    currentTrack?.id,
-    currentTrack?.cover,
-    currentTrack?.coverLarge,
-    pluginStates['ambient-glow'],
-  ]);
+  }, [currentTrack?.id, currentTrack?.cover, currentTrack?.coverLarge, ambientGlowOn]);
 
   const sectionRows = useMemo(
     () =>
@@ -4721,8 +4743,6 @@ export default function App() {
                             <PlayerLyricsRail
                               synced={lyrics.synced}
                               onLineClick={seekTo}
-                              mode="full"
-                              className="synced-lyrics-rail--player"
                               getProgress={getLyricProgress}
                             />
                           ) : lyrics?.text ? (
@@ -5413,9 +5433,7 @@ export default function App() {
                     if (next) {
                       await persistSessionIfWanted();
                     } else {
-                      await invoke('forget_ytm_session_file').catch((e) =>
-                        console.warn('[auth] forget session failed', e)
-                      );
+                      await invoke('forget_ytm_session_file').catch(() => undefined);
                     }
                   }}
                 >

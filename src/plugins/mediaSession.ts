@@ -59,17 +59,13 @@ function syncMetadata(info: NowPlayingInfo | null) {
 
 function wireActions() {
   if (!('mediaSession' in navigator)) return;
-  try {
-    navigator.mediaSession.setActionHandler('play', () => handlers.play?.());
-    navigator.mediaSession.setActionHandler('pause', () => handlers.pause?.());
-    navigator.mediaSession.setActionHandler('previoustrack', () => handlers.prev?.());
-    navigator.mediaSession.setActionHandler('nexttrack', () => handlers.next?.());
-    navigator.mediaSession.setActionHandler('seekto', (details) => {
-      if (typeof details.seekTime === 'number') handlers.seek?.(details.seekTime);
-    });
-  } catch (e) {
-    console.warn('[media-session] action handlers unavailable', e);
-  }
+  navigator.mediaSession.setActionHandler('play', () => handlers.play?.());
+  navigator.mediaSession.setActionHandler('pause', () => handlers.pause?.());
+  navigator.mediaSession.setActionHandler('previoustrack', () => handlers.prev?.());
+  navigator.mediaSession.setActionHandler('nexttrack', () => handlers.next?.());
+  navigator.mediaSession.setActionHandler('seekto', (details) => {
+    if (typeof details.seekTime === 'number') handlers.seek?.(details.seekTime);
+  });
 }
 
 export const mediaSessionPlugin: ZenithPlugin = {
@@ -85,11 +81,7 @@ export const mediaSessionPlugin: ZenithPlugin = {
     syncMetadata(null);
     if (!('mediaSession' in navigator)) return;
     for (const action of ['play', 'pause', 'previoustrack', 'nexttrack', 'seekto'] as const) {
-      try {
-        navigator.mediaSession.setActionHandler(action, null);
-      } catch (e) {
-        console.warn('[media-session] clear handler failed', action, e);
-      }
+      navigator.mediaSession.setActionHandler(action, null);
     }
   },
   onNowPlaying(info) {

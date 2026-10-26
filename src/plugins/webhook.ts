@@ -19,7 +19,6 @@ async function postWebhook(info: NowPlayingInfo) {
   try {
     parsed = new URL(url);
   } catch {
-    console.warn('[webhook] invalid URL');
     return;
   }
   const host = parsed.hostname.toLowerCase();
@@ -28,24 +27,20 @@ async function postWebhook(info: NowPlayingInfo) {
   const httpsOk = parsed.protocol === 'https:';
   const localHttp = parsed.protocol === 'http:' && loopback;
   if (!httpsOk && !localHttp) return;
-  try {
-    await invoke<number>('post_webhook', {
-      url: parsed.toString(),
-      body: JSON.stringify({
-        event: 'track_change',
-        title: info.title,
-        artist: info.artist,
-        id: info.id,
-        position: info.position,
-        duration: info.duration,
-        isPlaying: info.isPlaying,
-        coverUrl: info.coverUrl,
-        timestamp: Date.now(),
-      }),
-    });
-  } catch (e) {
-    console.warn('[webhook] post failed', e);
-  }
+  await invoke<number>('post_webhook', {
+    url: parsed.toString(),
+    body: JSON.stringify({
+      event: 'track_change',
+      title: info.title,
+      artist: info.artist,
+      id: info.id,
+      position: info.position,
+      duration: info.duration,
+      isPlaying: info.isPlaying,
+      coverUrl: info.coverUrl,
+      timestamp: Date.now(),
+    }),
+  });
 }
 
 export const webhookPlugin: ZenithPlugin = {
@@ -55,7 +50,7 @@ export const webhookPlugin: ZenithPlugin = {
   description:
     'POST JSON to a URL on every track change - works with Stream Deck, Home Assistant, n8n.',
   defaultEnabled: false,
-  onTrackChange(info) {
-    if (info) postWebhook(info);
+  async onTrackChange(info) {
+    if (info) await postWebhook(info);
   },
 };

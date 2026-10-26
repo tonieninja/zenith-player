@@ -1,7 +1,7 @@
 import { StrictMode, useEffect, useRef, useState, type CSSProperties } from 'react';
 import { createRoot } from 'react-dom/client';
 import { emit, listen } from '@tauri-apps/api/event';
-import { imgErr, isYouTubeVideoId } from '../utils/imgError';
+import { imgErr, isYouTubeVideoId } from '../utils/covers';
 import { coverLedColor } from '../utils/coverTheme';
 import {
   AUX_STRINGS,

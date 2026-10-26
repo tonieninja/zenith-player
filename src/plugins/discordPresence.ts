@@ -15,7 +15,7 @@ let pendingTimer: ReturnType<typeof setTimeout> | null = null;
 
 function send(info: NowPlayingInfo) {
   lastSentAt = Date.now();
-  invoke('discord_update_presence', {
+  void invoke('discord_update_presence', {
     payload: {
       clientId: getDiscordClientId(),
       title: info.title,
@@ -27,8 +27,9 @@ function send(info: NowPlayingInfo) {
       trackUrl: `https://music.youtube.com/watch?v=${info.id}`,
       context: info.context || null,
     },
-  }).catch((err) => {
-    console.warn('[plugin:discord-rpc]', err);
+  }).catch(() => {
+    // Discord jeszcze nie działa, więc następna zmiana utworu wyśle status od nowa
+    lastSentKey = '';
   });
 }
 

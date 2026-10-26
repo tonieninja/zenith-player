@@ -1,6 +1,6 @@
 import { memo } from 'react';
 import type { Track } from '../../api/youtube';
-import { coverAttrs } from '../../utils/imgError';
+import { coverAttrs } from '../../utils/covers';
 
 export const UpNextItem = memo(function UpNextItem({
   track,

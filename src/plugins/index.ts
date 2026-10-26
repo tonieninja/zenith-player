@@ -125,10 +125,8 @@ export const ALL_PLUGINS: ZenithPlugin[] = [
   zenithStagePlugin,
 ];
 
-function catchAsync(r: unknown, label: string) {
-  if (r && typeof (r as Promise<unknown>).then === 'function') {
-    (r as Promise<unknown>).catch((err) => console.warn(label, err));
-  }
+function catchAsync(hook: () => unknown) {
+  void Promise.allSettled([(async () => hook())()]);
 }
 
 class PluginManager {
@@ -174,13 +172,7 @@ class PluginManager {
 
   private emitChange() {
     const snapshot = this.getStates();
-    for (const fn of this.listeners) {
-      try {
-        fn(snapshot);
-      } catch (err) {
-        console.warn('[plugins] listener failed', err);
-      }
-    }
+    for (const fn of this.listeners) fn(snapshot);
   }
 
   markWindowClosed(label: string) {
@@ -215,12 +207,7 @@ class PluginManager {
     this.persist();
     const plugin = this.plugins.find((p) => p.id === id);
     if (!plugin) return;
-    try {
-      const r: unknown = on ? plugin.onEnable?.() : plugin.onDisable?.();
-      catchAsync(r, `[plugins] ${id} toggle failed`);
-    } catch (err) {
-      console.warn(`[plugins] ${id} toggle failed`, err);
-    }
+    catchAsync(() => (on ? plugin.onEnable?.() : plugin.onDisable?.()));
 
     if (id === 'zenith-stage') {
       for (const bundled of STAGE_BUNDLE) {
@@ -233,11 +220,7 @@ class PluginManager {
   private forEachEnabled(fn: (p: ZenithPlugin) => unknown) {
     for (const plugin of this.plugins) {
       if (!this.enabled[plugin.id]) continue;
-      try {
-        catchAsync(fn(plugin), `[plugins] ${plugin.id} hook failed`);
-      } catch (err) {
-        console.warn(`[plugins] ${plugin.id} hook failed`, err);
-      }
+      catchAsync(() => fn(plugin));
     }
   }
 

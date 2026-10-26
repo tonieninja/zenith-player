@@ -3,9 +3,9 @@ import { ChevronLeft, ChevronRight, Play } from 'lucide-react';
 import type { Section, Track } from '../../api/youtube';
 import { usePager } from '../../hooks/usePager';
 import { useResponsivePageSize } from '../../hooks/useResponsivePageSize';
-import { coverAttrs } from '../../utils/imgError';
-import { currentT } from '../../utils/uiLang';
-import { ctxTrackAttr, isPrimaryButton } from '../../utils/ctxTrack';
+import { coverAttrs } from '../../utils/covers';
+import { currentT } from '../../i18n';
+import { ctxTrackAttr, isPrimaryButton } from '../../utils/tracks';
 
 export const PAGE_SIZE = 8;
 

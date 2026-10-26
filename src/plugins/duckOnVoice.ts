@@ -13,7 +13,7 @@ function syncNativeDuck() {
     on: nativeDuck,
     level: getDuckLevel(),
     sensitivity: getDuckSensitivity(),
-  }).catch((err) => console.warn('[duck-on-voice] mic unavailable', err));
+  });
 }
 
 export function getDuckLevel(): number {
@@ -71,8 +71,8 @@ class DuckMonitor {
       src.connect(this.analyser);
       this.buf = new Uint8Array(this.analyser.frequencyBinCount);
       this.timer = window.setInterval(this.tick, 100);
-    } catch (e) {
-      console.warn('[duck-on-voice] mic access denied', e);
+    } catch {
+      this.stop();
     }
   }
 

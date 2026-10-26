@@ -1,4 +1,4 @@
-import { cachedCoverUrl } from '../utils/imgError';
+import { cachedCoverUrl } from '../utils/covers';
 import { NowPlayingInfo, ZenithPlugin } from './types';
 
 export async function generateShareCard(
@@ -138,8 +138,7 @@ export async function copyShareCardToClipboard(info: NowPlayingInfo): Promise<bo
   let blob: Blob;
   try {
     blob = await generateShareCard(info, img);
-  } catch (err) {
-    console.warn('[share-card] render failed', err);
+  } catch {
     return false;
   }
   // schowek webview odmawia, gdy okno nie ma fokusu albo minął gest, Tauri pisze do systemu bez tych warunków
@@ -147,15 +146,13 @@ export async function copyShareCardToClipboard(info: NowPlayingInfo): Promise<bo
     const { writeImage } = await import('@tauri-apps/plugin-clipboard-manager');
     await writeImage(new Uint8Array(await blob.arrayBuffer()));
     return true;
-  } catch (err) {
-    console.warn('[share-card] tauri clipboard failed', err);
-  }
-  try {
-    await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
-    return true;
-  } catch (err) {
-    console.warn('[share-card] clipboard failed', err);
-    return false;
+  } catch {
+    try {
+      await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+      return true;
+    } catch {
+      return false;
+    }
   }
 }
 

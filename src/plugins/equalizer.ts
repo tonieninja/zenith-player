@@ -65,8 +65,8 @@ export function getEqBands(): number[] {
         return fromLegacyBands(v).map(clampDb);
       }
     }
-  } catch (e) {
-    console.warn('[equalizer] bad stored bands', e);
+  } catch {
+    return flat();
   }
   return flat();
 }

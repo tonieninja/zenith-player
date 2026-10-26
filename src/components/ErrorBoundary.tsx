@@ -36,8 +36,8 @@ export function recordCrash(error: Error, stack?: string | null) {
       component: String(stack || '').slice(0, 2000),
     };
     localStorage.setItem(CRASH_KEY, JSON.stringify([...prev, entry].slice(-20)));
-  } catch (e) {
-    console.warn('[crash] record failed', e);
+  } catch {
+    localStorage.removeItem(CRASH_KEY);
   }
 }
 
@@ -108,10 +108,10 @@ export class ErrorBoundary extends Component<Props, State> {
           onClick={() => {
             const e = this.state.error;
             const details = `${e?.message}\n${e?.stack || ''}\n${navigator.userAgent}`;
-            navigator.clipboard
-              ?.writeText(details)
-              .then(() => this.setState({ copied: true }))
-              .catch((err) => console.warn('[crash] copy details failed', err));
+            navigator.clipboard?.writeText(details).then(
+              () => this.setState({ copied: true }),
+              () => this.setState({ copied: false })
+            );
           }}
           style={{
             border: '1px solid rgba(255,255,255,0.25)',

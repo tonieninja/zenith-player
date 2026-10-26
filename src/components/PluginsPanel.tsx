@@ -1,4 +1,12 @@
-import { lastfmErrorText } from '../utils/lastfmErrors';
+import {
+  lastfmErrorText,
+  lastfmStatus,
+  lastfmSetKeys,
+  lastfmBeginAuth,
+  lastfmFinishAuth,
+  lastfmLogout,
+  type LastfmStatus,
+} from '../plugins/lastfm';
 import { useDeferredValue, useEffect, useRef, useState } from 'react';
 import {
   X,
@@ -59,14 +67,6 @@ import { getFadePauseMs, setFadePauseMs } from '../plugins/fadeOnPause';
 import { getWebhookUrl, setWebhookUrl } from '../plugins/webhook';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import {
-  lastfmStatus,
-  lastfmSetKeys,
-  lastfmBeginAuth,
-  lastfmFinishAuth,
-  lastfmLogout,
-  type LastfmStatus,
-} from '../plugins/lastfm';
-import {
   EQ_LABELS,
   EQ_MAX_DB,
   EQ_MIN_DB,
@@ -111,7 +111,7 @@ import {
   roomPeerCount,
 } from '../plugins/listeningRoom';
 import { translations, Language } from '../i18n';
-import { pluginText } from '../utils/pluginI18n';
+import { pluginText } from '../i18n/plugins';
 import { pluginQueryMatches } from '../utils/pluginSearch';
 import type { PlayerAudio } from '../audio/engine';
 
@@ -237,9 +237,7 @@ export function PluginsPanel({
   const [lfmSecret, setLfmSecret] = useState('');
   const [lfmErr, setLfmErr] = useState('');
   useEffect(() => {
-    lastfmStatus()
-      .then(setLfm)
-      .catch((e) => console.warn('[lastfm] status failed', e));
+    lastfmStatus().then(setLfm, () => setLfm(null));
   }, []);
   const lfmRun = (p: Promise<LastfmStatus>) =>
     p
@@ -732,9 +730,7 @@ export function PluginsPanel({
                     href="#"
                     onClick={(e) => {
                       e.preventDefault();
-                      void openUrl('https://www.last.fm/api/account/create').catch((err) =>
-                        console.warn('[lastfm] open link failed', err)
-                      );
+                      void openUrl('https://www.last.fm/api/account/create');
                     }}
                   >
                     last.fm/api/account/create
@@ -789,12 +785,9 @@ export function PluginsPanel({
                     className="np-cancel-btn"
                     onClick={() =>
                       lfmRun(
-                        lastfmBeginAuth().then(async (url) => {
-                          await openUrl(url).catch((e) =>
-                            console.warn('[lastfm] open auth page failed', e)
-                          );
-                          return lastfmStatus();
-                        })
+                        lastfmBeginAuth().then((url) =>
+                          openUrl(url).then(lastfmStatus, lastfmStatus)
+                        )
                       )
                     }
                   >

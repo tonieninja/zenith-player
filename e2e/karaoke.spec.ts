@@ -90,7 +90,6 @@ for (const engine of ['columns', 'transform'] as const) {
     const rel = (v: number[]) => v.map((x, i) => x / (full[i] || 1));
     const e = rel(early);
     const l = rel(late);
-    console.log(engine, { full, early: e, late: l });
     expect(e[0]).toBeGreaterThan(0.15);
     expect(e[1]).toBeLessThan(0.05);
     expect(l[0]).toBeGreaterThan(0.95);
@@ -131,7 +130,6 @@ test('karaoke stops polling while the window is hidden', async ({ browser }) => 
   };
   const visible = await reads(false);
   const hidden = await reads(true);
-  console.log('karaoke clock reads per 2s', { visible, hidden });
   expect(visible).toBeGreaterThan(20);
   expect(hidden).toBeLessThanOrEqual(1);
   await ctx.close();

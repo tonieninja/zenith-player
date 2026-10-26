@@ -7,13 +7,9 @@ import {
   pickBestSyncedLyrics,
   scoreLyricsMatch,
   shouldShowEarlyPlain,
-} from '../utils/lyricsMatch';
-import {
-  GENIUS_BROWSER_HEADERS,
-  geniusHttpError,
-  LYRICS_BROWSER_UA,
-} from '../utils/lyricsProviders';
-import { normalizeSynced, parseLrc, type LyricsLine } from '../utils/lyricsParse';
+} from '../lyrics/match';
+import { GENIUS_BROWSER_HEADERS, geniusHttpError, LYRICS_BROWSER_UA } from '../lyrics/providers';
+import { normalizeSynced, parseLrc, type LyricsLine } from '../lyrics/parse';
 import { getMusixmatchLyrics as getMusixmatchTrackLyrics } from './musixmatch';
 
 const DEFAULT_YTM_KEY = 'AIzaSyC9XL3ZjWddXya6X74dJoCTL-WEYFDNX30';
@@ -884,23 +880,20 @@ async function fetchBrowseUncached(
     browseId.startsWith('FEmusic_library') ||
     browseId.startsWith('FEmusic_liked');
 
-  try {
-    if (!isLibrary) {
-      const rawText = await invokeWithTimeout<string>(
-        'ytm_browse',
-        {
-          browseId,
-          hl: isPl ? 'pl' : 'en',
-          gl: isPl ? 'PL' : 'US',
-          params: params ?? null,
-        },
-        12000
-      );
-      const result = parsePayload(JSON.parse(rawText));
-      if (result.length) return store(result);
-    }
-  } catch (rustErr) {
-    console.warn('[browse] rust path failed', browseId, rustErr);
+  if (!isLibrary) {
+    const result = await invokeWithTimeout<string>(
+      'ytm_browse',
+      {
+        browseId,
+        hl: isPl ? 'pl' : 'en',
+        gl: isPl ? 'PL' : 'US',
+        params: params ?? null,
+      },
+      12000
+    )
+      .then((rawText) => parsePayload(JSON.parse(rawText)))
+      .catch(() => []);
+    if (result.length) return store(result);
   }
 
   const headers = await buildAuthHeaders(lang);
@@ -918,17 +911,14 @@ async function fetchBrowseUncached(
       },
       8000
     );
-    const rawText = await response.text();
     if (response.ok) {
-      const json = JSON.parse(rawText);
+      const json = JSON.parse(await response.text());
       if (isLibrary) libraryContinuations.set(cacheKey, findContinuationToken(json));
       const result = parsePayload(json);
       if (result.length) return store(result);
-    } else {
-      console.warn('[browse]', browseId, 'HTTP', response.status, rawText.slice(0, 200));
     }
-  } catch (error) {
-    console.warn('[browse] fetch failed', browseId, error);
+  } catch {
+    return [];
   }
 
   return [];
@@ -1047,11 +1037,8 @@ export async function getAudioStream(
           { videoId, fresh: fresh || null },
           STREAM_INVOKE_TIMEOUT_MS
         );
-        const url = normalizeStreamUrl(raw);
-        if (!url) console.warn('[stream] no playable url for', videoId);
-        return url;
-      } catch (err) {
-        console.warn('[stream] invoke failed', videoId, 'attempt', attempt + 1, err);
+        return normalizeStreamUrl(raw);
+      } catch {
         if (Date.now() - started > 5000) return null;
       }
       if (attempt < 1) {
@@ -1237,19 +1224,15 @@ export async function loadPlaylistItems(
         }
         if (tracks.length) return { items: tracks, status: 'ok' };
         sawEmpty = true;
-      } catch (e) {
-        console.warn('[playlist] browse failed', id, e);
+      } catch {
+        continue;
       }
     }
     if (generated) {
-      try {
-        const queue = await loadWatchQueue(toPlainPlaylistId(browseId), lang);
-        if (queue.length) {
-          onPage?.(queue);
-          return { items: queue, status: 'ok' };
-        }
-      } catch (e) {
-        console.warn('[playlist] watch queue failed', browseId, e);
+      const queue = await loadWatchQueue(toPlainPlaylistId(browseId), lang).catch(() => []);
+      if (queue.length) {
+        onPage?.(queue);
+        return { items: queue, status: 'ok' };
       }
     }
   }
@@ -1723,8 +1706,7 @@ export async function getTrackLikeStatus(
   try {
     const data = JSON.parse(text);
     return findLikeStatus(data?.playerOverlays);
-  } catch (e) {
-    console.debug('[like] next parse failed', e);
+  } catch {
     return null;
   }
 }
@@ -3112,4 +3094,16 @@ function extractLyricsText(obj: any): string | null {
 
   walk(obj);
   return lyrics;
+}
+
+const REMEMBER_LOGIN_KEY = 'zenith_remember_login';
+
+export function getRememberLogin(): boolean {
+  const v = localStorage.getItem(REMEMBER_LOGIN_KEY);
+  if (v === null) return true;
+  return v === '1';
+}
+
+export function setRememberLogin(enabled: boolean): void {
+  localStorage.setItem(REMEMBER_LOGIN_KEY, enabled ? '1' : '0');
 }

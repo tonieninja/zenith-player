@@ -3,16 +3,12 @@ import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { ZenithPlugin } from './types';
 
 async function openSecond() {
-  try {
-    const existing = await WebviewWindow.getByLabel('lyrics-second');
-    if (existing) {
-      await existing.show();
-      return;
-    }
-  } catch (e) {
-    console.warn('[second-screen] show failed', e);
-  }
-  await invoke('open_lyrics_second_screen');
+  const existing = await WebviewWindow.getByLabel('lyrics-second').catch(() => null);
+  const shown = await existing?.show().then(
+    () => true,
+    () => false
+  );
+  if (!shown) await invoke('open_lyrics_second_screen');
 }
 
 async function closeSecond() {

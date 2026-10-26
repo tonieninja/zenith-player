@@ -36,19 +36,15 @@ export const listeningHistoryPlugin: ZenithPlugin = {
   defaultEnabled: false,
   onTrackChange(info: NowPlayingInfo | null, prevId) {
     if (!info || info.id === prevId) return;
-    try {
-      const list: HistoryEntry[] = getListeningHistory().filter((e) => e.id !== info.id);
-      list.unshift({
-        id: info.id,
-        title: info.title,
-        artist: info.artist,
-        cover: info.coverUrl,
-        playedAt: Date.now(),
-      });
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(list.slice(0, LIMIT)));
-    } catch (e) {
-      console.warn('[listening-history] save failed', e);
-    }
+    const list: HistoryEntry[] = getListeningHistory().filter((e) => e.id !== info.id);
+    list.unshift({
+      id: info.id,
+      title: info.title,
+      artist: info.artist,
+      cover: info.coverUrl,
+      playedAt: Date.now(),
+    });
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(list.slice(0, LIMIT)));
   },
   onDisable() {},
 };

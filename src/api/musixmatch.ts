@@ -4,14 +4,14 @@ import {
   scoreLyricsMatch,
   syncLengthFits,
   type LyricsMatchQuery,
-} from '../utils/lyricsMatch';
+} from '../lyrics/match';
 import {
   collectMusixmatchBundleUrls,
   extractMusixmatchSecretFromJs,
   LYRICS_BROWSER_UA,
   MXM_SECRET_MISSING,
-} from '../utils/lyricsProviders';
-import { parseMusixmatchSynced, type LyricsLine } from '../utils/lyricsParse';
+} from '../lyrics/providers';
+import { parseMusixmatchSynced, type LyricsLine } from '../lyrics/parse';
 
 export type MxmQuery = LyricsMatchQuery & { durationSec?: number };
 

@@ -1,7 +1,7 @@
 import { memo } from 'react';
 import { Play } from 'lucide-react';
 import type { Track } from '../../api/youtube';
-import { coverAttrs } from '../../utils/imgError';
+import { coverAttrs } from '../../utils/covers';
 
 export const HeroSection = memo(function HeroSection({
   track,

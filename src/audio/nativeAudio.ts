@@ -74,11 +74,9 @@ export class NativeAudio {
 
   private send(cmd: Cmd) {
     const seq = ++this.seq;
-    invoke<EngineSnapshot>('zaudio_cmd', { cmd })
-      .then((s) => {
-        if (seq === this.seq) this.take(s);
-      })
-      .catch((e) => console.warn('[zaudio] cmd failed', cmd.op, e));
+    void invoke<EngineSnapshot>('zaudio_cmd', { cmd }).then((s) => {
+      if (seq === this.seq) this.take(s);
+    });
   }
 
   get currentTime() {
@@ -129,9 +127,7 @@ export class NativeAudio {
       this.volQueued = true;
       queueMicrotask(() => {
         this.volQueued = false;
-        void invoke('zaudio_cmd', { cmd: { op: 'volume', v: this.master } }).catch((e) =>
-          console.warn('[zaudio] volume failed', e)
-        );
+        void invoke('zaudio_cmd', { cmd: { op: 'volume', v: this.master } });
       });
     }
   }
@@ -222,10 +218,7 @@ export class NativeAudio {
   }
 
   preroll(url: string): void {
-    if (url)
-      void invoke<boolean>('zaudio_preroll', { url }).catch((e) =>
-        console.warn('[zaudio] preroll failed', e)
-      );
+    if (url) void invoke<boolean>('zaudio_preroll', { url });
   }
 
   async crossfadeTo(url: string, seconds: number): Promise<void> {

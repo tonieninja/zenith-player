@@ -1,7 +1,7 @@
 import { memo } from 'react';
 import { GENRES, MOODS_AND_MOMENTS } from '../../api/youtube';
 import type { Language } from '../../i18n';
-import { moodLabel } from '../../utils/pluginI18n';
+import { moodLabel } from '../../i18n/plugins';
 
 export const MoodsGenresView = memo(function MoodsGenresView({
   onCategoryClick,

@@ -16,9 +16,8 @@ import {
   Trash2,
   X,
 } from 'lucide-react';
-import type { Language } from '../i18n';
+import { type Language, translations } from '../i18n';
 import { ModalOverlay } from './ui/ModalOverlay';
-import { translations } from '../i18n';
 import {
   createPlaylist,
   deletePlaylist,
@@ -257,7 +256,6 @@ export function PlaylistManager({
     try {
       await fn();
     } catch (e) {
-      console.warn('[playlists]', e);
       if (e instanceof SessionExpiredError) {
         pushToast(t.sessionExpired, 'error');
         onSessionExpired?.();
