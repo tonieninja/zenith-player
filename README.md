@@ -1,13 +1,22 @@
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/hero-dark.svg">
+  <img src="assets/hero-light.svg" width="100%" alt="Zenith, a desktop player for YouTube Music. Windows, Linux, macOS, free and open source">
+</picture>
+
 <p align="center">
-  <img src="assets/banner.png" width="100%" alt="Zenith">
+  <a href="https://github.com/tonieninja/zenith-player/releases/latest"><b>download</b></a>
+  &nbsp;·&nbsp;
+  <a href="#what-it-does">what it does</a>
+  &nbsp;·&nbsp;
+  <a href="docs/PLUGINS.md">plugins</a>
+  &nbsp;·&nbsp;
+  <a href="#building">build it yourself</a>
 </p>
 
-# Zenith Player
+<img src="assets/showcase.svg" width="100%" alt="Zenith screens: home, lyrics, explore, queue and plugins">
 
 Desktop player for YouTube Music. Tauri 2 (Rust) with a React UI. Synced lyrics, gapless albums,
 crossfade, a 15-band EQ, offline downloads, a phone remote and a pile of plugins. No ads, no telemetry.
-
-<p align="center"><img src="docs/screenshots/tour.gif" width="760" alt="Zenith"></p>
 
 Zenith isn't affiliated with, endorsed by or connected to Google or YouTube in any way. It's just a
 player that talks to YouTube Music. Your account and YouTube's terms still apply.
@@ -47,13 +56,17 @@ On macOS right click, Open the first time (or System Settings, Privacy & Securit
 
 Full plugin list: [docs/PLUGINS.md](docs/PLUGINS.md).
 
-## Screenshots
+<details>
+<summary>All screenshots</summary>
 
-|                                           |                                             |
-| ----------------------------------------- | ------------------------------------------- |
-| ![Home](docs/screenshots/01-home.png)     | ![Explore](docs/screenshots/02-explore.png) |
-| ![Lyrics](docs/screenshots/03-lyrics.png) | ![Search](docs/screenshots/04-search.png)   |
-| ![Queue](docs/screenshots/05-queue.png)   | ![Plugins](docs/screenshots/06-plugins.png) |
+|                                               |                                             |
+| --------------------------------------------- | ------------------------------------------- |
+| ![Home](docs/screenshots/01-home.png)         | ![Explore](docs/screenshots/02-explore.png) |
+| ![Lyrics](docs/screenshots/03-lyrics.png)     | ![Search](docs/screenshots/04-search.png)   |
+| ![Queue](docs/screenshots/05-queue.png)       | ![Plugins](docs/screenshots/06-plugins.png) |
+| ![Settings](docs/screenshots/07-settings.png) |                                             |
+
+</details>
 
 ## Phone remote
 
