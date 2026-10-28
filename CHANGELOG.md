@@ -1,5 +1,11 @@
 # Changelog
 
+## 4.1.2
+
+- the lyrics view uses way less CPU and GPU while a song plays, looks exactly the same
+- new look for the Windows installers (setup.exe and msi) and the macOS dmg
+- installer pages reworded in English and Polish
+
 ## 4.1.1
 
 - EQ no longer turns the whole song down, a limiter keeps it from clipping instead
