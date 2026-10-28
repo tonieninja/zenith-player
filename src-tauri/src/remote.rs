@@ -76,10 +76,11 @@ fn lan_ip() -> Option<Ipv4Addr> {
     }
 }
 
-fn random_hex(n: usize) -> String {
+// bez losowości token byłby samymi zerami, więc lepiej odmówić parowania
+fn random_hex(n: usize) -> Option<String> {
     let mut b = vec![0u8; n];
-    let _ = getrandom::getrandom(&mut b);
-    b.iter().map(|x| format!("{x:02x}")).collect()
+    getrandom::getrandom(&mut b).ok()?;
+    Some(b.iter().map(|x| format!("{x:02x}")).collect())
 }
 
 fn ct_eq(a: &str, b: &str) -> bool {
@@ -218,7 +219,10 @@ async fn api_pair(Query(q): Query<PairQuery>) -> Response {
         };
         match g.as_mut() {
             Some(s) if s.pair && ct_eq(q.t.as_deref().unwrap_or(""), &s.pair_token) => {
-                s.pair_token = random_hex(12);
+                let Some(t) = random_hex(12) else {
+                    return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+                };
+                s.pair_token = t;
                 true
             }
             _ => false,
@@ -230,7 +234,9 @@ async fn api_pair(Query(q): Query<PairQuery>) -> Response {
     }
     f.0 = 0;
     drop(f);
-    let key = random_hex(24);
+    let Some(key) = random_hex(24) else {
+        return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+    };
     if let Ok(mut k) = DEVICE_KEYS.lock() {
         if k.len() >= 32 {
             k.clear();
@@ -559,7 +565,7 @@ async fn start_server(port: u16, pin: String, pair: bool) -> Result<RemoteInfo, 
                 s.pin = pin;
                 if s.pair != pair {
                     s.pair = pair;
-                    s.pair_token = random_hex(12);
+                    s.pair_token = random_hex(12).ok_or("no randomness")?;
                 }
                 drop(g);
                 return Ok(info());
@@ -569,6 +575,7 @@ async fn start_server(port: u16, pin: String, pair: bool) -> Result<RemoteInfo, 
         }
     }
     let port = if port == 0 { 8765 } else { port };
+    let pair_token = random_hex(12).ok_or("no randomness")?;
     let host = [0, 0, 0, 0];
     let listener = tokio::net::TcpListener::bind(SocketAddr::from((host, port)))
         .await
@@ -612,7 +619,7 @@ async fn start_server(port: u16, pin: String, pair: bool) -> Result<RemoteInfo, 
         port,
         pin,
         pair,
-        pair_token: random_hex(12),
+        pair_token,
         shutdown: Some(tx),
         mdns,
     });
