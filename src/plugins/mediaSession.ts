@@ -10,7 +10,8 @@ function pushNative(info: NowPlayingInfo | null, playing?: boolean) {
   void invoke('mpris_update', {
     title: info?.title ?? null,
     artist: info?.artist ?? null,
-    art: info?.coverUrl ?? null,
+    // systemowy panel multimediów pobiera okładkę sam, więc adres data: nic by mu nie dał
+    art: info?.coverUrl?.startsWith('http') ? info.coverUrl : null,
     playing: playing ?? info?.isPlaying ?? false,
     position: info?.position ?? 0,
     duration: info?.duration ?? 0,

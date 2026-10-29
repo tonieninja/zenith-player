@@ -1,7 +1,35 @@
 import { invoke } from '@tauri-apps/api/core';
 
-const FALLBACK_AVATAR =
-  'https://ui-avatars.com/api/?name=?&background=111827&color=6b7280&size=240';
+const LETTER_COVER = 'data:image/svg+xml;charset=utf-8,';
+
+// okładka z liter rysowana lokalnie, żeby nazwy playlist nie szły do zewnętrznego serwisu
+export function letterCover(text: string, bg = '#1a1a2e', fg = '#ffffff'): string {
+  const t = ([...(text || '?').trim()].slice(0, 2).join('') || '?')
+    .toUpperCase()
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="${bg}"/><text x="50" y="50" dy=".35em" text-anchor="middle" font-family="Segoe UI,Arial,sans-serif" font-size="40" font-weight="700" fill="${fg}">${t}</text></svg>`;
+  return LETTER_COVER + encodeURIComponent(svg);
+}
+
+export function isPlaceholderCover(url: string | undefined | null): boolean {
+  return !!url && (url.startsWith(LETTER_COVER) || url.includes('ui-avatars'));
+}
+
+// stare adresy ui-avatars zapisane w playlistach i historii zamieniamy na lokalne
+export function localCover(url: string): string {
+  if (!url.includes('ui-avatars.com')) return url;
+  const p = new URLSearchParams(url.split('?')[1] || '');
+  const hex = (v: string | null, d: string) => '#' + (/^[0-9a-f]{3,8}$/i.test(v || '') ? v : d);
+  return letterCover(
+    p.get('name') || '?',
+    hex(p.get('background'), '1a1a2e'),
+    hex(p.get('color'), 'fff')
+  );
+}
+
+const FALLBACK_AVATAR = letterCover('?', '#111827', '#6b7280');
 
 const YTIMG = 'https://i.ytimg.com/vi/';
 
@@ -32,10 +60,11 @@ type CoverTrack = {
 };
 
 export function coverAttrs(track: CoverTrack, size: 'thumb' | 'small' | 'large' = 'small') {
-  const src =
+  const src = localCover(
     size === 'large'
       ? track.coverLarge || track.cover || track.coverSmall || ''
-      : track.coverSmall || track.cover || track.coverLarge || '';
+      : track.coverSmall || track.cover || track.coverLarge || ''
+  );
   const cached = cachedCoverUrl(src, size === 'large' ? 544 : size === 'thumb' ? 120 : 240);
   return {
     src: cached,
@@ -98,7 +127,7 @@ export function imgErr(e: React.SyntheticEvent<HTMLImageElement>) {
   }
 
   el.dataset.coverFail = '1';
-  if (!src.includes('ui-avatars')) {
+  if (!isPlaceholderCover(src)) {
     el.src = FALLBACK_AVATAR;
   }
 }

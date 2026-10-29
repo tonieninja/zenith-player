@@ -204,6 +204,7 @@ import {
   useActiveLyricLine,
 } from './lyrics/active';
 import { applyCoverTheme, resetCoverTheme } from './utils/coverTheme';
+import { isPlaceholderCover } from './utils/covers';
 import {
   barDurationForTrack,
   formatTime,
@@ -2007,9 +2008,9 @@ export default function App() {
         const itemsWithCover = items.map((i) => ({
           ...i,
           artist: albumArtist && i.artist === L.variousArtists ? albumArtist : i.artist,
-          cover: i.cover.includes('ui-avatars') ? collection.cover : i.cover,
-          coverSmall: i.coverSmall?.includes('ui-avatars') ? collection.coverSmall : i.coverSmall,
-          coverLarge: i.coverLarge?.includes('ui-avatars') ? collection.coverLarge : i.coverLarge,
+          cover: isPlaceholderCover(i.cover) ? collection.cover : i.cover,
+          coverSmall: isPlaceholderCover(i.coverSmall) ? collection.coverSmall : i.coverSmall,
+          coverLarge: isPlaceholderCover(i.coverLarge) ? collection.coverLarge : i.coverLarge,
         }));
 
         setQueue(itemsWithCover);

@@ -2,6 +2,7 @@ import { fetch } from '@tauri-apps/plugin-http';
 import { invoke } from '@tauri-apps/api/core';
 import { Language, translations } from '../i18n';
 import { resolveFeedItem, bylineFromRuns } from '../utils/feed';
+import { isPlaceholderCover, letterCover, localCover } from '../utils/covers';
 import {
   isAcceptableLyricsMatch,
   pickBestSyncedLyrics,
@@ -637,10 +638,7 @@ export function getOptimizedCover(
   size: 'small' | 'medium' | 'large'
 ): string {
   if (!url) return '';
-  if (url.includes('ui-avatars')) {
-    const sz = size === 'small' ? 120 : size === 'medium' ? 360 : 540;
-    return url.replace('size=540', `size=${sz}`);
-  }
+  if (isPlaceholderCover(url)) return localCover(url);
   let u = url;
   if (u.startsWith('//')) u = 'https:' + u;
   if (u.includes('ytimg.com/vi')) {
@@ -2726,8 +2724,7 @@ function buildFallbackCovers(
       coverLarge: `${YTIMG_BASE}${videoId}/hqdefault.jpg`,
     };
   }
-  const safeTitle = (title || '?').slice(0, 2);
-  const cover = `https://ui-avatars.com/api/?name=${encodeURIComponent(safeTitle)}&background=1a1a2e&color=fff&size=540&bold=true`;
+  const cover = letterCover(title || '?');
   return { cover, coverSmall: cover, coverLarge: cover };
 }
 
