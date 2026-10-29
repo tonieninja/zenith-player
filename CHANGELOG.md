@@ -1,5 +1,11 @@
 # Changelog
 
+## 4.1.3
+
+- phone remote refuses to pair if Windows can't give it a random code, instead of making a weak one
+- playlists without a cover get their letter tile drawn by the app, the name no longer goes to ui-avatars.com
+- the system media panel only gets real cover links
+
 ## 4.1.2
 
 - the lyrics view uses way less CPU and GPU while a song plays, looks exactly the same
