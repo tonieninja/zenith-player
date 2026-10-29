@@ -21,13 +21,15 @@ crossfade, a 15-band EQ, offline downloads, a phone remote and a pile of plugins
 Zenith isn't affiliated with, endorsed by or connected to Google or YouTube in any way. It's just a
 player that talks to YouTube Music. Your account and YouTube's terms still apply.
 
-Privacy: the microphone is only used by the Voice ducking plugin to lower the music while you talk,
-and only while that plugin is on. Nothing gets recorded or sent anywhere, settings, history and
-your session stay on your computer.
-
 ## Download
 
-Grab it from [Releases](https://github.com/tonieninja/zenith-player/releases/latest).
+<a href="https://github.com/tonieninja/zenith-player/releases/latest"><img src="assets/dl-windows.svg" width="33.33%" alt="Download for Windows 10 and 11, 64 or 32 bit"></a><a href="https://github.com/tonieninja/zenith-player/releases/latest"><img src="assets/dl-linux.svg" width="33.33%" alt="Download for Linux: deb, rpm or AppImage"></a><a href="https://github.com/tonieninja/zenith-player/releases/latest"><img src="assets/dl-macos.svg" width="33.33%" alt="Download for macOS 11 or newer, universal"></a>
+
+Windows builds aren't signed, so SmartScreen will complain. More info, Run anyway.
+On macOS right click, Open the first time (or System Settings, Privacy & Security, Open Anyway). `SHA256SUMS` is attached to every release.
+
+<details>
+<summary>Which file do I need?</summary>
 
 | System               | File                                                                             |
 | -------------------- | -------------------------------------------------------------------------------- |
@@ -38,10 +40,13 @@ Grab it from [Releases](https://github.com/tonieninja/zenith-player/releases/lat
 | Any Linux            | `Zenith_4.1.2_amd64.AppImage`                                                    |
 | macOS 11+            | `Zenith_4.1.2_universal.dmg` (built by CI, I don't have a Mac to test it)        |
 
-Windows builds aren't signed, so SmartScreen will complain. More info, Run anyway.
-On macOS right click, Open the first time (or System Settings, Privacy & Security, Open Anyway). `SHA256SUMS` is attached to every release.
+</details>
 
 ## What it does
+
+<img src="assets/card-lyrics.svg" width="50%" alt="Lyrics from five places: LRCLib, Musixmatch, Genius, lyrics.ovh and YouTube. Synced, with karaoke fill, an overlay and a window for your second screen"><img src="assets/card-eq.svg" width="50%" alt="A 15-band EQ in a small Rust audio engine, with loudness normalization next to it"><img src="assets/card-crossfade.svg" width="50%" alt="Crossfade and gapless: 2 to 12 second crossfades, and albums that play through without a gap"><img src="assets/card-remote.svg" width="50%" alt="Your phone is the remote: scan the code on the same Wi-Fi, PIN if you want one, nothing leaves the LAN"><img src="assets/card-plugins.svg" width="50%" alt="35 plugins: hotkeys, an A-B loop, Discord, Last.fm, a mini player. Turn on what you want"><img src="assets/card-offline.svg" width="50%" alt="Offline, no ads, no telemetry: save tracks and play them without internet, settings stay on your computer">
+
+And the rest:
 
 - Home, Explore, Search, Library, queue with drag and drop, shuffle, loop, radio after the queue ends
 - Crossfade (2 to 12 s), gapless albums, A-B loop, speed with pitch kept, sleep timer
@@ -120,6 +125,10 @@ requested by the user or the person installing or operating it. Playing music ta
 Music, lyrics come from lyrics sites, and Discord, Last.fm, Spotify export and the phone remote only
 connect once you turn them on. The update check asks GitHub for the latest release, you can turn it
 off in Settings. Your Google cookies stay on your computer and only go to Google.
+
+The microphone is only used by the Voice ducking plugin to lower the music while you talk,
+and only while that plugin is on. Nothing gets recorded or sent anywhere, settings, history and
+your session stay on your computer.
 
 ## License
 
