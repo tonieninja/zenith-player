@@ -30,6 +30,13 @@ crossfade, a 15-band EQ, offline downloads, a phone remote and a pile of plugins
 Windows builds aren't signed, so SmartScreen will complain. More info, Run anyway.
 On macOS right click, Open the first time (or System Settings, Privacy & Security, Open Anyway). `SHA256SUMS` is attached to every release.
 
+With [Scoop](https://scoop.sh) on Windows:
+
+```pwsh
+scoop bucket add zenith https://github.com/tonieninja/scoop-zenith
+scoop install zenith/zenith
+```
+
 <details>
 <summary>Which file do I need?</summary>
 
