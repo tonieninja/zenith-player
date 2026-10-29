@@ -18,8 +18,10 @@
 Desktop player for YouTube Music. Tauri 2 (Rust) with a React UI. Synced lyrics, gapless albums,
 crossfade, a 15-band EQ, offline downloads, a phone remote and a pile of plugins. No ads, no telemetry.
 
-Zenith isn't affiliated with, endorsed by or connected to Google or YouTube in any way. It's just a
-player that talks to YouTube Music. Your account and YouTube's terms still apply.
+> [!NOTE]
+> Zenith is an independent, unofficial app. It isn't affiliated with, endorsed by, sponsored by or
+> connected to Google or YouTube in any way, it's just a player that talks to YouTube Music. Your
+> account and YouTube's terms still apply. YouTube, YouTube Music and Google are trademarks of Google LLC.
 
 ## Download
 
