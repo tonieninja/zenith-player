@@ -1,6 +1,6 @@
 import { fetch } from '@tauri-apps/plugin-http';
 import { isAcceptableLyricsMatch, scoreLyricsMatch } from './match';
-import { normalizeSynced, type LyricsLine } from './parse';
+import { normalizeSynced, parseLrc, type LyricsLine } from './parse';
 
 export interface SourceQuery {
   title: string;
@@ -180,4 +180,30 @@ export async function getLyricsPlus(q: SourceQuery): Promise<SourceHit | null> {
     return text ? { text, score } : null;
   }
   return lines.length >= 2 ? { synced: lines, score } : null;
+}
+
+// Boidu trzyma teksty pod tytułem, wykonawcą i długością, bez długości nie ma czego pytać
+export async function getBoidu(q: SourceQuery): Promise<SourceHit | null> {
+  if (!q.durationSec) return null;
+  const url = `https://lyrics-api.boidu.dev/getLyrics?${qs({
+    s: q.title,
+    a: q.artist,
+    d: Math.round(q.durationSec),
+  })}`;
+  const res = await fetch(url, { headers: { 'User-Agent': UA, Accept: 'application/json' } });
+  // 401 i 404 znaczą tu, że takiej piosenki nie ma w bazie
+  if (res.status === 401 || res.status === 404) return null;
+  if (!res.ok) throw new Error(`Boidu HTTP ${res.status}`);
+  let data: any;
+  try {
+    data = JSON.parse(await res.text());
+  } catch {
+    throw new Error("Boidu sent something that isn't JSON");
+  }
+  const raw = [data?.ttml, data?.syncedLyrics, data?.lrc, data?.lyrics].find(
+    (v) => typeof v === 'string' && v.trim()
+  ) as string | undefined;
+  if (!raw) return null;
+  const synced = raw.includes('<tt') ? parseTtml(raw) : parseLrc(raw);
+  return synced.length >= 2 ? { synced } : null;
 }

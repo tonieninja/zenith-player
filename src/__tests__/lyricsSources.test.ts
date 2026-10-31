@@ -5,6 +5,7 @@ vi.mock('@tauri-apps/plugin-http', () => ({ fetch: (...a: unknown[]) => httpFetc
 
 import {
   base64Utf8,
+  getBoidu,
   getLyricsPlus,
   parseTtml,
   stripCredits,
@@ -96,5 +97,26 @@ describe('LyricsPlus', () => {
     expect(await getLyricsPlus(q)).toBeNull();
     httpFetch.mockResolvedValueOnce(json({}, 500));
     await expect(getLyricsPlus(q)).rejects.toThrow('LyricsPlus HTTP 500');
+  });
+});
+
+describe('Boidu', () => {
+  it('needs a duration and reads ttml', async () => {
+    expect(await getBoidu({ title: 'x', artist: 'y' })).toBeNull();
+    expect(httpFetch).not.toHaveBeenCalled();
+    httpFetch.mockResolvedValue(
+      json({
+        ttml: '<tt><body><p begin="1.0"><span>Hello</span></p><p begin="2.5">there</p></body></tt>',
+      })
+    );
+    expect((await getBoidu(q))?.synced).toEqual([
+      { time: 1, text: 'Hello' },
+      { time: 2.5, text: 'there' },
+    ]);
+  });
+
+  it('treats 401 as not in the database', async () => {
+    httpFetch.mockResolvedValue(json({ error: 'not cached' }, 401));
+    expect(await getBoidu(q)).toBeNull();
   });
 });

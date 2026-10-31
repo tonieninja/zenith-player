@@ -666,6 +666,7 @@ export default function App() {
       'YouTube Music',
       'LRCLib',
       'LyricsPlus',
+      'Boidu',
       'LyricsGenius',
       'Lyrics.ovh',
     ],

@@ -11,7 +11,7 @@ import {
 } from '../lyrics/match';
 import { GENIUS_BROWSER_HEADERS, geniusHttpError, LYRICS_BROWSER_UA } from '../lyrics/providers';
 import { normalizeSynced, parseLrc, type LyricsLine } from '../lyrics/parse';
-import { getLyricsPlus, type SourceHit, type SourceQuery } from '../lyrics/sources';
+import { getBoidu, getLyricsPlus, type SourceHit, type SourceQuery } from '../lyrics/sources';
 import { getMusixmatchLyrics as getMusixmatchTrackLyrics } from './musixmatch';
 
 const DEFAULT_YTM_KEY = 'AIzaSyC9XL3ZjWddXya6X74dJoCTL-WEYFDNX30';
@@ -280,7 +280,14 @@ export interface LyricsResult {
 }
 
 export type LyricsProvider =
-  'Auto' | 'LRCLib' | 'Musixmatch' | 'YouTube Music' | 'LyricsGenius' | 'Lyrics.ovh' | 'LyricsPlus';
+  | 'Auto'
+  | 'LRCLib'
+  | 'Musixmatch'
+  | 'YouTube Music'
+  | 'LyricsGenius'
+  | 'Lyrics.ovh'
+  | 'LyricsPlus'
+  | 'Boidu';
 
 export const MOOD_BROWSE_ID = 'FEmusic_moods_and_genres_category';
 const BROWSE_PARAMS_SEP = '::';
@@ -1827,6 +1834,7 @@ const LYRICS_TIMEOUT_MS: Partial<Record<LyricsProvider, number>> = {
   LRCLib: 10000,
   'Lyrics.ovh': 8000,
   LyricsPlus: 10000,
+  Boidu: 10000,
 };
 const DEFAULT_LYRICS_TIMEOUT_MS = 12000;
 
@@ -1942,7 +1950,7 @@ async function getLyricsUncached(
   const fallbackOrder: LyricsProvider[] = ['YouTube Music', 'LyricsGenius'];
   const fallbacks = fallbackOrder.map((p) => attempt(p));
   const raced = await settleWithGrace(
-    [attempt('LRCLib'), attempt('Musixmatch'), attempt('LyricsPlus')],
+    [attempt('LRCLib'), attempt('Musixmatch'), attempt('LyricsPlus'), attempt('Boidu')],
     (x) => Boolean(x.res?.synced?.length),
     1500
   );
@@ -2545,10 +2553,17 @@ async function getLyricsForProvider(
   if (provider === 'Lyrics.ovh') return await getLyricsOvh(track);
   if (provider === 'Musixmatch') return await getMusixmatchLyricsFor(track);
   if (provider === 'LyricsGenius') return await getGeniusLyrics(track);
-  if (provider === 'LyricsPlus')
-    return sourceResult(provider, await getLyricsPlus(sourceQuery(track)));
+  const source = LYRICS_SOURCES[provider];
+  if (source) return sourceResult(provider, await source(sourceQuery(track)));
   return null;
 }
+
+const LYRICS_SOURCES: Partial<
+  Record<LyricsProvider, (q: SourceQuery) => Promise<SourceHit | null>>
+> = {
+  LyricsPlus: getLyricsPlus,
+  Boidu: getBoidu,
+};
 
 function sourceQuery(track: Track): SourceQuery {
   return {
