@@ -11,7 +11,13 @@ import {
 } from '../lyrics/match';
 import { GENIUS_BROWSER_HEADERS, geniusHttpError, LYRICS_BROWSER_UA } from '../lyrics/providers';
 import { normalizeSynced, parseLrc, type LyricsLine } from '../lyrics/parse';
-import { getBoidu, getLyricsPlus, type SourceHit, type SourceQuery } from '../lyrics/sources';
+import {
+  getBoidu,
+  getLyricsPlus,
+  getUnison,
+  type SourceHit,
+  type SourceQuery,
+} from '../lyrics/sources';
 import { getMusixmatchLyrics as getMusixmatchTrackLyrics } from './musixmatch';
 
 const DEFAULT_YTM_KEY = 'AIzaSyC9XL3ZjWddXya6X74dJoCTL-WEYFDNX30';
@@ -287,7 +293,8 @@ export type LyricsProvider =
   | 'LyricsGenius'
   | 'Lyrics.ovh'
   | 'LyricsPlus'
-  | 'Boidu';
+  | 'Boidu'
+  | 'Unison';
 
 export const MOOD_BROWSE_ID = 'FEmusic_moods_and_genres_category';
 const BROWSE_PARAMS_SEP = '::';
@@ -1835,8 +1842,12 @@ const LYRICS_TIMEOUT_MS: Partial<Record<LyricsProvider, number>> = {
   'Lyrics.ovh': 8000,
   LyricsPlus: 10000,
   Boidu: 10000,
+  Unison: 10000,
 };
 const DEFAULT_LYRICS_TIMEOUT_MS = 12000;
+
+const SECOND_WAVE: LyricsProvider[] = ['Unison'];
+const SECOND_WAVE_MAX_MS = 6000;
 
 function lyricsTimeoutFor(provider: LyricsProvider): number {
   return LYRICS_TIMEOUT_MS[provider] ?? DEFAULT_LYRICS_TIMEOUT_MS;
@@ -1961,7 +1972,21 @@ async function getLyricsUncached(
   if (syncedHits.length) {
     return pickBestSyncedLyrics(syncedHits);
   }
-  for (const x of raced) {
+
+  // druga fala rusza dopiero po pudle, żeby przy każdej piosence nie pytać ośmiu serwisów
+  const second = await settleWithGrace(
+    SECOND_WAVE.map((p) => attempt(p)),
+    (x) => Boolean(x.res?.synced?.length),
+    1200,
+    new Promise<void>((r) => window.setTimeout(r, SECOND_WAVE_MAX_MS))
+  );
+  for (const x of second) if (x.failure) failures.push(x.failure);
+  const secondHits = second
+    .map((x) => x.res)
+    .filter((r): r is LyricsResult => Boolean(r?.synced?.length));
+  if (secondHits.length) return pickBestSyncedLyrics(secondHits);
+
+  for (const x of [...raced, ...second]) {
     if (x.res?.text && !plainFallback) plainFallback = x.res;
   }
 
@@ -2563,6 +2588,7 @@ const LYRICS_SOURCES: Partial<
 > = {
   LyricsPlus: getLyricsPlus,
   Boidu: getBoidu,
+  Unison: getUnison,
 };
 
 function sourceQuery(track: Track): SourceQuery {

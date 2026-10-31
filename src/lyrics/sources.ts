@@ -207,3 +207,28 @@ export async function getBoidu(q: SourceQuery): Promise<SourceHit | null> {
   const synced = raw.includes('<tt') ? parseTtml(raw) : parseLrc(raw);
   return synced.length >= 2 ? { synced } : null;
 }
+
+function unisonHit(data: any): SourceHit | null {
+  const lyrics = data?.data?.lyrics;
+  if (typeof lyrics !== 'string' || !lyrics.trim()) return null;
+  const format = String(data?.data?.format || '').toLowerCase();
+  if (format === 'plain') return { text: lyrics.trim() };
+  const synced = lyrics.includes('<tt') ? parseTtml(lyrics) : parseLrc(lyrics);
+  if (synced.length >= 2) return { synced };
+  return { text: lyrics.trim() };
+}
+
+// najpierw po id filmu, bo społeczność wrzuca teksty pod konkretne nagranie
+export async function getUnison(q: SourceQuery): Promise<SourceHit | null> {
+  const base = 'https://unison.betterlyrics.org/lyrics';
+  if (q.videoId) {
+    const hit = unisonHit(await getJson(`${base}?${qs({ v: q.videoId })}`, 'Unison'));
+    if (hit) return hit;
+  }
+  const url = `${base}?${qs({
+    song: q.title,
+    artist: q.artist,
+    duration: q.durationSec ? Math.round(q.durationSec) : undefined,
+  })}`;
+  return unisonHit(await getJson(url, 'Unison'));
+}

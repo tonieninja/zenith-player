@@ -49,6 +49,7 @@
         { "url": "https://api.genius.com/*" },
         { "url": "https://lyricsplus.binimum.org/*" },
         { "url": "https://lyrics-api.boidu.dev/*" },
+        { "url": "https://unison.betterlyrics.org/*" },
         { "url": "https://api.github.com/*" },
         { "url": "https://github.com/*" },
         { "url": "https://accounts.spotify.com/*" },

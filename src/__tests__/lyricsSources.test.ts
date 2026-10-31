@@ -7,6 +7,7 @@ import {
   base64Utf8,
   getBoidu,
   getLyricsPlus,
+  getUnison,
   parseTtml,
   stripCredits,
   ttmlTime,
@@ -118,5 +119,27 @@ describe('Boidu', () => {
   it('treats 401 as not in the database', async () => {
     httpFetch.mockResolvedValue(json({ error: 'not cached' }, 401));
     expect(await getBoidu(q)).toBeNull();
+  });
+});
+
+describe('Unison', () => {
+  it('asks by video id first, then by name', async () => {
+    httpFetch
+      .mockResolvedValueOnce(json({ success: false }, 404))
+      .mockResolvedValueOnce(
+        json({ data: { format: 'lrc', lyrics: '[00:01.00]one\n[00:02.00]two' } })
+      );
+    const hit = await getUnison({ ...q, videoId: 'abcdefghijk' });
+    expect(hit?.synced).toEqual([
+      { time: 1, text: 'one' },
+      { time: 2, text: 'two' },
+    ]);
+    expect(String(httpFetch.mock.calls[0][0])).toContain('v=abcdefghijk');
+    expect(String(httpFetch.mock.calls[1][0])).toContain('song=Blinding%20Lights');
+  });
+
+  it('keeps plain lyrics plain', async () => {
+    httpFetch.mockResolvedValue(json({ data: { format: 'plain', lyrics: 'just words' } }));
+    expect(await getUnison(q)).toEqual({ text: 'just words' });
   });
 });

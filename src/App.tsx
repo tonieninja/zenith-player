@@ -667,6 +667,7 @@ export default function App() {
       'LRCLib',
       'LyricsPlus',
       'Boidu',
+      'Unison',
       'LyricsGenius',
       'Lyrics.ovh',
     ],
