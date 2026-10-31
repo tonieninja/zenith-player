@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Zenith logo, editable source. Open in Inkscape (or Figma / Illustrator) and every
+  part is on its own named layer. The Z is a single stroked path on purpose, so the
+  stroke width can be tweaked without redrawing anything.
+  After editing, copy the result into zenith-logo.svg and run scripts/brand/build-brand.py
+-->
+<svg xmlns="http://www.w3.org/2000/svg"
+     xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+     viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1a2133"/>
+      <stop offset="1" stop-color="#0a0c12"/>
+    </linearGradient>
+    <linearGradient id="z" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#9cc6ff"/>
+      <stop offset="0.55" stop-color="#5b9dff"/>
+      <stop offset="1" stop-color="#2f6fd4"/>
+    </linearGradient>
+    <radialGradient id="sun" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#b9d6ff"/>
+    </radialGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#5b9dff" stop-opacity="0.45"/>
+      <stop offset="1" stop-color="#5b9dff" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <g id="layer-guides" inkscape:groupmode="layer" inkscape:label="Guides (hidden)" style="display:none">
+    <rect x="48" y="48" width="928" height="928" fill="none" stroke="#ff00aa" stroke-width="2" stroke-dasharray="8 8"/>
+    <rect x="160" y="160" width="704" height="704" fill="none" stroke="#00e0ff" stroke-width="2" stroke-dasharray="8 8"/>
+  </g>
+  <g id="layer-tile" inkscape:groupmode="layer" inkscape:label="Tile">
+    <rect x="48" y="48" width="928" height="928" rx="232" fill="url(#bg)"/>
+    <rect x="49.5" y="49.5" width="925" height="925" rx="230.5" fill="none" stroke="#ffffff" stroke-opacity="0.08" stroke-width="3"/>
+  </g>
+  <g id="layer-glow" inkscape:groupmode="layer" inkscape:label="Glow">
+    <circle cx="724" cy="254" r="190" fill="url(#glow)"/>
+  </g>
+  <g id="layer-mark" inkscape:groupmode="layer" inkscape:label="Z mark">
+    <path id="z-path" d="M292 392 H684 L318 752 H732" fill="none" stroke="url(#z)" stroke-width="120" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <g id="layer-sun" inkscape:groupmode="layer" inkscape:label="Sun (zenith point)">
+    <circle cx="724" cy="254" r="62" fill="url(#sun)"/>
+  </g>
+</svg>

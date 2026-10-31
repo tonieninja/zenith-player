@@ -1,0 +1,73 @@
+[package]
+name = "zenith-player"
+version = "4.0.0"
+description = "Independent desktop music player. Not affiliated with Google or YouTube."
+authors = ["tonieninja"]
+edition = "2021"
+license = "MIT"
+homepage = "https://github.com/tonieninja/zenith-player"
+repository = "https://github.com/tonieninja/zenith-player"
+
+[lib]
+name = "zenith_player_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[features]
+default = []
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon", "macos-private-api"] }
+tauri-plugin-opener = "2"
+tauri-plugin-global-shortcut = "2"
+tauri-plugin-clipboard-manager = "2"
+tauri-plugin-single-instance = "2"
+lazy_static = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+url = "2"
+tauri-plugin-http = { version = "2.5.9", features = ["unsafe-headers"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync", "time"] }
+axum = { version = "0.8", features = ["ws"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "rustls-tls-native-roots", "system-proxy", "http2", "charset", "stream", "blocking", "json"] }
+getrandom = "0.2"
+sha1 = "0.10"
+futures-util = "0.3"
+discord-rich-presence = "0.2.5"
+hidapi = "2"
+tauri-plugin-updater = "~2.12"
+tauri-plugin-process = "~2.3"
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
+qrcode = { version = "0.14", default-features = false, features = ["svg"] }
+md-5 = "0.10"
+mdns-sd = { version = "0.21", default-features = false }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+# same version wry/tauri already link, used to tune the webview's memory caches
+webkit2gtk = "=2.0.2"
+libc = "0.2"
+# native audio engine (src/native_audio.rs); same gstreamer webkit2gtk already uses
+gstreamer = "0.23"
+# MPRIS (src/mpris.rs); already linked through the opener/single-instance plugins
+zbus = "5"
+
+[target.'cfg(windows)'.dependencies]
+# same versions wry already links; used for the WebView2 memory target (src/wv2_mem.rs)
+webview2-com = "0.38"
+windows-core = "0.61"
+windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_Security_Cryptography", "Win32_System_Registry", "Win32_UI_WindowsAndMessaging", "Win32_Networking_WinHttp"] }
+
+[profile.release]
+panic = "abort"
+codegen-units = 1
+lto = true
+opt-level = 3
+strip = true
+
+[patch.crates-io]
+# wry 0.55.1 with one small change in src/webkitgtk/web_context.rs: it reads ZENITH_WEBKIT_MP
+# and sets WebKitGTK memory pressure limits on the web context (Linux only, see webview_tuning.rs).
+# Everything else is identical to the crates.io release.
+wry = { path = "vendor/wry" }

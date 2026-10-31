@@ -1,0 +1,13 @@
+name: Feature request
+description: Suggest an idea or a plugin
+labels: [enhancement]
+body:
+  - type: textarea
+    attributes: { label: What do you want, description: The problem and the idea }
+    validations: { required: true }
+  - type: checkboxes
+    attributes:
+      label: Scope
+      options:
+        - label: This is not a download/export-to-file feature (out of scope, see README)
+          required: true

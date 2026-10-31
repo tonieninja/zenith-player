@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="400" viewBox="0 0 1280 400"><defs><linearGradient id="bb" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#0b0e16"/><stop offset="1" stop-color="#18203a"/></linearGradient><radialGradient id="halo" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="#5b9dff" stop-opacity=".35"/><stop offset="1" stop-color="#5b9dff" stop-opacity="0"/></radialGradient><radialGradient id="halo2" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="#9cc6ff" stop-opacity=".12"/><stop offset="1" stop-color="#9cc6ff" stop-opacity="0"/></radialGradient></defs><g id="background"><rect width="1280" height="400" fill="url(#bb)"/><circle cx="226.4" cy="200.0" r="248.0" fill="url(#halo)"/><circle cx="1126.4" cy="40.0" r="280.0" fill="url(#halo2)"/></g><g id="logo"><svg x="102.4" y="76.0" width="248.0" height="248.0" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1a2133"/>
+      <stop offset="1" stop-color="#0a0c12"/>
+    </linearGradient>
+    <linearGradient id="z" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#9cc6ff"/>
+      <stop offset="0.55" stop-color="#5b9dff"/>
+      <stop offset="1" stop-color="#2f6fd4"/>
+    </linearGradient>
+    <radialGradient id="sun" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#b9d6ff"/>
+    </radialGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#5b9dff" stop-opacity="0.45"/>
+      <stop offset="1" stop-color="#5b9dff" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect x="48" y="48" width="928" height="928" rx="232" fill="url(#bg)"/>
+  <rect x="49.5" y="49.5" width="925" height="925" rx="230.5" fill="none" stroke="#ffffff" stroke-opacity="0.08" stroke-width="3"/>
+  <circle cx="724" cy="254" r="190" fill="url(#glow)"/>
+  <path d="M292 392 H684 L318 752 H732" fill="none" stroke="url(#z)" stroke-width="120" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="724" cy="254" r="62" fill="url(#sun)"/>
+</svg></g><g id="text"><text x="395.2" y="210.0" font-family="Outfit, Inter, sans-serif" font-weight="700" font-size="100.0" letter-spacing="4.0" fill="#ffffff">Zenith</text><text x="399.2" y="267.0" font-family="Inter, sans-serif" font-size="30.0" fill="#c4cde0">A fast, good looking desktop player for YouTube Music</text><text x="399.2" y="307.0" font-family="Inter, sans-serif" font-size="20.0" fill="#7f8aa3">Windows · Linux · macOS  ·  free and open source</text></g></svg>

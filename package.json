@@ -1,0 +1,52 @@
+{
+  "name": "zenith-player",
+  "private": true,
+  "version": "4.0.0",
+  "license": "MIT",
+  "description": "Independent desktop music player. Not affiliated with Google or YouTube.",
+  "packageManager": "pnpm@10.18.3",
+  "engines": {
+    "node": ">=20",
+    "pnpm": ">=10"
+  },
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "tauri": "tauri",
+    "format": "prettier --write \"src/**/*.{ts,tsx,css}\" \"*.{html,ts,json}\"",
+    "format:check": "prettier --check \"src/**/*.{ts,tsx,css}\" \"*.{html,ts,json}\"",
+    "typecheck": "tsc --noEmit",
+    "codesign:dev": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/gen-dev-codesign-cert.ps1",
+    "codesign:trust": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/trust-local-publisher.ps1",
+    "dist": "pnpm tauri build",
+    "dist:win": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-windows.ps1",
+    "dist:linux": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-linux.ps1",
+    "test": "vitest run",
+    "e2e": "playwright test"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.11.0",
+    "@tauri-apps/plugin-clipboard-manager": "^2",
+    "@tauri-apps/plugin-http": "^2.5.9",
+    "@tauri-apps/plugin-opener": "^2",
+    "@tauri-apps/plugin-process": "~2.3.1",
+    "@tauri-apps/plugin-updater": "~2.12.0",
+    "lucide-react": "^1.16.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.64.1",
+    "@tauri-apps/cli": "^2",
+    "@types/react": "^19.1.8",
+    "@types/react-dom": "^19.1.6",
+    "@vitejs/plugin-react": "^4.6.0",
+    "jsdom": "^25.0.1",
+    "prettier": "^3.6.2",
+    "typescript": "~5.8.3",
+    "vite": "^7.0.4",
+    "vitest": "^3.2.7"
+  }
+}

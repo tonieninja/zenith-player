@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Zenith Listening Room - Guest</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: 'Segoe UI', system-ui, sans-serif;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background: #0b0d10;
+        color: #f2f4f7;
+        display: grid;
+        place-items: center;
+        padding: 24px;
+      }
+      .card {
+        width: min(520px, 100%);
+        background: #151922;
+        border: 1px solid #2a3140;
+        border-radius: 16px;
+        padding: 24px;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+      }
+      h1 {
+        margin: 0 0 8px;
+        font-size: 1.35rem;
+      }
+      p {
+        margin: 0 0 16px;
+        color: #9aa3b2;
+        line-height: 1.4;
+      }
+      input,
+      button {
+        font: inherit;
+        border-radius: 10px;
+        border: 1px solid #3a4254;
+        padding: 10px 12px;
+      }
+      input {
+        width: 100%;
+        box-sizing: border-box;
+        background: #0f131a;
+        color: #fff;
+        letter-spacing: 0.2em;
+        text-transform: uppercase;
+        text-align: center;
+        font-size: 1.2rem;
+      }
+      button {
+        margin-top: 10px;
+        width: 100%;
+        background: #3b82f6;
+        border-color: #3b82f6;
+        color: white;
+        cursor: pointer;
+        font-weight: 600;
+      }
+      button:disabled {
+        opacity: 0.5;
+        cursor: wait;
+      }
+      .status {
+        margin-top: 16px;
+        padding: 12px;
+        border-radius: 10px;
+        background: #0f131a;
+        border: 1px solid #2a3140;
+        font-family: ui-monospace, Consolas, monospace;
+        font-size: 0.85rem;
+        white-space: pre-wrap;
+        min-height: 120px;
+      }
+      .now {
+        margin-top: 14px;
+        padding: 12px;
+        border-radius: 12px;
+        background: linear-gradient(135deg, #1a2233, #121722);
+        border: 1px solid #334155;
+      }
+      .now strong {
+        display: block;
+        font-size: 1.05rem;
+        margin-bottom: 4px;
+      }
+      .meta {
+        color: #94a3b8;
+        font-size: 0.9rem;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <h1>Zenith Guest</h1>
+      <p>Join the host Listening Room over local WebSocket. Paste the 6-character code from Zenith.</p>
+      <input id="code" maxlength="6" placeholder="ROOM CODE" autocomplete="off" />
+      <button id="join">Join room</button>
+      <div class="now" id="now" hidden>
+        <strong id="title">-</strong>
+        <div class="meta" id="artist">-</div>
+        <div class="meta" id="pos">-</div>
+      </div>
+      <div class="status" id="log">Ready.</div>
+    </div>
+    <script>
+      const logEl = document.getElementById('log');
+      const nowEl = document.getElementById('now');
+      const titleEl = document.getElementById('title');
+      const artistEl = document.getElementById('artist');
+      const posEl = document.getElementById('pos');
+      const codeEl = document.getElementById('code');
+      const joinBtn = document.getElementById('join');
+      let socket = null;
+      let packets = 0;
+
+      const params = new URLSearchParams(location.search);
+      const defaultPort = Number(params.get('port') || 18765);
+
+      function log(msg) {
+        const line = `[${new Date().toLocaleTimeString()}] ${msg}`;
+        logEl.textContent = `${line}\n${logEl.textContent}`.slice(0, 2500);
+        console.log(line);
+      }
+
+      function renderState(state) {
+        packets += 1;
+        nowEl.hidden = false;
+        titleEl.textContent = state.title || state.trackId || '-';
+        artistEl.textContent = state.artist || '';
+        const playing = state.isPlaying ? 'PLAYING' : 'PAUSED';
+        posEl.textContent = `${playing} @ ${Number(state.position || 0).toFixed(1)}s · packets=${packets}`;
+        window.__zenithGuest = { packets, last: state, at: Date.now(), connected: true };
+        log(`sync ${state.trackId} ${playing} pos=${Number(state.position || 0).toFixed(1)}`);
+      }
+
+      async function join(code) {
+        const cleaned = String(code || '')
+          .trim()
+          .toUpperCase();
+        if (!/^[A-Z0-9]{6}$/.test(cleaned)) {
+          log('Invalid code');
+          return;
+        }
+        joinBtn.disabled = true;
+        if (socket) {
+          try {
+            socket.close();
+          } catch {}
+          socket = null;
+        }
+        packets = 0;
+        const port = Number(params.get('port') || defaultPort || 18765);
+        const url = `ws://127.0.0.1:${port}/ws?code=${encodeURIComponent(cleaned)}`;
+        log(`Connecting ${url}...`);
+        try {
+          const ws = new WebSocket(url);
+          socket = ws;
+          const timer = setTimeout(() => {
+            log('Join timeout (12s)');
+            try {
+              ws.close();
+            } catch {}
+            joinBtn.disabled = false;
+          }, 12000);
+          ws.onopen = () => {
+            clearTimeout(timer);
+            log('CONNECTED as guest');
+            joinBtn.disabled = false;
+            window.__zenithGuest = { connected: true, host: cleaned, packets: 0, port };
+          };
+          ws.onmessage = (ev) => {
+            try {
+              const state = typeof ev.data === 'string' ? JSON.parse(ev.data) : ev.data;
+              renderState(state);
+            } catch (e) {
+              log('bad packet: ' + e);
+            }
+          };
+          ws.onerror = () => {
+            clearTimeout(timer);
+            log('ws error');
+            joinBtn.disabled = false;
+          };
+          ws.onclose = () => log('connection closed');
+        } catch (e) {
+          log('failed: ' + e);
+          joinBtn.disabled = false;
+        }
+      }
+
+      joinBtn.addEventListener('click', () => join(codeEl.value));
+      codeEl.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') join(codeEl.value);
+      });
+
+      const q = params.get('code');
+      if (q) {
+        codeEl.value = q.toUpperCase();
+        join(q);
+      }
+    </script>
+  </body>
+</html>

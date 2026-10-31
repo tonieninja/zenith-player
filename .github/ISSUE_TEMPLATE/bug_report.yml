@@ -1,0 +1,23 @@
+name: Bug report
+description: Something does not work as expected
+labels: [bug]
+body:
+  - type: input
+    attributes: { label: Zenith version, placeholder: "4.0.0" }
+    validations: { required: true }
+  - type: dropdown
+    attributes:
+      label: OS
+      options: [Windows 11 (installer), Windows 11 (portable), Windows 10 (installer), Windows 10 (portable), Linux (.deb), Linux (AppImage), Linux (built from source)]
+    validations: { required: true }
+  - type: textarea
+    attributes: { label: What happened, description: Steps to reproduce and what you expected }
+    validations: { required: true }
+  - type: textarea
+    attributes: { label: Logs, description: "Run from a terminal with ZENITH_DEBUG=1 and paste the output. Remove anything that looks like a cookie or token.", render: text }
+  - type: checkboxes
+    attributes:
+      label: Checks
+      options:
+        - label: I am on the latest release
+        - label: This is not a security issue (those go to SECURITY.md)
