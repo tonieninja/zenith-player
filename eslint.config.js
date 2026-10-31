@@ -20,8 +20,8 @@ export default defineConfig(
     },
   },
   {
-    // odpowiedzi YouTube i Musixmatch nie mają publicznego schematu
-    files: ['src/api/**', 'src/__tests__/**'],
+    // odpowiedzi YouTube, Musixmatch i serwisów z tekstami nie mają publicznego schematu
+    files: ['src/api/**', 'src/lyrics/sources.ts', 'src/__tests__/**'],
     rules: { '@typescript-eslint/no-explicit-any': 'off' },
   }
 );

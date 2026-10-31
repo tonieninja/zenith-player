@@ -660,7 +660,15 @@ export default function App() {
   }, []);
 
   const lyricProviders = useMemo<LyricsProvider[]>(
-    () => ['Auto', 'Musixmatch', 'YouTube Music', 'LRCLib', 'LyricsGenius', 'Lyrics.ovh'],
+    () => [
+      'Auto',
+      'Musixmatch',
+      'YouTube Music',
+      'LRCLib',
+      'LyricsPlus',
+      'LyricsGenius',
+      'Lyrics.ovh',
+    ],
     []
   );
   const providerIndex = useMemo(() => {

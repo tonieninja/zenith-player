@@ -47,6 +47,7 @@
         { "url": "https://s.mxmcdn.net/*" },
         { "url": "https://genius.com/*" },
         { "url": "https://api.genius.com/*" },
+        { "url": "https://lyricsplus.binimum.org/*" },
         { "url": "https://api.github.com/*" },
         { "url": "https://github.com/*" },
         { "url": "https://accounts.spotify.com/*" },
