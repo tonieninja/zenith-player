@@ -670,6 +670,7 @@ export default function App() {
       'Unison',
       'Netease',
       'QQ Music',
+      'Kugou',
       'LyricsGenius',
       'Lyrics.ovh',
     ],

@@ -322,3 +322,58 @@ export async function getQQMusic(q: SourceQuery): Promise<SourceHit | null> {
   }
   return null;
 }
+
+// wyszukiwarka Kugou co któreś zapytanie oddaje pustą listę, więc pytamy dwa razy
+async function kugouSearch(q: SourceQuery): Promise<any[]> {
+  const url = `https://songsearch.kugou.com/song_search_v2?${qs({
+    keyword: `${q.title} ${q.artist}`,
+    page: 1,
+    pagesize: 8,
+  })}`;
+  for (let i = 0; i < 2; i++) {
+    const data = await getJson(url, 'Kugou');
+    const lists = data?.data?.lists;
+    if (Array.isArray(lists) && lists.length) return lists;
+  }
+  return [];
+}
+
+const stripTags = (s: unknown) => String(s ?? '').replace(/<[^>]+>/g, '');
+
+export async function getKugou(q: SourceQuery): Promise<SourceHit | null> {
+  const ranked = rankCandidates(q, await kugouSearch(q), (s) => ({
+    title: stripTags(s?.SongName),
+    artist: stripTags(s?.SingerName),
+    durationSec: Number(s?.Duration) || undefined,
+  }));
+  for (const { item, score } of ranked.slice(0, 2)) {
+    const hash = String(item?.FileHash ?? '');
+    if (!/^[0-9a-f]+$/i.test(hash)) continue;
+    const found = await getJson(
+      `https://krcs.kugou.com/search?${qs({ ver: 1, man: 'yes', client: 'mobi', hash })}`,
+      'Kugou'
+    );
+    const cand = found?.candidates?.[0];
+    if (!cand?.id || !cand?.accesskey) continue;
+    const dl = await getJson(
+      `https://lyrics.kugou.com/download?${qs({
+        ver: 1,
+        client: 'pc',
+        id: cand.id,
+        accesskey: cand.accesskey,
+        fmt: 'lrc',
+      })}`,
+      'Kugou'
+    );
+    if (typeof dl?.content !== 'string' || !dl.content) continue;
+    let lrc: string;
+    try {
+      lrc = base64Utf8(dl.content);
+    } catch {
+      continue;
+    }
+    const synced = stripCredits(parseLrc(lrc), q.title);
+    if (synced.length >= 2) return { synced, score };
+  }
+  return null;
+}

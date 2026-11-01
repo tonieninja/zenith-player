@@ -6,6 +6,7 @@ vi.mock('@tauri-apps/plugin-http', () => ({ fetch: (...a: unknown[]) => httpFetc
 import {
   base64Utf8,
   getBoidu,
+  getKugou,
   getLyricsPlus,
   getNetease,
   getQQMusic,
@@ -222,5 +223,41 @@ describe('QQ Music', () => {
       { time: 27.39, text: 'I been tryna call' },
       { time: 30.18, text: 'On my own' },
     ]);
+  });
+});
+
+describe('Kugou', () => {
+  it('retries an empty search, then follows hash, candidate and download', async () => {
+    let searches = 0;
+    httpFetch.mockImplementation(async (url: string) => {
+      const u = String(url);
+      if (u.includes('song_search_v2')) {
+        searches += 1;
+        if (searches === 1) return json({ data: { lists: [] } });
+        return json({
+          data: {
+            lists: [
+              {
+                SongName: '<em>Blinding Lights</em>',
+                SingerName: 'The Weeknd',
+                Duration: 200,
+                FileHash: 'ABC123',
+              },
+            ],
+          },
+        });
+      }
+      if (u.includes('krcs.kugou.com')) {
+        expect(u).toContain('hash=ABC123');
+        return json({ candidates: [{ id: '42', accesskey: 'KEY' }] });
+      }
+      expect(u).toContain('accesskey=KEY');
+      return json({ content: btoa('[00:27.39]I been tryna call\n[00:30.18]On my own') });
+    });
+    expect((await getKugou(q))?.synced).toEqual([
+      { time: 27.39, text: 'I been tryna call' },
+      { time: 30.18, text: 'On my own' },
+    ]);
+    expect(searches).toBe(2);
   });
 });
