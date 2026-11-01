@@ -56,10 +56,14 @@ describe('credits', () => {
       { time: 0, text: 'Blinding Lights - The Weeknd' },
       { time: 1, text: '作词 : Abel Tesfaye' },
       { time: 2, text: 'Lyrics by：Max Martin' },
+      { time: 3, text: 'Drums：David Stewart' },
+      { time: 4, text: 'Background Vocals : Someone' },
       { time: 27, text: 'I been tryna call' },
+      { time: 40, text: 'Baby: I can see' },
     ];
     expect(stripCredits(lines, 'Blinding Lights')).toEqual([
       { time: 27, text: 'I been tryna call' },
+      { time: 40, text: 'Baby: I can see' },
     ]);
   });
 

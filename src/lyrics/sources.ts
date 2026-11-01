@@ -139,14 +139,23 @@ export function parseTtml(xml: string): LyricsLine[] {
 const CREDIT =
   /^\s*(作词|作詞|作曲|编曲|編曲|制作人|製作人|监制|監製|混音|母带|母帶|录音|錄音|和声|和聲|吉他|贝斯|鼓|弦乐|出品|发行|發行|OP|SP|词|詞|曲|lyrics?\s*by|written\s*by|composed\s*by|produced\s*by|producer|composer|lyricist|arranged\s*by|mixed\s*by|mastered\s*by)\s*[:：]/i;
 
+// krótka etykieta, dwukropek i nazwisko, np. "Drums：David Stewart"
+const LABELLED = /^[^:：]{1,24}\s*[:：]\s*\S/;
+const isLabel = (text: string) =>
+  LABELLED.test(text) && text.split(/[:：]/)[0].trim().split(/\s+/).length <= 4;
+
 export function stripCredits(lines: LyricsLine[], title?: string): LyricsLine[] {
   const t = (title || '').trim().toLowerCase();
+  let head = true;
   return lines.filter((l, i) => {
     if (CREDIT.test(l.text)) return false;
     // pierwsza linijka bywa samym "Tytuł - Wykonawca"
     if (i === 0 && t && l.text.toLowerCase().startsWith(t) && /\s[-–]\s/.test(l.text)) {
       return false;
     }
+    // blok opisów przed pierwszą prawdziwą linijką tekstu
+    if (head && isLabel(l.text)) return false;
+    head = false;
     return true;
   });
 }
