@@ -384,15 +384,137 @@ async fn proxy_stream(
         .map(|v| v.to_string());
     let mut upstream = upstream;
     let mut attempt = 0usize;
+    let want = range.as_deref().and_then(parse_range);
+    let first = want.map(|(s, e)| format!("bytes={s}-{}", chunk_last(s, e)));
+    let upstream_res = fetch_upstream(
+        &id,
+        &mut upstream,
+        &mut attempt,
+        first.as_deref().or(range.as_deref()),
+    )
+    .await?;
+    let status = upstream_res.status();
+    crate::mark(format!("proxy upstream headers {id} {}", status.as_u16()));
+    let mut builder = Response::builder()
+        .status(status)
+        .header(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*");
+
+    let span = want
+        .zip(content_range(&upstream_res))
+        .and_then(|((start, end), (a, b, total))| {
+            let last = end.unwrap_or(u64::MAX).min(total.saturating_sub(1));
+            (status == StatusCode::PARTIAL_CONTENT && a == start && b < last)
+                .then_some((start, b, last, total))
+        });
+    let copied: &[header::HeaderName] = if span.is_some() {
+        &[
+            header::CONTENT_TYPE,
+            header::ACCEPT_RANGES,
+            header::CACHE_CONTROL,
+        ]
+    } else {
+        &[
+            header::CONTENT_TYPE,
+            header::CONTENT_LENGTH,
+            header::ACCEPT_RANGES,
+            header::CONTENT_RANGE,
+            header::CACHE_CONTROL,
+        ]
+    };
+    for key in copied {
+        if let Some(v) = upstream_res.headers().get(key) {
+            builder = builder.header(key, v);
+        }
+    }
+
+    let first = upstream_res
+        .bytes_stream()
+        .map(|chunk| chunk.map_err(std::io::Error::other));
+    let Some((start, got, last, total)) = span else {
+        return builder
+            .body(Body::from_stream(first))
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR);
+    };
+    crate::mark(format!("proxy chunked {id} {start}-{last}/{total}"));
+    let rest = futures_util::stream::unfold(
+        Some((id, upstream, attempt, got + 1)),
+        move |state| async move {
+            let (id, mut upstream, mut attempt, next) = state?;
+            if next > last {
+                return None;
+            }
+            let range = format!("bytes={next}-{}", chunk_last(next, Some(last)));
+            let res = fetch_upstream(&id, &mut upstream, &mut attempt, Some(&range)).await;
+            let piece = res.ok().and_then(|r| {
+                let (a, b, _) = content_range(&r)?;
+                (r.status() == StatusCode::PARTIAL_CONTENT && a == next).then_some((r, b))
+            });
+            match piece {
+                Some((r, b)) => {
+                    let body = r.bytes_stream().map(|c| c.map_err(std::io::Error::other));
+                    Some((body.boxed(), Some((id, upstream, attempt, b + 1))))
+                }
+                None => {
+                    let err = std::io::Error::other(format!("upstream chunk at {next} failed"));
+                    Some((futures_util::stream::once(async { Err(err) }).boxed(), None))
+                }
+            }
+        },
+    )
+    .flatten();
+    builder
+        .status(StatusCode::PARTIAL_CONTENT)
+        .header(
+            header::CONTENT_RANGE,
+            format!("bytes {start}-{last}/{total}"),
+        )
+        .header(header::CONTENT_LENGTH, last - start + 1)
+        .body(Body::from_stream(first.chain(rest)))
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+}
+
+// googlevideo dławi długie odpowiedzi do tempa odtwarzania; kawałki po 10 MiB jak w yt-dlp tego unikają
+const CHUNK: u64 = 10 * 1024 * 1024;
+
+fn chunk_last(start: u64, end: Option<u64>) -> u64 {
+    (start + CHUNK - 1).min(end.unwrap_or(u64::MAX))
+}
+
+fn parse_range(v: &str) -> Option<(u64, Option<u64>)> {
+    let (a, b) = v.trim().strip_prefix("bytes=")?.split_once('-')?;
+    let start = a.trim().parse().ok()?;
+    let end = match b.trim() {
+        "" => None,
+        e => Some(e.parse().ok().filter(|e| *e >= start)?),
+    };
+    Some((start, end))
+}
+
+fn content_range(r: &reqwest::Response) -> Option<(u64, u64, u64)> {
+    parse_content_range(r.headers().get(header::CONTENT_RANGE)?.to_str().ok()?)
+}
+
+fn parse_content_range(v: &str) -> Option<(u64, u64, u64)> {
+    let (span, total) = v.trim().strip_prefix("bytes ")?.split_once('/')?;
+    let (a, b) = span.split_once('-')?;
+    Some((a.parse().ok()?, b.parse().ok()?, total.parse().ok()?))
+}
+
+async fn fetch_upstream(
+    id: &str,
+    upstream: &mut Upstream,
+    attempt: &mut usize,
+    range: Option<&str>,
+) -> Result<reqwest::Response, StatusCode> {
     // wygasły link z googlevideo (403/410/429) odświeżamy i ponawiamy zamiast przerywać odtwarzanie
-    let upstream_res = loop {
-        let res = send_upstream(&upstream.url, &upstream.user_agent, range.as_deref()).await;
+    loop {
+        let res = send_upstream(&upstream.url, &upstream.user_agent, range).await;
         let refused = match &res {
             Ok(r) => matches!(r.status().as_u16(), 403 | 410 | 429),
             Err(_) => true,
         };
         if !refused {
-            break res.map_err(|_| StatusCode::BAD_GATEWAY)?;
+            return res.map_err(|_| StatusCode::BAD_GATEWAY);
         }
         match &res {
             Ok(r) => eprintln!(
@@ -403,53 +525,27 @@ async fn proxy_stream(
             Err(e) => eprintln!("[Zenith] proxy upstream error ({}): {}", id, e),
         }
         let failed_url = upstream.url.clone();
-        remove_direct_url(&id);
-        crate::stream::evict_cached_url(&id);
+        remove_direct_url(id);
+        crate::stream::evict_cached_url(id);
         let mut recovered = None;
-        while attempt < crate::stream::RECOVERY_ATTEMPTS && recovered.is_none() {
-            if attempt > 0 {
-                continue_recovery_delay(attempt).await;
+        while *attempt < crate::stream::RECOVERY_ATTEMPTS && recovered.is_none() {
+            if *attempt > 0 {
+                continue_recovery_delay(*attempt).await;
             }
-            recovered = crate::stream::recover_upstream(&id, attempt, &failed_url)
+            recovered = crate::stream::recover_upstream(id, *attempt, &failed_url)
                 .await
                 .filter(|u| allowed_upstream(&u.url));
-            attempt += 1;
+            *attempt += 1;
         }
         if let Some(next) = recovered {
-            upstream = next;
+            *upstream = next;
             continue;
         }
         match res {
-            Ok(r) => break r,
+            Ok(r) => return Ok(r),
             Err(_) => return Err(StatusCode::BAD_GATEWAY),
         }
-    };
-
-    let status = upstream_res.status();
-    crate::mark(format!("proxy upstream headers {id} {}", status.as_u16()));
-    let mut builder = Response::builder()
-        .status(status)
-        .header(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*");
-
-    for key in [
-        header::CONTENT_TYPE,
-        header::CONTENT_LENGTH,
-        header::ACCEPT_RANGES,
-        header::CONTENT_RANGE,
-        header::CACHE_CONTROL,
-    ] {
-        if let Some(v) = upstream_res.headers().get(&key) {
-            builder = builder.header(key, v);
-        }
     }
-
-    let stream = upstream_res
-        .bytes_stream()
-        .map(|chunk| chunk.map_err(std::io::Error::other));
-
-    builder
-        .body(Body::from_stream(stream))
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
 }
 
 async fn continue_recovery_delay(attempt: usize) {
@@ -458,4 +554,22 @@ async fn continue_recovery_delay(attempt: usize) {
 
 pub fn current_upstream(id: &str) -> Option<Upstream> {
     url_map().lock().ok()?.get(id).cloned()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ranges_split_into_chunks() {
+        assert_eq!(parse_range("bytes=0-"), Some((0, None)));
+        assert_eq!(parse_range("bytes=100-199"), Some((100, Some(199))));
+        assert_eq!(parse_range("bytes=5-1"), None);
+        assert_eq!(parse_range("bytes=0-1,5-9"), None);
+        assert_eq!(parse_range("bytes=-500"), None);
+        assert_eq!(chunk_last(0, None), CHUNK - 1);
+        assert_eq!(chunk_last(CHUNK, Some(CHUNK + 9)), CHUNK + 9);
+        assert_eq!(parse_content_range("bytes 0-99/4000"), Some((0, 99, 4000)));
+        assert_eq!(parse_content_range("bytes */4000"), None);
+    }
 }
