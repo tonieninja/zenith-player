@@ -15,6 +15,7 @@ import {
   getBoidu,
   getLyricsPlus,
   getNetease,
+  getQQMusic,
   getUnison,
   type SourceHit,
   type SourceQuery,
@@ -296,7 +297,8 @@ export type LyricsProvider =
   | 'LyricsPlus'
   | 'Boidu'
   | 'Unison'
-  | 'Netease';
+  | 'Netease'
+  | 'QQ Music';
 
 export const MOOD_BROWSE_ID = 'FEmusic_moods_and_genres_category';
 const BROWSE_PARAMS_SEP = '::';
@@ -1846,10 +1848,11 @@ const LYRICS_TIMEOUT_MS: Partial<Record<LyricsProvider, number>> = {
   Boidu: 10000,
   Unison: 10000,
   Netease: 10000,
+  'QQ Music': 10000,
 };
 const DEFAULT_LYRICS_TIMEOUT_MS = 12000;
 
-const SECOND_WAVE: LyricsProvider[] = ['Unison', 'Netease'];
+const SECOND_WAVE: LyricsProvider[] = ['Unison', 'Netease', 'QQ Music'];
 const SECOND_WAVE_MAX_MS = 6000;
 
 function lyricsTimeoutFor(provider: LyricsProvider): number {
@@ -2593,6 +2596,7 @@ const LYRICS_SOURCES: Partial<
   Boidu: getBoidu,
   Unison: getUnison,
   Netease: getNetease,
+  'QQ Music': getQQMusic,
 };
 
 function sourceQuery(track: Track): SourceQuery {

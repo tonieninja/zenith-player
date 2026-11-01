@@ -669,6 +669,7 @@ export default function App() {
       'Boidu',
       'Unison',
       'Netease',
+      'QQ Music',
       'LyricsGenius',
       'Lyrics.ovh',
     ],

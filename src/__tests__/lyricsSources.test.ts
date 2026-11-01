@@ -8,6 +8,7 @@ import {
   getBoidu,
   getLyricsPlus,
   getNetease,
+  getQQMusic,
   getUnison,
   parseTtml,
   stripCredits,
@@ -23,7 +24,9 @@ const json = (body: unknown, status = 200) => ({
 
 const q: SourceQuery = { title: 'Blinding Lights', artist: 'The Weeknd', durationSec: 200 };
 
-beforeEach(() => httpFetch.mockReset());
+beforeEach(() => {
+  httpFetch.mockReset();
+});
 
 describe('ttml', () => {
   it('reads every time format', () => {
@@ -182,5 +185,42 @@ describe('Netease', () => {
       { time: 30.18, text: 'On my own' },
     ]);
     expect(httpFetch.mock.calls.some((c) => String(c[0]).includes('id=3'))).toBe(false);
+  });
+});
+
+describe('QQ Music', () => {
+  it('looks up durations, then lyrics, base64 or not', async () => {
+    httpFetch.mockImplementation(async (url: string) => {
+      const u = String(url);
+      if (u.includes('smartbox')) {
+        return json({ data: { song: { itemlist: [{ mid: 'aaa' }, { mid: 'bbb' }] } } });
+      }
+      if (u.includes('play_single_song')) {
+        expect(u).toContain('songmid=aaa%2Cbbb');
+        return json({
+          data: [
+            {
+              mid: 'aaa',
+              name: 'Blinding Lights',
+              singer: [{ name: 'The Weeknd' }],
+              interval: 261,
+            },
+            {
+              mid: 'bbb',
+              name: 'Blinding Lights',
+              singer: [{ name: 'The Weeknd' }],
+              interval: 200,
+            },
+          ],
+        });
+      }
+      expect(u).toContain('songmid=bbb');
+      const lrc = '[00:04.69]Lyrics by：Abel\n[00:27.39]I been tryna call\n[00:30.18]On my own';
+      return json({ lyric: btoa(String.fromCharCode(...new TextEncoder().encode(lrc))) });
+    });
+    expect((await getQQMusic(q))?.synced).toEqual([
+      { time: 27.39, text: 'I been tryna call' },
+      { time: 30.18, text: 'On my own' },
+    ]);
   });
 });

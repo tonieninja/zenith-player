@@ -267,3 +267,58 @@ export async function getNetease(q: SourceQuery): Promise<SourceHit | null> {
   }
   return null;
 }
+
+const QQ_HEADERS = { Referer: 'https://y.qq.com/' };
+
+export async function getQQMusic(q: SourceQuery): Promise<SourceHit | null> {
+  const found = await getJson(
+    `https://c.y.qq.com/splcloud/fcgi-bin/smartbox_new.fcg?${qs({
+      format: 'json',
+      key: `${q.title} ${q.artist}`,
+    })}`,
+    'QQ Music',
+    { headers: QQ_HEADERS }
+  );
+  const mids: string[] = (found?.data?.song?.itemlist ?? [])
+    .map((s: any) => s?.mid)
+    .filter((m: unknown): m is string => typeof m === 'string' && /^\w+$/.test(m));
+  if (!mids.length) return null;
+  // podpowiedzi nie mają długości, więc szczegóły bierzemy jednym zapytaniem
+  const detail = await getJson(
+    `https://c.y.qq.com/v8/fcg-bin/fcg_play_single_song.fcg?${qs({
+      format: 'json',
+      songmid: mids.slice(0, 6).join(','),
+    })}`,
+    'QQ Music',
+    { headers: QQ_HEADERS }
+  );
+  const songs: any[] = Array.isArray(detail?.data) ? detail.data : [];
+  const ranked = rankCandidates(q, songs, (s) => ({
+    title: String(s?.name ?? s?.title ?? ''),
+    artist: (s?.singer ?? []).map((a: any) => a?.name).join(', '),
+    durationSec: Number(s?.interval) || undefined,
+  }));
+  for (const { item, score } of ranked.slice(0, 2)) {
+    const data = await getJson(
+      `https://c.y.qq.com/lyric/fcgi-bin/fcg_query_lyric_new.fcg?${qs({
+        songmid: item.mid,
+        format: 'json',
+        nobase64: 1,
+      })}`,
+      'QQ Music',
+      { headers: QQ_HEADERS }
+    );
+    let lrc = typeof data?.lyric === 'string' ? data.lyric : '';
+    // mimo nobase64 czasem i tak przychodzi base64
+    if (lrc && !lrc.includes('[')) {
+      try {
+        lrc = base64Utf8(lrc);
+      } catch {
+        continue;
+      }
+    }
+    const synced = stripCredits(parseLrc(lrc), q.title);
+    if (synced.length >= 2) return { synced, score };
+  }
+  return null;
+}
