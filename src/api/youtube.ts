@@ -14,6 +14,7 @@ import { normalizeSynced, parseLrc, type LyricsLine } from '../lyrics/parse';
 import {
   getBoidu,
   getLyricsPlus,
+  getNetease,
   getUnison,
   type SourceHit,
   type SourceQuery,
@@ -294,7 +295,8 @@ export type LyricsProvider =
   | 'Lyrics.ovh'
   | 'LyricsPlus'
   | 'Boidu'
-  | 'Unison';
+  | 'Unison'
+  | 'Netease';
 
 export const MOOD_BROWSE_ID = 'FEmusic_moods_and_genres_category';
 const BROWSE_PARAMS_SEP = '::';
@@ -1843,10 +1845,11 @@ const LYRICS_TIMEOUT_MS: Partial<Record<LyricsProvider, number>> = {
   LyricsPlus: 10000,
   Boidu: 10000,
   Unison: 10000,
+  Netease: 10000,
 };
 const DEFAULT_LYRICS_TIMEOUT_MS = 12000;
 
-const SECOND_WAVE: LyricsProvider[] = ['Unison'];
+const SECOND_WAVE: LyricsProvider[] = ['Unison', 'Netease'];
 const SECOND_WAVE_MAX_MS = 6000;
 
 function lyricsTimeoutFor(provider: LyricsProvider): number {
@@ -2589,6 +2592,7 @@ const LYRICS_SOURCES: Partial<
   LyricsPlus: getLyricsPlus,
   Boidu: getBoidu,
   Unison: getUnison,
+  Netease: getNetease,
 };
 
 function sourceQuery(track: Track): SourceQuery {

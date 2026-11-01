@@ -7,6 +7,7 @@ import {
   base64Utf8,
   getBoidu,
   getLyricsPlus,
+  getNetease,
   getUnison,
   parseTtml,
   stripCredits,
@@ -141,5 +142,45 @@ describe('Unison', () => {
   it('keeps plain lyrics plain', async () => {
     httpFetch.mockResolvedValue(json({ data: { format: 'plain', lyrics: 'just words' } }));
     expect(await getUnison(q)).toEqual({ text: 'just words' });
+  });
+});
+
+describe('Netease', () => {
+  it('skips a match without lyrics and strips credits', async () => {
+    httpFetch.mockImplementation(async (url: string, init?: { body?: string }) => {
+      const u = String(url);
+      if (u.includes('search/get')) {
+        expect(init?.body).toContain('s=Blinding%20Lights%20The%20Weeknd');
+        return json({
+          result: {
+            songs: [
+              {
+                id: 1,
+                name: 'Blinding Lights',
+                artists: [{ name: 'The Weeknd' }],
+                duration: 200045,
+              },
+              {
+                id: 2,
+                name: 'Blinding Lights',
+                artists: [{ name: 'The Weeknd' }],
+                duration: 201000,
+              },
+              { id: 3, name: 'Some Other Song', artists: [{ name: 'Nobody' }], duration: 90000 },
+            ],
+          },
+        });
+      }
+      if (u.includes('id=1')) return json({ lrc: { lyric: '' } });
+      return json({
+        lrc: { lyric: '[00:00.00] 作词 : Abel\n[00:27.39]I been tryna call\n[00:30.18]On my own' },
+      });
+    });
+    const hit = await getNetease(q);
+    expect(hit?.synced).toEqual([
+      { time: 27.39, text: 'I been tryna call' },
+      { time: 30.18, text: 'On my own' },
+    ]);
+    expect(httpFetch.mock.calls.some((c) => String(c[0]).includes('id=3'))).toBe(false);
   });
 });

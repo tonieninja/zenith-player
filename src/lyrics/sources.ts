@@ -52,22 +52,29 @@ export function qs(params: Record<string, string | number | undefined>): string 
     .join('&');
 }
 
-// najlepszy kandydat, który przechodzi te same progi co reszta źródeł, inaczej nic
+// kandydaci, którzy przechodzą te same progi co reszta źródeł, od najlepszego
+export function rankCandidates<T>(
+  q: SourceQuery,
+  items: T[],
+  read: (x: T) => Candidate
+): { item: T; score: number }[] {
+  const query = { title: q.title, artist: q.artist, durationSec: q.durationSec };
+  const out: { item: T; score: number }[] = [];
+  for (const item of items) {
+    const c = read(item);
+    const cand = { title: c.title, artist: c.artist, durationSec: c.durationSec };
+    const score = scoreLyricsMatch(query, cand);
+    if (isAcceptableLyricsMatch(query, cand, score)) out.push({ item, score });
+  }
+  return out.sort((a, b) => b.score - a.score);
+}
+
 export function pickCandidate<T>(
   q: SourceQuery,
   items: T[],
   read: (x: T) => Candidate
 ): { item: T; score: number } | null {
-  let best: { item: T; score: number } | null = null;
-  for (const item of items) {
-    const c = read(item);
-    const query = { title: q.title, artist: q.artist, durationSec: q.durationSec };
-    const cand = { title: c.title, artist: c.artist, durationSec: c.durationSec };
-    const score = scoreLyricsMatch(query, cand);
-    if (!isAcceptableLyricsMatch(query, cand, score)) continue;
-    if (!best || score > best.score) best = { item, score };
-  }
-  return best;
+  return rankCandidates(q, items, read)[0] ?? null;
 }
 
 const ENTITIES: Record<string, string> = {
@@ -231,4 +238,32 @@ export async function getUnison(q: SourceQuery): Promise<SourceHit | null> {
     duration: q.durationSec ? Math.round(q.durationSec) : undefined,
   })}`;
   return unisonHit(await getJson(url, 'Unison'));
+}
+
+const NETEASE_HEADERS = { Referer: 'https://music.163.com/' };
+
+export async function getNetease(q: SourceQuery): Promise<SourceHit | null> {
+  const found = await getJson('https://music.163.com/api/search/get', 'Netease', {
+    method: 'POST',
+    body: qs({ s: `${q.title} ${q.artist}`, type: 1, limit: 8, offset: 0 }),
+    headers: { ...NETEASE_HEADERS, 'Content-Type': 'application/x-www-form-urlencoded' },
+  });
+  const songs: any[] = Array.isArray(found?.result?.songs) ? found.result.songs : [];
+  const ranked = rankCandidates(q, songs, (s) => ({
+    title: String(s?.name ?? ''),
+    artist: (s?.artists ?? s?.ar ?? []).map((a: any) => a?.name).join(', '),
+    durationSec: Number(s?.duration ?? s?.dt) / 1000 || undefined,
+  }));
+  for (const { item, score } of ranked.slice(0, 2)) {
+    const data = await getJson(
+      `https://music.163.com/api/song/lyric?${qs({ id: item.id, lv: 1, kv: 1, tv: -1 })}`,
+      'Netease',
+      { headers: NETEASE_HEADERS }
+    );
+    const lrc = data?.lrc?.lyric;
+    if (typeof lrc !== 'string' || !lrc.trim()) continue;
+    const synced = stripCredits(parseLrc(lrc), q.title);
+    if (synced.length >= 2) return { synced, score };
+  }
+  return null;
 }

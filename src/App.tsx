@@ -668,6 +668,7 @@ export default function App() {
       'LyricsPlus',
       'Boidu',
       'Unison',
+      'Netease',
       'LyricsGenius',
       'Lyrics.ovh',
     ],
