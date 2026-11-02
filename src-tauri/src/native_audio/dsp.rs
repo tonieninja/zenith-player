@@ -491,6 +491,11 @@ pub const NORM_BLOCKS: u32 = 30;
 const NORM_TARGET_DB: f64 = -16.0;
 const NORM_MAX_CUT_DB: f64 = -10.0;
 
+/// Wzmocnienie startowe z loudnessDb YouTube: odniesienie YouTube to -14 LUFS, nasze -16, i tylko ściszamy.
+pub fn youtube_pregain(loudness_db: f64) -> f64 {
+    10f64.powf((-loudness_db - 2.0).clamp(NORM_MAX_CUT_DB, 0.0) / 20.0)
+}
+
 pub fn norm_update(sum: &mut f64, n: &mut u32, rms_db: f64) -> Option<f64> {
     if !rms_db.is_finite() || rms_db < -50.0 {
         return None;
@@ -722,6 +727,13 @@ mod tests {
         let v = l.feed(&sine(440.0, 48000, 2.0, 0.708));
         assert_eq!(v.len(), 5);
         assert!((v[2] + 6.0).abs() < 0.1, "{}", v[2]);
+    }
+
+    #[test]
+    fn youtube_loudness_sets_the_starting_gain() {
+        assert_eq!(youtube_pregain(-5.0), 1.0);
+        assert!((youtube_pregain(4.0) - 10f64.powf(-6.0 / 20.0)).abs() < 1e-9);
+        assert!((youtube_pregain(30.0) - 10f64.powf(-10.0 / 20.0)).abs() < 1e-9);
     }
 
     #[test]

@@ -286,7 +286,7 @@ const en = {
   dlClearConfirm: 'Click again to delete everything',
   dlHint: 'Downloaded tracks play from disk, so they work even with no connection.',
   loudnessHint:
-    'Measures each track in its first few seconds and turns loud masters down to the same level. Quiet tracks never get boosted, so nothing clips.',
+    'Starts from the loudness YouTube reports for the track, checks it in the first few seconds and turns loud masters down to the same level. Quiet tracks never get boosted, so nothing clips.',
   remoteUrl: 'Open on your phone',
   remoteUrlDesc: 'Same Wi-Fi or LAN only. Scan the QR code or type in the address.',
   remotePort: 'Port',
@@ -824,7 +824,7 @@ const pl: Record<keyof typeof en, string> = {
   dlClearConfirm: 'Kliknij jeszcze raz, żeby usunąć wszystko',
   dlHint: 'Pobrane utwory lecą z dysku, więc działają nawet bez internetu.',
   loudnessHint:
-    'Mierzy każdy utwór przez pierwsze sekundy i ścisza za głośno zmasterowane do wspólnego poziomu. Cichych nie podgłaśnia, więc nic nie przesteruje.',
+    'Zaczyna od głośności, którą podaje YouTube, sprawdza ją w pierwszych sekundach i ścisza za głośno zmasterowane do wspólnego poziomu. Cichych nie podgłaśnia, więc nic nie przesteruje.',
   remoteUrl: 'Otwórz na telefonie',
   remoteUrlDesc: 'Tylko ta sama sieć Wi-Fi/LAN. Zeskanuj kod QR albo wpisz adres.',
   remotePort: 'Port',

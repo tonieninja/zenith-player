@@ -1,5 +1,6 @@
 use serde_json::{json, Value};
-use std::sync::Mutex;
+use std::collections::HashMap;
+use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 const ANDROID_KEY: &str = "AIzaSyA8eiZmM1FaDVjRy-df2KTyQ_vfUWA0yam";
@@ -548,7 +549,39 @@ async fn player_request(
         );
         return None;
     }
-    res.json().await.ok()
+    let data: Value = res.json().await.ok()?;
+    if let Some(db) = data
+        .pointer("/playerConfig/audioConfig/loudnessDb")
+        .and_then(Value::as_f64)
+    {
+        remember_loudness(video_id, db);
+    }
+    Some(data)
+}
+
+fn loudness_map() -> &'static Mutex<HashMap<String, f64>> {
+    static MAP: OnceLock<Mutex<HashMap<String, f64>>> = OnceLock::new();
+    MAP.get_or_init(Default::default)
+}
+
+fn remember_loudness(video_id: &str, db: f64) {
+    if !db.is_finite() {
+        return;
+    }
+    let mut m = loudness_map().lock().unwrap_or_else(|p| p.into_inner());
+    if m.len() >= 512 {
+        m.clear();
+    }
+    m.insert(video_id.to_string(), db);
+}
+
+/// Głośność utworu względem poziomu odniesienia YouTube (-14 LUFS), z odpowiedzi odtwarzacza.
+pub fn loudness_db(video_id: &str) -> Option<f64> {
+    loudness_map()
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .get(video_id)
+        .copied()
 }
 
 async fn finish_url(

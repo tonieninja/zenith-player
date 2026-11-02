@@ -256,7 +256,12 @@ fn clear_deck(d: &mut Deck) {
 
 fn load_deck(d: &mut Deck, url: &str, rate: f64) {
     clear_deck(d);
-    d.norm = 1.0;
+    d.norm = url
+        .rsplit('/')
+        .next()
+        .filter(|_| decode::NORM_ON.load(Ordering::SeqCst))
+        .and_then(crate::player::loudness_db)
+        .map_or(1.0, dsp::youtube_pregain);
     d.loud_sum = 0.0;
     d.loud_n = 0;
     d.src = url.to_string();
