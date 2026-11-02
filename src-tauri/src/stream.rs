@@ -12,12 +12,38 @@ use crate::resolve_plan::{self, Step};
 use crate::stream_proxy;
 use crate::ytm_api;
 
-type StreamCache = Mutex<HashMap<String, (String, String, u64)>>;
+type CacheMap = HashMap<String, (String, String, u64)>;
+type StreamCache = Mutex<CacheMap>;
 
 static STREAM_CACHE: OnceLock<StreamCache> = OnceLock::new();
 
+fn cache_file() -> Option<std::path::PathBuf> {
+    Some(
+        APP.get()?
+            .path()
+            .app_local_data_dir()
+            .ok()?
+            .join("stream-urls.json"),
+    )
+}
+
+// adresy żyją kilka godzin, więc po restarcie aplikacji pierwszy utwór gra bez ponownego rozwiązywania
 fn get_cache() -> &'static StreamCache {
-    STREAM_CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+    STREAM_CACHE.get_or_init(|| {
+        let now = now_secs();
+        let mut map: CacheMap = cache_file()
+            .and_then(|p| std::fs::read(p).ok())
+            .and_then(|b| serde_json::from_slice(&b).ok())
+            .unwrap_or_default();
+        map.retain(|_, (url, _, ts)| cache_fresh(url, *ts, now));
+        Mutex::new(map)
+    })
+}
+
+fn save_cache(map: &CacheMap) {
+    if let (Some(p), Ok(body)) = (cache_file(), serde_json::to_vec(map)) {
+        let _ = std::fs::write(p, body);
+    }
 }
 
 fn url_expiry(url: &str) -> Option<u64> {
@@ -248,7 +274,9 @@ pub fn stream_last_failure() -> Option<String> {
 
 pub fn evict_cached_url(video_id: &str) {
     if let Ok(mut cache) = get_cache().lock() {
-        cache.remove(video_id);
+        if cache.remove(video_id).is_some() {
+            save_cache(&cache);
+        }
     }
     stream_proxy::remove_direct_url(video_id);
 }
@@ -299,6 +327,7 @@ fn remember_and_proxy(
             break;
         }
     }
+    save_cache(&cache);
     drop(cache);
     stream_proxy::proxy_url(video_id).ok_or_else(|| "stream proxy not ready".to_string())
 }
@@ -526,6 +555,7 @@ pub fn clear_stream_cache() {
             stream_proxy::remove_direct_url(&key);
         }
         cache.clear();
+        save_cache(&cache);
     }
     stream_proxy::clear_all_direct_urls();
 }
