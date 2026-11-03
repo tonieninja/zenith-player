@@ -238,6 +238,12 @@ const en = {
   lastfmFinish: 'Finish',
   lastfmConnectedAs: 'Scrobbling as {user}',
   lastfmDisconnect: 'Disconnect',
+  lbTokenHint:
+    'Paste the user token from your ListenBrainz settings (stored encrypted on this computer):',
+  lbToken: 'User token',
+  lbConnectedAs: 'Sending listens as {user}',
+  lbErrToken: 'ListenBrainz did not accept this token. Copy it again from your settings page.',
+  lbErrRate: 'Too many requests to ListenBrainz. Wait a minute and try again.',
   gaplessAlbums: 'Gapless albums',
   gaplessAlbumsDesc:
     'Album tracks flow right into each other with no fade or silence, even with crossfade off.',
@@ -777,6 +783,12 @@ const pl: Record<keyof typeof en, string> = {
   lastfmFinish: 'Dokończ',
   lastfmConnectedAs: 'Scrobbluję jako {user}',
   lastfmDisconnect: 'Rozłącz',
+  lbTokenHint:
+    'Wklej token użytkownika z ustawień ListenBrainz (zapisze się zaszyfrowany na tym komputerze):',
+  lbToken: 'Token użytkownika',
+  lbConnectedAs: 'Wysyłam odsłuchy jako {user}',
+  lbErrToken: 'ListenBrainz nie przyjął tego tokenu. Skopiuj go jeszcze raz ze strony ustawień.',
+  lbErrRate: 'Za dużo zapytań do ListenBrainz. Odczekaj minutę i spróbuj jeszcze raz.',
   gaplessAlbums: 'Albumy bez przerw',
   gaplessAlbumsDesc:
     'Utwory z albumu przechodzą jeden w drugi bez wyciszania i bez ciszy, nawet z wyłączonymi płynnymi przejściami.',

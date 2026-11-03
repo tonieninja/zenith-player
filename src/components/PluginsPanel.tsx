@@ -7,6 +7,13 @@ import {
   lastfmLogout,
   type LastfmStatus,
 } from '../plugins/lastfm';
+import {
+  listenbrainzErrorText,
+  listenbrainzLogout,
+  listenbrainzSetToken,
+  listenbrainzStatus,
+  type ListenbrainzStatus,
+} from '../plugins/listenbrainz';
 import { useDeferredValue, useEffect, useRef, useState } from 'react';
 import {
   X,
@@ -236,9 +243,21 @@ export function PluginsPanel({
   const [lfmKey, setLfmKey] = useState('');
   const [lfmSecret, setLfmSecret] = useState('');
   const [lfmErr, setLfmErr] = useState('');
+  const [lb, setLb] = useState<ListenbrainzStatus | null>(null);
+  const [lbToken, setLbToken] = useState('');
+  const [lbErr, setLbErr] = useState('');
   useEffect(() => {
     lastfmStatus().then(setLfm, () => setLfm(null));
+    listenbrainzStatus().then(setLb, () => setLb(null));
   }, []);
+  const lbRun = (p: Promise<ListenbrainzStatus>) =>
+    p
+      .then((st) => {
+        setLb(st);
+        setLbErr('');
+        setLbToken('');
+      })
+      .catch((e) => setLbErr(listenbrainzErrorText(String(e), t)));
   const lfmRun = (p: Promise<LastfmStatus>) =>
     p
       .then((st) => {
@@ -799,6 +818,60 @@ export function PluginsPanel({
             {lfmErr && <p className="plugin-desc">{lfmErr}</p>}
           </>
         );
+      case 'listenbrainz-scrobbler':
+        return (
+          <>
+            {lb?.user != null ? (
+              <div className="plugin-setting-row">
+                <div className="plugin-setting-label">
+                  <span>{t.lbConnectedAs.replace('{user}', lb.user)}</span>
+                </div>
+                <button className="np-cancel-btn" onClick={() => lbRun(listenbrainzLogout())}>
+                  {t.lastfmDisconnect}
+                </button>
+              </div>
+            ) : (
+              <>
+                <p className="plugin-desc">
+                  {t.lbTokenHint}{' '}
+                  <a
+                    href="#"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      void openUrl('https://listenbrainz.org/settings/');
+                    }}
+                  >
+                    listenbrainz.org/settings
+                  </a>
+                </p>
+                <div className="plugin-setting-row">
+                  <div className="plugin-setting-label">
+                    <span>{t.lbToken}</span>
+                  </div>
+                  <input
+                    className="settings-text-input"
+                    type="password"
+                    value={lbToken}
+                    aria-label={t.lbToken}
+                    onChange={(e) => setLbToken(e.target.value)}
+                    spellCheck={false}
+                  />
+                </div>
+                <div className="plugin-setting-row">
+                  <span />
+                  <button
+                    className="np-cancel-btn"
+                    disabled={!lbToken.trim()}
+                    onClick={() => lbRun(listenbrainzSetToken(lbToken))}
+                  >
+                    {t.lastfmSave}
+                  </button>
+                </div>
+              </>
+            )}
+            {lbErr && <p className="plugin-desc">{lbErr}</p>}
+          </>
+        );
       case 'remote-control':
         return (
           <>
@@ -1209,6 +1282,7 @@ export function PluginsPanel({
       'equalizer',
       'loudness-normalization',
       'lastfm-scrobbler',
+      'listenbrainz-scrobbler',
       'duck-on-voice',
       'listening-room',
       'zenith-stage',

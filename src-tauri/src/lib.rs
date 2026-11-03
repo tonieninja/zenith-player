@@ -7,6 +7,7 @@ mod dualsense;
 mod export_file;
 mod jsc;
 mod lastfm;
+mod listenbrainz;
 mod login_nav;
 #[cfg(target_os = "linux")]
 mod mpris;
@@ -810,6 +811,11 @@ pub fn run() {
             lastfm::lastfm_logout,
             lastfm::lastfm_now_playing,
             lastfm::lastfm_scrobble,
+            listenbrainz::listenbrainz_status,
+            listenbrainz::listenbrainz_set_token,
+            listenbrainz::listenbrainz_logout,
+            listenbrainz::listenbrainz_now_playing,
+            listenbrainz::listenbrainz_submit,
             remote::remote_start,
             remote::remote_stop,
             remote::remote_info,

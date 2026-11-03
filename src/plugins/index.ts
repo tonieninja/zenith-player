@@ -8,6 +8,7 @@ import { dualSensePlugin } from './dualSense';
 import { duckOnVoicePlugin } from './duckOnVoice';
 import { equalizerPlugin, loudnessPlugin } from './equalizer';
 import { lastfmPlugin } from './lastfm';
+import { listenbrainzPlugin } from './listenbrainz';
 import { fadeOnPausePlugin } from './fadeOnPause';
 import { globalHotkeysPlugin } from './globalHotkeys';
 import { keyboardShortcutsPlugin } from './keyboardShortcuts';
@@ -61,6 +62,7 @@ export const PLUGIN_ORDER = [
   'dualsense-pad',
   'webhook',
   'lastfm-scrobbler',
+  'listenbrainz-scrobbler',
   'discord-rpc',
   'listening-room',
   'zenith-stage',
@@ -104,6 +106,7 @@ export const ALL_PLUGINS: ZenithPlugin[] = [
   listeningRoomPlugin,
   loudnessPlugin,
   lastfmPlugin,
+  listenbrainzPlugin,
   lyricsOverlayPlugin,
   mediaSessionPlugin,
   offlineDownloadsPlugin,

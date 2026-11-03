@@ -75,6 +75,10 @@ const CATALOG: Record<string, Record<Language, PluginText>> = {
     },
     pl: { name: 'Last.fm scrobbler', desc: 'Wrzuca to, czego słuchasz, na twój profil Last.fm.' },
   },
+  'listenbrainz-scrobbler': {
+    en: { name: 'ListenBrainz', desc: 'Sends what you listen to to your ListenBrainz profile.' },
+    pl: { name: 'ListenBrainz', desc: 'Wysyła to, czego słuchasz, na twój profil ListenBrainz.' },
+  },
   'loudness-normalization': {
     en: {
       name: 'Loudness normalization',
