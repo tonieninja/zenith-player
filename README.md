@@ -61,9 +61,11 @@ And the rest:
 - Crossfade (2 to 12 s), gapless albums, A-B loop, speed with pitch kept, sleep timer
 - Audio runs in a small Rust engine (symphonia + cpal), EQ and loudness normalization included.
   If it can't start, the app falls back to the old HTML audio
-- Lyrics from LRCLib, Musixmatch, Genius, lyrics.ovh and YouTube captions, karaoke fill,
-  always-on-top overlay and a second screen window
-- Offline downloads, Last.fm scrobbling, Discord presence, DualSense, global hotkeys you can rebind
+- Lyrics from LRCLib, Musixmatch, LyricsPlus, Boidu, Unison, NetEase, QQ Music, Kugou, Genius,
+  lyrics.ovh and YouTube captions, karaoke fill, always-on-top overlay and a second screen window
+- Offline downloads, Last.fm and ListenBrainz scrobbling, Discord presence, DualSense, global
+  hotkeys you can rebind
+- Playlists go to Spotify and come back from it, matched track by track
 - Phone remote over your Wi-Fi (QR code, optional PIN, nothing leaves the LAN)
 - Optional Google sign-in for your library, the session stays on your machine
 - English and Polish
@@ -131,7 +133,7 @@ the tray drops the UI completely, so the player alone uses a lot less.
 
 This program will not transfer any information to other networked systems unless specifically
 requested by the user or the person installing or operating it. Playing music talks to YouTube
-Music, lyrics come from lyrics sites, and Discord, Last.fm, Spotify export and the phone remote only
+Music, lyrics come from lyrics sites, and Discord, Last.fm, ListenBrainz, Spotify and the phone remote only
 connect once you turn them on. The update check asks GitHub for the latest release, you can turn it
 off in Settings. Your Google cookies stay on your computer and only go to Google.
 
