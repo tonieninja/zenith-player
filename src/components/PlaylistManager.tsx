@@ -7,6 +7,7 @@ import {
   Download,
   GitMerge,
   GripVertical,
+  Import,
   Heart,
   ListMusic,
   Music2,
@@ -21,6 +22,7 @@ import { ModalOverlay } from './ui/ModalOverlay';
 import {
   createPlaylist,
   deletePlaylist,
+  searchMusic,
   SessionExpiredError,
   type PlaylistPrivacy,
   type Track,
@@ -51,10 +53,17 @@ import {
   disconnectSpotify,
   exportToSpotify,
   getSpotifyClientId,
+  canReadSpotifyPlaylists,
   isSpotifyConnected,
+  listSpotifyPlaylists,
+  matchOnYoutube,
   setSpotifyClientId,
+  spotifyPlaylistTracks,
   SPOTIFY_REDIRECT_URI,
   type ExportResult,
+  type ImportResult,
+  type SpotifyPlaylist,
+  type YtmCandidate,
 } from '../api/spotify';
 import { Select } from './ui/Select';
 import { PopoverMenu } from './ui/PopoverMenu';
@@ -170,6 +179,7 @@ export function PlaylistManager({
   const [dragFrom, setDragFrom] = useState<number | null>(null);
   const [dragOver, setDragOver] = useState<number | null>(null);
   const [spotifyOpen, setSpotifyOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const reqRef = useRef(0);
 
   const refreshLists = useCallback(async () => {
@@ -200,11 +210,11 @@ export function PlaylistManager({
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !confirmDelete && !spotifyOpen) onClose();
+      if (e.key === 'Escape' && !confirmDelete && !spotifyOpen && !importOpen) onClose();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose, confirmDelete, spotifyOpen]);
+  }, [onClose, confirmDelete, spotifyOpen, importOpen]);
 
   const active = useMemo(
     () => (activeId && lists?.find((p) => samePlaylist(p.id, activeId))) || null,
@@ -470,6 +480,15 @@ export function PlaylistManager({
               />
               <button className="pm-btn pm-btn-accent" onClick={createNew} disabled={busy}>
                 <Plus size={15} /> {t.pmNew}
+              </button>
+              <button
+                className="pm-btn"
+                onClick={() => setImportOpen(true)}
+                disabled={busy}
+                title={t.pmSpotifyImport}
+                aria-label={t.pmSpotifyImport}
+              >
+                <Import size={15} />
               </button>
             </div>
             <div className="pm-chips" role="tablist">
@@ -819,6 +838,17 @@ export function PlaylistManager({
             onClose={() => setSpotifyOpen(false)}
           />
         )}
+        {importOpen && (
+          <SpotifyImport
+            lang={lang}
+            onClose={() => setImportOpen(false)}
+            onImported={(name) => {
+              pushToast(fill(t.pmSpotifyImported, { name }), 'success');
+              void refreshLists();
+              onChanged?.();
+            }}
+          />
+        )}
       </div>
     </ModalOverlay>
   );
@@ -838,26 +868,11 @@ function SpotifyExport({
   onClose: () => void;
 }) {
   const t = translations[lang];
-  const [clientId, setClientId] = useState(getSpotifyClientId());
   const [connected, setConnected] = useState(isSpotifyConnected());
-  const [phase, setPhase] = useState<'idle' | 'auth' | 'matching' | 'done'>('idle');
+  const [phase, setPhase] = useState<'idle' | 'matching' | 'done'>('idle');
   const [progress, setProgress] = useState({ done: 0, total: entries.length });
   const [result, setResult] = useState<ExportResult | null>(null);
   const [error, setError] = useState<string | null>(null);
-
-  const connect = async () => {
-    setError(null);
-    setSpotifyClientId(clientId);
-    setPhase('auth');
-    try {
-      await connectSpotify();
-      setConnected(true);
-    } catch (e) {
-      setError(fill(t.pmSpotifyFailed, { err: String((e as Error).message || e) }));
-    } finally {
-      setPhase('idle');
-    }
-  };
 
   const start = async () => {
     setError(null);
@@ -885,29 +900,12 @@ function SpotifyExport({
       >
         <h3>{t.pmSpotify}</h3>
         {!connected ? (
-          <>
-            <label className="pm-field">
-              <span>{t.pmSpotifyClientId}</span>
-              <input
-                value={clientId}
-                onChange={(e) => setClientId(e.target.value)}
-                spellCheck={false}
-              />
-            </label>
-            <p className="pm-hint">{fill(t.pmSpotifyClientHelp, { uri: SPOTIFY_REDIRECT_URI })}</p>
-            <div className="pm-dialog-actions">
-              <button className="pm-btn" onClick={onClose}>
-                {t.pmCancel}
-              </button>
-              <button
-                className="pm-btn pm-btn-accent"
-                disabled={!clientId.trim() || phase === 'auth'}
-                onClick={() => void connect()}
-              >
-                {phase === 'auth' ? t.pmSpotifyWaiting : t.pmSpotifyConnect}
-              </button>
-            </div>
-          </>
+          <SpotifyConnect
+            lang={lang}
+            failText={t.pmSpotifyFailed}
+            onClose={onClose}
+            onConnected={() => setConnected(true)}
+          />
         ) : phase === 'done' && result ? (
           <>
             <p>{fill(t.pmSpotifyDone, { matched: result.matched, total: entries.length })}</p>
@@ -961,6 +959,214 @@ function SpotifyExport({
                 onClick={() => void start()}
               >
                 {t.pmSpotify}
+              </button>
+            </div>
+          </>
+        )}
+        {error && <p className="pm-error">{error}</p>}
+      </div>
+    </div>
+  );
+}
+
+function SpotifyConnect({
+  lang,
+  failText,
+  onClose,
+  onConnected,
+}: {
+  lang: Language;
+  failText: string;
+  onClose: () => void;
+  onConnected: () => void;
+}) {
+  const t = translations[lang];
+  const [clientId, setClientId] = useState(getSpotifyClientId());
+  const [waiting, setWaiting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const connect = async () => {
+    setError(null);
+    setSpotifyClientId(clientId);
+    setWaiting(true);
+    try {
+      await connectSpotify();
+      onConnected();
+    } catch (e) {
+      setError(fill(failText, { err: String((e as Error).message || e) }));
+    } finally {
+      setWaiting(false);
+    }
+  };
+
+  return (
+    <>
+      <label className="pm-field">
+        <span>{t.pmSpotifyClientId}</span>
+        <input value={clientId} onChange={(e) => setClientId(e.target.value)} spellCheck={false} />
+      </label>
+      <p className="pm-hint">{fill(t.pmSpotifyClientHelp, { uri: SPOTIFY_REDIRECT_URI })}</p>
+      <div className="pm-dialog-actions">
+        <button className="pm-btn" onClick={onClose}>
+          {t.pmCancel}
+        </button>
+        <button
+          className="pm-btn pm-btn-accent"
+          disabled={!clientId.trim() || waiting}
+          onClick={() => void connect()}
+        >
+          {waiting ? t.pmSpotifyWaiting : t.pmSpotifyConnect}
+        </button>
+      </div>
+      {error && <p className="pm-error">{error}</p>}
+    </>
+  );
+}
+
+const ytmSongs = (q: string, lang: Language): Promise<YtmCandidate[]> =>
+  searchMusic(q, lang).then((secs) =>
+    secs.flatMap((s) => s.items).filter((i) => i.type === 'track')
+  );
+
+function SpotifyImport({
+  lang,
+  onClose,
+  onImported,
+}: {
+  lang: Language;
+  onClose: () => void;
+  onImported: (name: string) => void;
+}) {
+  const t = translations[lang];
+  const [connected, setConnected] = useState(
+    () => isSpotifyConnected() && canReadSpotifyPlaylists()
+  );
+  const [lists, setLists] = useState<SpotifyPlaylist[] | null>(null);
+  const [pick, setPick] = useState('');
+  const [phase, setPhase] = useState<'idle' | 'matching' | 'done'>('idle');
+  const [progress, setProgress] = useState({ done: 0, total: 0 });
+  const [result, setResult] = useState<(ImportResult & { total: number }) | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const failText = t.pmSpotifyImportFailed;
+
+  useEffect(() => {
+    if (!connected) return;
+    listSpotifyPlaylists().then(
+      (l) => {
+        setLists(l);
+        setPick(l[0]?.id ?? '');
+      },
+      (e) => {
+        setError(fill(failText, { err: String((e as Error).message || e) }));
+        if (String((e as Error).message).includes('not connected')) setConnected(false);
+      }
+    );
+  }, [connected, failText]);
+
+  const start = async () => {
+    const pl = lists?.find((p) => p.id === pick);
+    if (!pl) return;
+    setError(null);
+    setPhase('matching');
+    try {
+      const tracks = await spotifyPlaylistTracks(pl.id);
+      setProgress({ done: 0, total: tracks.length });
+      const r = await matchOnYoutube(
+        tracks,
+        (q) => ytmSongs(q, lang),
+        (done, total) => setProgress({ done, total })
+      );
+      const name = (pl.name || 'Spotify').slice(0, 150);
+      if (r.videoIds.length) {
+        await createWithTracks(name, t.pmSpotifyImportedDesc, 'PRIVATE', r.videoIds, lang);
+        onImported(name);
+      }
+      setResult({ ...r, total: tracks.length });
+      setPhase('done');
+    } catch (e) {
+      setError(fill(failText, { err: String((e as Error).message || e) }));
+      setPhase('idle');
+    }
+  };
+
+  return (
+    <div className="pm-dialog-backdrop" onClick={phase === 'matching' ? undefined : onClose}>
+      <div
+        className="pm-dialog pm-spotify"
+        role="dialog"
+        aria-label={t.pmSpotifyImport}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h3>{t.pmSpotifyImport}</h3>
+        {!connected ? (
+          <>
+            <p className="pm-hint">{t.pmSpotifyReadHint}</p>
+            <SpotifyConnect
+              lang={lang}
+              failText={failText}
+              onClose={onClose}
+              onConnected={() => setConnected(true)}
+            />
+          </>
+        ) : phase === 'done' && result ? (
+          <>
+            <p>
+              {fill(t.pmSpotifyImportDone, {
+                matched: result.videoIds.length,
+                total: result.total,
+              })}
+            </p>
+            {result.unmatched.length > 0 && (
+              <div className="pm-unmatched">
+                <span>{t.pmSpotifyNotOnYtm}</span>
+                <ul>
+                  {result.unmatched.map((e, i) => (
+                    <li key={`${e.title}-${i}`}>
+                      {e.title} <em>{e.artist}</em>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            <div className="pm-dialog-actions">
+              <button className="pm-btn" onClick={onClose}>
+                {t.pmCancel}
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            {lists === null ? (
+              <p className="pm-hint">{t.pmSpotifyLoading}</p>
+            ) : lists.length === 0 ? (
+              <p className="pm-hint">{t.pmSpotifyNoPlaylists}</p>
+            ) : (
+              <label className="pm-field">
+                <span>{t.pmSpotifyPick}</span>
+                <Select<string>
+                  value={pick}
+                  onChange={setPick}
+                  ariaLabel={t.pmSpotifyPick}
+                  options={lists.map((p) => ({ value: p.id, label: `${p.name} (${p.total})` }))}
+                />
+              </label>
+            )}
+            {phase === 'matching' && (
+              <div className="pm-progress">
+                <div style={{ width: `${(progress.done / Math.max(1, progress.total)) * 100}%` }} />
+                <span>{fill(t.pmSpotifyFinding, progress)}</span>
+              </div>
+            )}
+            <div className="pm-dialog-actions">
+              <button className="pm-btn" disabled={phase === 'matching'} onClick={onClose}>
+                {t.pmCancel}
+              </button>
+              <button
+                className="pm-btn pm-btn-accent"
+                disabled={!pick || phase === 'matching'}
+                onClick={() => void start()}
+              >
+                {t.pmSpotifyImportGo}
               </button>
             </div>
           </>
