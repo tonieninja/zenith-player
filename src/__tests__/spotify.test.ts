@@ -8,7 +8,11 @@ vi.mock('@tauri-apps/api/core', () => ({
 }));
 
 import {
+  canReadSpotifyPlaylists,
   exportToSpotify,
+  listSpotifyPlaylists,
+  matchOnYoutube,
+  spotifyPlaylistTracks,
   pickBest,
   scoreMatch,
   setSpotifyClientId,
@@ -119,5 +123,96 @@ describe('spotify export', () => {
         { name: 'Hello', artists: ['Adele'], uri: 'u', durationMs: 180000 },
       ])
     ).toBeTruthy();
+  });
+});
+
+describe('spotify import', () => {
+  const reply = (body: unknown, status = 200) => ({
+    ok: status < 300,
+    status,
+    headers: { get: () => null },
+    text: async () => JSON.stringify(body),
+    json: async () => body,
+  });
+
+  it('pages through playlists, falls back to /tracks and skips local files', async () => {
+    localStorage.setItem(
+      'zenith_spotify_token',
+      JSON.stringify({
+        access: 'tok',
+        refresh: 'r',
+        expires: Date.now() + 60_000,
+        scope: 'playlist-read-private',
+      })
+    );
+    expect(canReadSpotifyPlaylists()).toBe(true);
+    httpFetch.mockReset();
+    httpFetch.mockImplementation(async (url: string) => {
+      const u = String(url);
+      if (u.includes('/me/playlists?limit=50'))
+        return reply({
+          items: [{ id: 'a', name: 'One', items: { total: 2 } }],
+          next: 'https://api.spotify.com/v1/me/playlists?offset=50&limit=50',
+        });
+      if (u.includes('/me/playlists?offset=50'))
+        return reply({ items: [{ id: 'b', name: 'Two', tracks: { total: 1 } }], next: null });
+      if (u.includes('/items')) return reply({ error: { message: 'nope' } }, 404);
+      return reply({
+        items: [
+          {
+            track: {
+              type: 'track',
+              name: 'Hello',
+              artists: [{ name: 'Adele' }],
+              duration_ms: 295000,
+            },
+          },
+          { track: { type: 'track', name: 'Mine', artists: [], is_local: true } },
+          { track: { type: 'episode', name: 'Pod' } },
+          { track: null },
+        ],
+        next: null,
+      });
+    });
+    expect(await listSpotifyPlaylists()).toEqual([
+      { id: 'a', name: 'One', total: 2 },
+      { id: 'b', name: 'Two', total: 1 },
+    ]);
+    expect(await spotifyPlaylistTracks('a')).toEqual([
+      { title: 'Hello', artist: 'Adele', durationSec: 295 },
+    ]);
+  });
+
+  it('old tokens without read access need a new connection', () => {
+    localStorage.setItem(
+      'zenith_spotify_token',
+      JSON.stringify({ access: 'tok', refresh: 'r', expires: Date.now() + 60_000 })
+    );
+    expect(canReadSpotifyPlaylists()).toBe(false);
+  });
+
+  it('matches tracks on youtube music and keeps the misses', async () => {
+    const search = vi.fn(async (q: string) =>
+      q.startsWith('Hello')
+        ? [
+            {
+              id: 'cover000000',
+              title: 'Hello (Piano Cover)',
+              artist: 'Someone',
+              durationSec: 250,
+            },
+            { id: 'YQHsXMglC9A', title: 'Hello', artist: 'Adele', durationSec: 296 },
+          ]
+        : []
+    );
+    const r = await matchOnYoutube(
+      [
+        { title: 'Hello', artist: 'Adele', durationSec: 295 },
+        { title: 'Nothing Here', artist: 'Nobody', durationSec: 100 },
+      ],
+      search
+    );
+    expect(r.videoIds).toEqual(['YQHsXMglC9A']);
+    expect(r.unmatched.map((t) => t.title)).toEqual(['Nothing Here']);
   });
 });

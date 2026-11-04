@@ -5,7 +5,8 @@ import type { PlaylistEntry } from './playlistManager';
 
 export const SPOTIFY_REDIRECT_PORT = 8766;
 export const SPOTIFY_REDIRECT_URI = `http://127.0.0.1:${SPOTIFY_REDIRECT_PORT}/callback`;
-const SCOPES = 'playlist-modify-private playlist-modify-public';
+const SCOPES =
+  'playlist-modify-private playlist-modify-public playlist-read-private playlist-read-collaborative';
 const CLIENT_KEY = 'zenith_spotify_client_id';
 const TOKEN_KEY = 'zenith_spotify_token';
 
@@ -56,6 +57,7 @@ interface StoredToken {
   access: string;
   refresh: string;
   expires: number;
+  scope?: string;
 }
 
 function loadToken(): StoredToken | null {
@@ -81,6 +83,7 @@ async function tokenRequest(body: Record<string, string>): Promise<StoredToken> 
     access: data.access_token,
     refresh: data.refresh_token || prev?.refresh || '',
     expires: Date.now() + (Number(data.expires_in) || 3600) * 1000 - 60000,
+    scope: typeof data.scope === 'string' ? data.scope : prev?.scope,
   };
   localStorage.setItem(TOKEN_KEY, JSON.stringify(token));
   return token;
@@ -88,6 +91,11 @@ async function tokenRequest(body: Record<string, string>): Promise<StoredToken> 
 
 export function isSpotifyConnected(): boolean {
   return Boolean(loadToken());
+}
+
+// tokeny sprzed importu mają tylko prawa zapisu, więc do czytania playlist trzeba połączyć się jeszcze raz
+export function canReadSpotifyPlaylists(): boolean {
+  return Boolean(loadToken()?.scope?.split(' ').includes('playlist-read-private'));
 }
 
 export function disconnectSpotify() {
@@ -232,7 +240,7 @@ export function scoreMatch(
 export const MATCH_THRESHOLD = 0.62;
 
 export function pickBest(
-  entry: PlaylistEntry,
+  entry: Pick<PlaylistEntry, 'title' | 'artist' | 'durationSec'>,
   candidates: SpotifyCandidate[]
 ): { c: SpotifyCandidate; score: number } | null {
   let best: { c: SpotifyCandidate; score: number } | null = null;
@@ -314,4 +322,95 @@ export async function exportToSpotify(
     matched: uris.length,
     unmatched,
   };
+}
+
+async function pages(first: string, fallback?: string): Promise<any[]> {
+  const out: any[] = [];
+  let path: string | null = first;
+  while (path) {
+    let data;
+    try {
+      data = await api(path);
+    } catch (e) {
+      if (!fallback || out.length || (e as { status?: number }).status !== 404) throw e;
+      data = await api(fallback);
+    }
+    out.push(...(data?.items || []));
+    path = data?.next ? String(data.next).replace('https://api.spotify.com/v1', '') : null;
+  }
+  return out;
+}
+
+export interface SpotifyPlaylist {
+  id: string;
+  name: string;
+  total: number;
+}
+
+export async function listSpotifyPlaylists(): Promise<SpotifyPlaylist[]> {
+  return (await pages('/me/playlists?limit=50'))
+    .filter((p) => p?.id)
+    .map((p) => ({
+      id: p.id,
+      name: p.name || '',
+      total: p.items?.total ?? p.tracks?.total ?? 0,
+    }));
+}
+
+export type SpotifyTrack = Pick<PlaylistEntry, 'title' | 'artist' | 'durationSec'>;
+
+export async function spotifyPlaylistTracks(id: string): Promise<SpotifyTrack[]> {
+  const q = `/playlists/${encodeURIComponent(id)}`;
+  const items = await pages(`${q}/items?limit=100`, `${q}/tracks?limit=100`);
+  return items
+    .map((it) => it?.item ?? it?.track)
+    .filter((t) => t && t.type === 'track' && !t.is_local && t.name)
+    .map((t) => ({
+      title: t.name,
+      artist: (t.artists || []).map((a: any) => a.name).join(', '),
+      durationSec: t.duration_ms ? Math.round(t.duration_ms / 1000) : null,
+    }));
+}
+
+export interface YtmCandidate {
+  id: string;
+  title: string;
+  artist: string;
+  durationSec?: number;
+}
+
+export interface ImportResult {
+  videoIds: string[];
+  unmatched: SpotifyTrack[];
+}
+
+export async function matchOnYoutube(
+  tracks: SpotifyTrack[],
+  search: (query: string) => Promise<YtmCandidate[]>,
+  onProgress?: (done: number, total: number) => void
+): Promise<ImportResult> {
+  const videoIds: string[] = [];
+  const unmatched: SpotifyTrack[] = [];
+  for (let i = 0; i < tracks.length; i += 1) {
+    const t = tracks[i];
+    const artist = splitArtists(t.artist)[0] || '';
+    try {
+      const found = await search(`${t.title} ${artist}`.trim());
+      const best = pickBest(
+        t,
+        found.map((c) => ({
+          uri: c.id,
+          name: c.title,
+          artists: splitArtists(c.artist),
+          durationMs: (c.durationSec ?? 0) * 1000,
+        }))
+      );
+      if (best) videoIds.push(best.c.uri);
+      else unmatched.push(t);
+    } catch {
+      unmatched.push(t);
+    }
+    onProgress?.(i + 1, tracks.length);
+  }
+  return { videoIds, unmatched };
 }
