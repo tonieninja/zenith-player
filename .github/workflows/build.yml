@@ -127,7 +127,7 @@ jobs:
             pnpm tauri build --target ${{ matrix.target }} --bundles nsis,msi
           fi
           mkdir -p portable
-          cp src-tauri/target/${{ matrix.target }}/release/zenith-player.exe "portable/Zenith_4.0.0_${{ matrix.arch }}_portable.exe"
+          cp src-tauri/target/${{ matrix.target }}/release/zenith-player.exe "portable/Zenith_4.0.1_${{ matrix.arch }}_portable.exe"
       - uses: actions/upload-artifact@v4
         with:
           name: bundle-windows-${{ matrix.arch }}

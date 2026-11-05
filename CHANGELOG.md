@@ -76,6 +76,17 @@ Versioning is SemVer. Legal context: [DISCLAIMER.md](./DISCLAIMER.md).
 - Softer line-entry bounce in the synced lyrics
 - App icon: transparent corners (the old one had white corners on dark taskbars/docks)
 
+## 4.0.1 - 2026-11-05
+
+### Fixed
+
+- Linux clipboard shortcuts (Ctrl+V/C/X) no longer take down the app
+- Lyrics matching is stricter, Genius HTTP 403 is handled, and Auto does not flash the wrong unsynced text
+- Clicking an artist name opens the artist page instead of starting playback
+- Library tabs show the first pages quickly, then fill the rest in the background
+- Previous in shuffle goes through tracks you actually played
+- CI builds Windows x64 and x86, Linux deb/AppImage/rpm, and macOS
+
 ## 4.0.0 - 2026-10-29
 
 First public release. The changes first listed as "Unreleased" (portable exe, WebView2 check,

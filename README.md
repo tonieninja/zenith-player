@@ -38,13 +38,13 @@ Get the files from **[Releases → latest](https://github.com/tonieninja/zenith-
 
 | Platform | File | Notes |
 | --- | --- | --- |
-| **Windows 10/11 (x64)**: installer | `Zenith_4.0.0_x64-setup.exe` | Recommended. Per-user install, English/Polish installer, embedded WebView2 bootstrapper, auto-update |
-| **Windows 10/11 (x64)**: portable | `Zenith_4.0.0_x64_portable.exe` | Single file, no install. Installs/updates WebView2 on first start if it is missing or too old |
-| Windows 10/11 (32-bit x86) | `Zenith_4.0.0_x86-setup.exe`, `Zenith_4.0.0_x86_portable.exe` | For 32-bit Windows only; on 64-bit Windows use x64 |
-| Linux: Debian, Ubuntu, Mint, … | `Zenith_4.0.0_amd64.deb` | Pulls in WebKitGTK and the GStreamer plugins |
-| Linux: Fedora, openSUSE, RHEL | `Zenith-4.0.0-1.x86_64.rpm` | `sudo dnf install ./Zenith-4.0.0-1.x86_64.rpm` |
-| Linux: any distro | `Zenith_4.0.0_amd64.AppImage` | GStreamer bundled |
-| macOS 11+ (Apple Silicon and Intel) | `Zenith_4.0.0_universal.dmg` | **Built by CI, untested.** Unsigned: right-click → *Open* the first time. Reports welcome |
+| **Windows 10/11 (x64)**: installer | `Zenith_4.0.1_x64-setup.exe` | Recommended. Per-user install, English/Polish installer, embedded WebView2 bootstrapper, auto-update |
+| **Windows 10/11 (x64)**: portable | `Zenith_4.0.1_x64_portable.exe` | Single file, no install. Installs/updates WebView2 on first start if it is missing or too old |
+| Windows 10/11 (32-bit x86) | `Zenith_4.0.1_x86-setup.exe`, `Zenith_4.0.1_x86_portable.exe` | For 32-bit Windows only; on 64-bit Windows use x64 |
+| Linux: Debian, Ubuntu, Mint, … | `Zenith_4.0.1_amd64.deb` | Pulls in WebKitGTK and the GStreamer plugins |
+| Linux: Fedora, openSUSE, RHEL | `Zenith-4.0.1-1.x86_64.rpm` | `sudo dnf install ./Zenith-4.0.1-1.x86_64.rpm` |
+| Linux: any distro | `Zenith_4.0.1_amd64.AppImage` | GStreamer bundled |
+| macOS 11+ (Apple Silicon and Intel) | `Zenith_4.0.1_universal.dmg` | **Built by CI, untested.** Unsigned: right-click → *Open* the first time. Reports welcome |
 
 Windows builds are not code-signed yet, so **SmartScreen may warn** about an unknown publisher:
 choose *More info → Run anyway* after checking the file (see [Verifying downloads](#verifying-downloads)).
@@ -56,9 +56,9 @@ only for old 32-bit Windows. Not sure? *Settings → System → About → System
 
 ### Windows
 
-- **Installer:** run `Zenith_4.0.0_x64-setup.exe`. It installs for the current user and sets up
+- **Installer:** run `Zenith_4.0.1_x64-setup.exe`. It installs for the current user and sets up
   the WebView2 Runtime if needed.
-- **Portable:** put `Zenith_4.0.0_x64_portable.exe` anywhere and run it. Before the window opens
+- **Portable:** put `Zenith_4.0.1_x64_portable.exe` anywhere and run it. Before the window opens
   Zenith checks the WebView2 Runtime (version 100 or newer). If it is missing or older, Zenith
   downloads Microsoft's Evergreen bootstrapper and installs it silently, then starts. Settings and
   sign-in are still stored in `%LOCALAPPDATA%\com.zenithplayer.desktop`.
@@ -67,16 +67,16 @@ only for old 32-bit Windows. Not sure? *Settings → System → About → System
 
 ```bash
 # .deb
-sudo apt install ./Zenith_4.0.0_amd64.deb
+sudo apt install ./Zenith_4.0.1_amd64.deb
 
 # AppImage
-chmod +x Zenith_4.0.0_amd64.AppImage
-./Zenith_4.0.0_amd64.AppImage
+chmod +x Zenith_4.0.1_amd64.AppImage
+./Zenith_4.0.1_amd64.AppImage
 ```
 
 ```bash
 # .rpm (Fedora, openSUSE, RHEL)
-sudo dnf install ./Zenith-4.0.0-1.x86_64.rpm
+sudo dnf install ./Zenith-4.0.1-1.x86_64.rpm
 ```
 
 The AppImage needs FUSE 2 (`libfuse2`); without it, run with `APPIMAGE_EXTRACT_AND_RUN=1`.
@@ -84,7 +84,7 @@ Only x86_64 Linux builds are published. On ARM, build from source (see below).
 
 ### macOS
 
-Open `Zenith_4.0.0_universal.dmg` and drag Zenith into *Applications*. The build is not signed
+Open `Zenith_4.0.1_universal.dmg` and drag Zenith into *Applications*. The build is not signed
 or notarized, so the first start needs *right-click → Open → Open* (or
 `xattr -dr com.apple.quarantine /Applications/Zenith.app`). The macOS build comes out of CI and
 nobody has tried it on a real Mac yet, so treat it as a preview and please report what you see.
@@ -105,12 +105,12 @@ Each release ships `SHA256SUMS` and a `.sig` (minisign, base64-encoded) per upda
 
 ```bash
 sha256sum -c SHA256SUMS --ignore-missing
-base64 -d Zenith_4.0.0_amd64.AppImage.sig > app.minisig
-minisign -Vm Zenith_4.0.0_amd64.AppImage -x app.minisig \
+base64 -d Zenith_4.0.1_amd64.AppImage.sig > app.minisig
+minisign -Vm Zenith_4.0.1_amd64.AppImage -x app.minisig \
   -P RWRtJM9nH1Zh+dusm+DR4rxB5RvUIIgghX3vuy5RLkDeCrHy3w+xOHau
 ```
 
-On Windows: `Get-FileHash .\Zenith_4.0.0_x64_portable.exe -Algorithm SHA256`.
+On Windows: `Get-FileHash .\Zenith_4.0.1_x64_portable.exe -Algorithm SHA256`.
 
 ---
 
