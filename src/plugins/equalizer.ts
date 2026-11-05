@@ -53,7 +53,7 @@ const clampDb = (x: number) => Math.max(EQ_MIN_DB, Math.min(EQ_MAX_DB, x));
 
 export function getEqBands(): number[] {
   try {
-    // nazwa presetu zostaje tylko, gdy nikt nie ruszał suwaków, więc stary Bass Boost dostaje nową krzywą
+    // nazwa presetu zostaje tylko, gdy nikt nie ruszał suwaków, więc zapisany Bass Boost bierze aktualną krzywą
     const preset = getEqPreset();
     if (EQ_PRESET_BASS[preset] !== undefined) return [...EQ_PRESETS[preset]!];
     const v = JSON.parse(localStorage.getItem(EQ_BANDS_KEY) || 'null');

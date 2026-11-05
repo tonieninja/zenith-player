@@ -64,7 +64,7 @@ export function attachOverlayWindowFit(panel: HTMLElement): () => void {
 
   const resize = async () => {
     if (stopped) return;
-    // bez paddingu roota dół ramki wychodził poza okno
+    // padding roota trzyma dół ramki w oknie
     const root = panel.parentElement;
     const cs = root ? getComputedStyle(root) : null;
     const px = (v?: string) => (v ? parseFloat(v) || 0 : 0);

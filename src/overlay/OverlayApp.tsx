@@ -155,7 +155,7 @@ export default function OverlayApp() {
       const rate = p.rate && p.rate > 0 ? p.rate : 1;
       const at = performance.now();
       const restart = c.playing !== p.isPlaying || c.rate !== rate;
-      // kotwica przy każdej paczce, opóźnienie IPC to kilka ms, a stary próg 0.3 s dawał widoczny dryf
+      // kotwica przy każdej paczce, bo IPC spóźnia się o kilka ms i każdy próg daje widoczny dryf
       clockRef.current = { progress: p.progress, at, seen: at, playing: p.isPlaying, rate };
       if (restart) setClockTick((n) => n + 1);
       setData((prev) => {

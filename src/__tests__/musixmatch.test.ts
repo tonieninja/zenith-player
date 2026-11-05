@@ -218,7 +218,7 @@ describe('Musixmatch lookup with recorded responses', () => {
     expect(macro.searchParams.get('app_id')).toBe('mac-ios-v2.0');
   });
 
-  it('serves the track from the screenshot through the same call the player makes', async () => {
+  it('serves get lucky radio edit through the same call the player makes', async () => {
     routes({
       'token.get': () => tokenOk,
       'macro.subtitles.get': () => macroGetLucky248,

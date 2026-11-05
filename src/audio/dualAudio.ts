@@ -400,7 +400,7 @@ export class DualAudio {
         from.volume = 0;
         return;
       }
-      // rAF potrafi podać czas sprzed startu, a ujemna głośność kończyła się ciszą
+      // rAF potrafi podać czas sprzed startu, a ujemna głośność oznacza ciszę
       const t = Math.max(0, Math.min(1, (performance.now() - started) / durMs));
       to.volume = clampVol(this.master * Math.sin((t * Math.PI) / 2));
       if (fromWasAudible) from.volume = clampVol(this.master * Math.cos((t * Math.PI) / 2));
