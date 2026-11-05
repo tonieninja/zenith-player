@@ -43,7 +43,29 @@ describe('search / feed item identity', () => {
         primaryIsBrowse: true,
       })
     ).toEqual({ id: 'VLPLxxxx', type: 'playlist' });
-    expect(itemClickPlan({ id: 'MPREb_albumId', type: 'album' }).kind).toBe('play-collection');
+    expect(itemClickPlan({ id: 'MPREb_albumId', type: 'album' }).kind).toBe('browse-page');
+  });
+
+  it('opens an album page rather than playing the overlay first track (Random Access Memories)', () => {
+    const album = resolveFeedItem({
+      videoId: 'anHK6aMMcOM',
+      browseId: 'MPREb_ramAlbum',
+      pageType: 'MUSIC_PAGE_TYPE_ALBUM',
+      subtitle: 'Daft Punk • 2013',
+      primaryIsBrowse: true,
+    });
+    expect(album).toEqual({ id: 'MPREb_ramAlbum', type: 'album' });
+    expect(itemClickPlan(album!).kind).toBe('browse-page');
+    expect(shouldOpenCollection(album!)).toBe(true);
+  });
+
+  it('still classifies MPREb rows as albums when the overlay videoId is present without pageType', () => {
+    const album = resolveFeedItem({
+      videoId: 'anHK6aMMcOM',
+      browseId: 'MPREb_ramAlbum',
+      primaryIsBrowse: true,
+    });
+    expect(album).toEqual({ id: 'MPREb_ramAlbum', type: 'album' });
   });
 
   it('strips MPLAUC library prefix so the artist page gets a plain channel id', () => {
@@ -57,9 +79,11 @@ describe('search / feed item identity', () => {
 });
 
 describe('optimistic click routing', () => {
-  it('sends artist/profile clicks to a browse page, not the player', () => {
+  it('sends artist/profile/album clicks to a browse page, not the player', () => {
     expect(itemClickPlan({ id: 'UCabc', type: 'artist' }).kind).toBe('browse-page');
     expect(itemClickPlan({ id: 'UCabc', type: 'profile' }).kind).toBe('browse-page');
+    expect(itemClickPlan({ id: 'MPREb_x', type: 'album' }).kind).toBe('browse-page');
+    expect(itemClickPlan({ id: 'VLPLxxxx', type: 'playlist' }).kind).toBe('play-collection');
     expect(itemClickPlan({ id: 'dQw4w9WgXcQ', type: 'track' }).kind).toBe('play-track');
   });
 });

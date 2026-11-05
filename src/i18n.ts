@@ -400,6 +400,11 @@ const en = {
   playlistEmpty: 'This playlist is empty.',
   playlistEmptyOrUnsupported:
     'Nothing to play here: the list is empty or only has items Zenith cannot play.',
+  episodesEmptyTitle: 'No episodes saved for later',
+  episodesEmptyDesc:
+    'Episodes you save for later on YouTube Music show up here. This list is empty right now.',
+  collectionEmptyTitle: 'Nothing in this list',
+  collectionEmptyDesc: 'This playlist or collection has no playable items.',
   openingPlaylist: 'Opening {name}…',
   alreadyInPlaylist: 'Already in {name}',
   addAnyway: 'Add anyway',
@@ -904,6 +909,11 @@ const pl: Record<keyof typeof en, string> = {
   playlistEmpty: 'Ta playlista jest pusta. Pusta jak portfel dzień przed wypłatą.',
   playlistEmptyOrUnsupported:
     'Nie ma tu nic do odtworzenia: lista jest pusta albo zawiera tylko pozycje, których Zenith nie odtworzy.',
+  episodesEmptyTitle: 'Brak odcinków na później',
+  episodesEmptyDesc:
+    'Odcinki zapisane na później w YouTube Music pojawiają się tutaj. Lista jest teraz pusta.',
+  collectionEmptyTitle: 'Nic na tej liście',
+  collectionEmptyDesc: 'Ta playlista lub kolekcja nie ma odtwarzalnych pozycji.',
   openingPlaylist: 'Otwieranie: {name}…',
   alreadyInPlaylist: 'Ten utwór jest już w: {name}',
   addAnyway: 'Dodaj mimo to',

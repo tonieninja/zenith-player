@@ -315,6 +315,8 @@ export default function App() {
   const [quickPicks, setQuickPicks] = useState<Track[]>([]);
   const [activeMood, setActiveMood] = useState<string | null>(null);
   const [browseTitle, setBrowseTitle] = useState<string | null>(null);
+  /** empty playlist / episodes-for-later page, distinct from a failed feed load */
+  const [browseEmptyKind, setBrowseEmptyKind] = useState<'episodes' | 'collection' | null>(null);
   // a ui rebuilt after being dropped to the tray comes back without the splash, like
   // showing a hidden window did
   const [showSplash, setShowSplash] = useState(() => !isRestoredUi());
@@ -836,6 +838,7 @@ export default function App() {
       const safety = window.setTimeout(() => setFeedTabLoading('search', false), 15000);
       navigateTo('search');
       setActiveMood(null);
+      setBrowseEmptyKind(null);
       searchMusic(query, language)
         .then((data) => {
           if (dataSeq !== feedSeqRef.current.search) return;
@@ -861,6 +864,7 @@ export default function App() {
       navigateTo('home');
       setSearchQuery('');
       setActiveMood(null);
+      setBrowseEmptyKind(null);
       clearHomeBrowseCache();
       const safety = window.setTimeout(() => setFeedTabLoading('home', false), 8000);
       getHomeFeed(language)
@@ -912,6 +916,7 @@ export default function App() {
       navigateTo('explore');
       setSearchQuery('');
       setActiveMood(null);
+      setBrowseEmptyKind(null);
       clearHomeBrowseCache();
       const safety = window.setTimeout(() => setFeedTabLoading('explore', false), 8000);
       getExplore(language)
@@ -937,6 +942,7 @@ export default function App() {
       navigateTo('mood');
       setSearchQuery('');
       setBrowseTitle(null);
+      setBrowseEmptyKind(null);
       setActiveMood(categoryId);
       const safety = window.setTimeout(() => setFeedTabLoading('mood', false), 8000);
       getMoodPlaylist(browseId, language)
@@ -963,6 +969,7 @@ export default function App() {
       setSearchQuery('');
       setActiveMood(browseMoodId(item.id));
       setBrowseTitle(item.title);
+      setBrowseEmptyKind(null);
       setSections([]);
       navigateTo('mood');
       const safety = window.setTimeout(() => setFeedTabLoading('mood', false), 12000);
@@ -984,12 +991,54 @@ export default function App() {
     [lang, navigateTo, setFeedTabLoading]
   );
 
+  const openCollectionPage = useCallback(
+    async (collection: Track) => {
+      const dataSeq = ++feedSeqRef.current.mood;
+      const plain = toPlainPlaylistId(collection.id);
+      const emptyKind = plain === 'SE' ? 'episodes' : 'collection';
+      setFeedTabLoading('mood', true);
+      setSearchQuery('');
+      setActiveMood(browseMoodId(collection.id));
+      setBrowseTitle(collection.title);
+      setBrowseEmptyKind(null);
+      setSections([]);
+      navigateTo('mood');
+      const safety = window.setTimeout(() => setFeedTabLoading('mood', false), 12000);
+      try {
+        const res = await loadPlaylistItems(collection.id, lang);
+        if (dataSeq !== feedSeqRef.current.mood) return;
+        if (res.items.length) {
+          setBrowseEmptyKind(null);
+          setSections([{ title: collection.title, items: res.items }]);
+          return;
+        }
+        setSections([]);
+        setBrowseEmptyKind(emptyKind);
+        if (res.status === 'failed') {
+          pushToast(translations[lang].playlistOpenFailed, 'error');
+        }
+      } catch (e) {
+        console.warn('[playlist] open page failed', e);
+        if (dataSeq === feedSeqRef.current.mood) {
+          setSections([]);
+          setBrowseEmptyKind(emptyKind);
+          pushToast(translations[lang].playlistOpenFailed, 'error');
+        }
+      } finally {
+        window.clearTimeout(safety);
+        if (dataSeq === feedSeqRef.current.mood) setFeedTabLoading('mood', false);
+      }
+    },
+    [lang, navigateTo, setFeedTabLoading]
+  );
+
   const openFavorites = useCallback(() => {
     ++feedSeqRef.current.mood;
     setFeedTabLoading('mood', false);
     navigateTo('mood');
     setSearchQuery('');
     setBrowseTitle(null);
+    setBrowseEmptyKind(null);
     setActiveMood(FAVORITES_ID);
     setSections(savedTracks.length ? [{ title: t.favs, items: savedTracks }] : []);
   }, [navigateTo, savedTracks, setFeedTabLoading, t.favs]);
@@ -1823,6 +1872,12 @@ export default function App() {
   const collectionReqRef = useRef(0);
   const handleCollectionClick = useCallback(
     async (collection: Track) => {
+      // episodes for later is a saved list, not a "hit play" playlist
+      if (toPlainPlaylistId(collection.id) === 'SE') {
+        await openCollectionPage(collection);
+        return;
+      }
+
       const req = ++collectionReqRef.current;
       const L = translations[lang];
       // big playlists take a moment; say something instead of looking dead
@@ -1839,16 +1894,8 @@ export default function App() {
         if (req !== collectionReqRef.current) return;
         const items = res.items;
         if (!items.length) {
-          if (res.status === 'empty') {
-            pushToast(
-              toPlainPlaylistId(collection.id) === 'SE'
-                ? L.playlistEmptyOrUnsupported
-                : L.playlistEmpty,
-              'info'
-            );
-          } else {
-            pushToast(L.playlistOpenFailed, 'error');
-          }
+          // leave the player and show a real empty page instead of a toast with no UI change
+          await openCollectionPage(collection);
           return;
         }
 
@@ -1886,7 +1933,7 @@ export default function App() {
         window.clearTimeout(slowHint);
       }
     },
-    [lang, openPlayer, loadTrack]
+    [lang, openPlayer, loadTrack, openCollectionPage]
   );
 
   const handleItemClick = useCallback(
@@ -4095,7 +4142,9 @@ export default function App() {
               const renderPl = (pl: Track) => (
                 <div
                   key={pl.id}
-                  className="nav-item playlist-link user-playlist-link"
+                  className={`nav-item playlist-link user-playlist-link${
+                    activeTab === 'mood' && activeMood === browseMoodId(pl.id) ? ' active' : ''
+                  }`}
                   onClick={() => void handleCollectionClick(pl)}
                   title={pl.title}
                 >
@@ -4600,6 +4649,18 @@ export default function App() {
                     <div className="empty-state-message">
                       <h2>{t.favsEmptyTitle}</h2>
                       <p>{t.favsEmptyDesc}</p>
+                    </div>
+                  ) : activeTab === 'mood' && browseEmptyKind === 'episodes' ? (
+                    <div className="empty-state-message">
+                      {browseTitle && <h2 className="library-section-title">{browseTitle}</h2>}
+                      <h2>{t.episodesEmptyTitle}</h2>
+                      <p>{t.episodesEmptyDesc}</p>
+                    </div>
+                  ) : activeTab === 'mood' && browseEmptyKind === 'collection' ? (
+                    <div className="empty-state-message">
+                      {browseTitle && <h2 className="library-section-title">{browseTitle}</h2>}
+                      <h2>{t.collectionEmptyTitle}</h2>
+                      <p>{t.collectionEmptyDesc}</p>
                     </div>
                   ) : activeTab === 'search' ? (
                     <div className="empty-state-message">

@@ -17,10 +17,12 @@ export function browseIdFromMood(activeMood: string | null | undefined): string 
   return activeMood.slice(BROWSE_MOOD_PREFIX.length) || null;
 }
 
-/** click plan: artist/profile open a browse page; albums/playlists play; songs play */
+/** click plan: artist/profile/album open a browse page; playlists play; songs play */
 export function itemClickPlan(track: Pick<Track, 'id' | 'type'>): { kind: ItemClickKind } {
-  if (track.type === 'artist' || track.type === 'profile') return { kind: 'browse-page' };
-  if (track.type === 'album' || track.type === 'playlist' || track.type === 'podcast') {
+  if (track.type === 'artist' || track.type === 'profile' || track.type === 'album') {
+    return { kind: 'browse-page' };
+  }
+  if (track.type === 'playlist' || track.type === 'podcast') {
     return { kind: 'play-collection' };
   }
   if (track.type === 'track' || /^[\w-]{11}$/.test(track.id)) return { kind: 'play-track' };

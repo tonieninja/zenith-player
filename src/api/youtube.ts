@@ -1662,6 +1662,20 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
   });
 }
 
+/** musixmatch often needs a token + signed secret fetch before lyrics land */
+const LYRICS_TIMEOUT_MS: Partial<Record<LyricsProvider, number>> = {
+  Musixmatch: 22000,
+  LyricsGenius: 15000,
+  'YouTube Music': 12000,
+  LRCLib: 10000,
+  'Lyrics.ovh': 8000,
+};
+const DEFAULT_LYRICS_TIMEOUT_MS = 12000;
+
+function lyricsTimeoutFor(provider: LyricsProvider): number {
+  return LYRICS_TIMEOUT_MS[provider] ?? DEFAULT_LYRICS_TIMEOUT_MS;
+}
+
 // cache hits so opening player again is instant
 // failures get a short ttl so we can retry later
 const lyricsCache = new Map<string, { data: LyricsResult; ts: number; ok: boolean }>();
@@ -1745,7 +1759,7 @@ async function getLyricsUncached(
     p: LyricsProvider
   ): Promise<{ res: LyricsResult | null; failure: LyricsFailure | null }> => {
     try {
-      const res = await withTimeout(getLyricsForProvider(track, lang, p), 8000, p);
+      const res = await withTimeout(getLyricsForProvider(track, lang, p), lyricsTimeoutFor(p), p);
       if (res && (res.synced?.length || res.text)) {
         // Lyrics.ovh has no title/artist metadata, so Auto must not display it
         if (p === 'Lyrics.ovh' && !explicit) {
@@ -2101,17 +2115,29 @@ async function fetchMusixmatchSecret(): Promise<string> {
   }
 
   let lastErr: Error | null = null;
-  for (const src of bundleUrls.slice(0, 30)) {
-    try {
-      const jsRes = await fetch(src, { method: 'GET', headers: { 'User-Agent': LYRICS_BROWSER_UA } });
-      if (!jsRes.ok) continue;
-      const js = await jsRes.text();
-      const secret = extractMusixmatchSecretFromJs(js);
+  const candidates = bundleUrls.slice(0, 10);
+  const batchSize = 3;
+  for (let i = 0; i < candidates.length; i += batchSize) {
+    const batch = candidates.slice(i, i + batchSize);
+    const results = await Promise.all(
+      batch.map(async (src) => {
+        try {
+          const jsRes = await fetch(src, {
+            method: 'GET',
+            headers: { 'User-Agent': LYRICS_BROWSER_UA },
+          });
+          if (!jsRes.ok) return null;
+          return extractMusixmatchSecretFromJs(await jsRes.text());
+        } catch (e) {
+          lastErr = e instanceof Error ? e : new Error(String(e));
+          return null;
+        }
+      })
+    );
+    for (const secret of results) {
       if (!secret) continue;
       mxmSecretCache = { secret, ts: Date.now() };
       return secret;
-    } catch (e) {
-      lastErr = e instanceof Error ? e : new Error(String(e));
     }
   }
   throw lastErr || new Error(MXM_SECRET_MISSING);
@@ -2249,6 +2275,8 @@ async function mxmDesktopFetch(url: string, init: RequestInit = {}): Promise<Res
     method: init.method || 'GET',
     headers: {
       Accept: 'application/json',
+      'Accept-Language': 'en-US,en;q=0.9',
+      'User-Agent': LYRICS_BROWSER_UA,
       Authority: 'apic-desktop.musixmatch.com',
       Cookie: mxmCookie,
       ...(init.headers as Record<string, string> | undefined),
@@ -2413,12 +2441,12 @@ async function getMusixmatchLyricsSignedWithRetry(
 async function getMusixmatchLyrics(track: Track): Promise<LyricsResult | null> {
   let desktopError: string;
   try {
-    return await getMusixmatchLyricsDesktop(track);
+    return await withTimeout(getMusixmatchLyricsDesktop(track), 10000, 'Musixmatch desktop');
   } catch (e) {
     desktopError = errorMessage(e);
   }
   try {
-    return await getMusixmatchLyricsSignedWithRetry(track);
+    return await withTimeout(getMusixmatchLyricsSignedWithRetry(track, 2), 14000, 'Musixmatch community');
   } catch (e) {
     const signedError = errorMessage(e);
     throw new Error(`desktop API: ${desktopError}; community API: ${signedError}`);

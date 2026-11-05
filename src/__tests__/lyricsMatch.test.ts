@@ -115,6 +115,9 @@ describe('Musixmatch secret extraction and Genius 403', () => {
     expect(localizeLyricsReason(g, 'en')).toMatch(/403/);
     expect(localizeLyricsReason(g, 'pl')).toMatch(/403/);
     expect(localizeLyricsReason(MXM_SECRET_MISSING, 'pl')).toMatch(/Musixmatch/);
+    expect(localizeLyricsReason('Musixmatch timed out after 22s', 'en')).toBe('Timed out after 22 s');
+    expect(localizeLyricsReason('Musixmatch timed out after 8s', 'pl')).toMatch(/8/);
+
     expect(localizeLyricsReason('Signature secret not found in Musixmatch app bundle', 'en')).toMatch(
       /signing secret/i
     );

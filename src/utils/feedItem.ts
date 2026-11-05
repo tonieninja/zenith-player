@@ -65,6 +65,19 @@ export function resolveFeedItem(input: ResolveFeedItemInput): FeedItemIdentity |
     return { id: browseId, type: pageType.includes('PODCAST') ? 'podcast' : 'playlist' };
   }
 
+  // album / playlist cards often carry an overlay videoId for the first track;
+  // keep the browse target when the id itself says what this row is
+  if (browseId && (browseId.startsWith('MPREb') || browseId.startsWith('OLAK5uy'))) {
+    return { id: browseId, type: 'album' };
+  }
+  if (
+    browseId &&
+    primaryIsBrowse &&
+    (browseId.startsWith('VL') || browseId.startsWith('PL') || browseId.startsWith('MPSP'))
+  ) {
+    return { id: browseId, type: 'playlist' };
+  }
+
   // overlay/watch videoId must not win over a missing type when this is a song row
   if (videoId) return { id: videoId, type: 'track' };
 
