@@ -5,7 +5,7 @@
 - six more places to get lyrics from: LyricsPlus, Boidu (Apple Music timing), Unison, NetEase, QQ Music and Kugou
 - the last four only get asked when the usual ones have no synced lyrics, credit lines get dropped
 - songs download from YouTube in 10 MiB pieces, so long tracks and mixes don't get slowed down halfway
-- loudness normalization starts from the level YouTube reports, no more loud first seconds
+- loudness normalization starts from the level YouTube reports when there is one, so the first seconds are not too loud
 - stream links survive a restart, the first song after opening the app starts faster
 - ListenBrainz scrobbling next to Last.fm, paste your token in the plugin settings
 - import a Spotify playlist into YouTube Music from the playlist manager
