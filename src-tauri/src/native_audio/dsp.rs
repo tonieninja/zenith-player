@@ -127,8 +127,8 @@ impl Eq {
     }
 
     pub fn set(&mut self, bands: &[f64], bass: f64) {
-        for k in 0..EQ_FREQS.len() {
-            self.target[k] = bands.get(k).copied().unwrap_or(0.0).clamp(-24.0, 12.0);
+        for (k, t) in self.target.iter_mut().take(EQ_FREQS.len()).enumerate() {
+            *t = bands.get(k).copied().unwrap_or(0.0).clamp(-24.0, 12.0);
         }
         self.target[STAGES - 1] = bass.clamp(0.0, 12.0);
     }

@@ -706,6 +706,7 @@ pub struct FirewallStatus {
     pub public_network: bool,
 }
 
+#[cfg(windows)]
 pub const FIREWALL_RULE: &str = "Zenith Player (local network)";
 
 #[cfg(windows)]

@@ -363,8 +363,7 @@ fn watch_decks(e: &Engine) {
     let active = st.active;
     let mut out: Vec<&'static str> = Vec::new();
     let mut ended = false;
-    for i in 0..2 {
-        let d = &mut st.decks[i];
+    for (i, d) in st.decks.iter_mut().enumerate() {
         if d.out.drained.swap(false, Ordering::SeqCst) && !d.src.is_empty() && !d.ended {
             d.last_t = pos_of(d);
             d.ended = true;
@@ -588,8 +587,7 @@ pub fn run_cmd(cmd: Cmd) -> Snapshot {
                 let changed = (r - st.rate).abs() > 1e-6;
                 st.rate = r;
                 if changed {
-                    for i in 0..2 {
-                        let d = &mut st.decks[i];
+                    for d in st.decks.iter_mut() {
                         if d.ready >= 4 {
                             let t = pos_of(d);
                             do_seek(d, t, r);
@@ -613,8 +611,8 @@ pub fn run_cmd(cmd: Cmd) -> Snapshot {
             Cmd::AbortAll => {
                 st.ab = None;
                 cancel_fade(&mut st);
-                for i in 0..2 {
-                    clear_deck(&mut st.decks[i]);
+                for d in st.decks.iter_mut() {
+                    clear_deck(d);
                 }
                 st.decks[1 - a].gain = 1.0;
                 apply_volume(&st, a);
