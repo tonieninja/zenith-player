@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 4.2.0
 
 - six more places to get lyrics from: LyricsPlus, Boidu (Apple Music timing), Unison, NetEase, QQ Music and Kugou
 - the last four only get asked when the usual ones have no synced lyrics, credit lines get dropped
