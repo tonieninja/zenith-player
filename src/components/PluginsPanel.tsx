@@ -14,6 +14,7 @@ import {
 import { pluginManager, PLUGIN_CATEGORY_LABELS, PLUGIN_CATEGORY_ORDER } from '../plugins';
 import type { PluginCategory } from '../plugins/types';
 import { Select } from './ui/Select';
+import { ModalOverlay } from './ui/ModalOverlay';
 import { DownloadsSettings } from './plugins/DownloadsSettings';
 import { HotkeySettings } from './plugins/HotkeySettings';
 import type { Track } from '../api/youtube';
@@ -1176,7 +1177,7 @@ export function PluginsPanel({
     ].includes(id);
 
   return (
-    <div className="global-modal-overlay" onClick={onClose}>
+    <ModalOverlay onClick={onClose} testId="plugins-overlay">
       <div className="glass-modal-container plugins-modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header-polished">
           <h2>{t.plugins}</h2>
@@ -1256,7 +1257,7 @@ export function PluginsPanel({
           })()}
         </div>
       </div>
-    </div>
+    </ModalOverlay>
   );
 }
 

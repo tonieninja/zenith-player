@@ -17,6 +17,7 @@ import {
   X,
 } from 'lucide-react';
 import type { Language } from '../i18n';
+import { ModalOverlay } from './ui/ModalOverlay';
 import { translations } from '../i18n';
 import { createPlaylist, deletePlaylist, type PlaylistPrivacy, type Track } from '../api/youtube';
 import {
@@ -426,7 +427,7 @@ export function PlaylistManager({
   ];
 
   return (
-    <div className="global-modal-overlay" onClick={onClose}>
+    <ModalOverlay onClick={onClose} testId="playlist-manager-overlay">
       <div
         className="glass-modal-container pm-modal"
         onClick={(e) => e.stopPropagation()}
@@ -811,7 +812,7 @@ export function PlaylistManager({
           />
         )}
       </div>
-    </div>
+    </ModalOverlay>
   );
 }
 

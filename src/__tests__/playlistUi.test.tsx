@@ -2,7 +2,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { PopoverMenu, popoverMenuCoords } from '../components/ui/PopoverMenu';
-import { ctxTrackAttr, isVideoTrackId } from '../utils/ctxTrack';
+import { ctxTrackAttr, isVideoTrackId, parseCtxTrackAttr, isPrimaryButton } from '../utils/ctxTrack';
 
 describe('song context menu payload', () => {
   it('serializes real songs so Add to playlist can open the picker', () => {
@@ -51,6 +51,24 @@ describe('song context menu payload', () => {
     expect(ctxTrackAttr({ id: 'short', type: 'track', title: 'x', artist: 'a', cover: '' })).toBe(
       undefined
     );
+  });
+
+  it('parses the payload even when a bare video id was stored', () => {
+    const raw = ctxTrackAttr({
+      id: 'dQw4w9WgXcQ',
+      type: 'track',
+      title: 'Szampan',
+      artist: 'Sanah',
+      cover: '',
+    });
+    expect(parseCtxTrackAttr(raw)?.id).toBe('dQw4w9WgXcQ');
+    expect(parseCtxTrackAttr('dQw4w9WgXcQ')?.id).toBe('dQw4w9WgXcQ');
+    expect(parseCtxTrackAttr('not-json-and-not-an-id')).toBeNull();
+  });
+
+  it('does not treat a right click as activating the card', () => {
+    expect(isPrimaryButton(0)).toBe(true);
+    expect(isPrimaryButton(2)).toBe(false);
   });
 });
 

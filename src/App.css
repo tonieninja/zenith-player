@@ -395,6 +395,15 @@ html.window-occluded * {
   flex-shrink: 0;
 }
 
+button.nav-item {
+  width: 100%;
+  background: transparent;
+  border: none;
+  text-align: left;
+  color: inherit;
+  font: inherit;
+}
+
 .nav-item {
   position: relative;
   display: flex;
@@ -1888,18 +1897,28 @@ html.window-occluded * {
 }
 
 .global-modal-overlay {
-  position: absolute;
+  position: fixed;
   inset: 0;
   width: 100%;
-  height: 100vh;
+  height: 100%;
   background-color: rgba(0, 0, 0, 0.6);
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
   z-index: 15000;
   display: flex;
   justify-content: center;
   align-items: center;
   animation: modalFadeIn 0.3s var(--ease-spring);
+}
+
+/* blur on a sibling layer so WebKitGTK cannot hide the dialog itself
+   when an ancestor uses overflow: clip (a known backdrop-filter bug) */
+.global-modal-overlay::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  pointer-events: none;
+  z-index: -1;
 }
 
 @keyframes modalFadeIn {
@@ -5147,4 +5166,42 @@ html.window-occluded *::after {
 }
 .lyrics-toggle-btn.active {
   color: var(--theme-accent, var(--accent-1));
+}
+
+.ytm-rating-btns {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.ytm-rating-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition:
+    color 0.15s ease,
+    background 0.15s ease;
+}
+
+.ytm-rating-btn:hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.ytm-rating-btn.active {
+  color: var(--theme-accent, var(--accent-1));
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.player-view-actions .ytm-rating-btns {
+  margin-right: 4px;
 }

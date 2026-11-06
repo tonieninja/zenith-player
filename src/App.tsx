@@ -9,6 +9,7 @@ import {
   useRef,
   useState,
 } from 'react';
+import { createPortal } from 'react-dom';
 import { invoke } from '@tauri-apps/api/core';
 import { getVersion } from '@tauri-apps/api/app';
 import { listen } from '@tauri-apps/api/event';
@@ -23,7 +24,9 @@ import {
   renamePlaylist,
   deletePlaylist,
   addToPlaylist,
-  setTrackLiked,
+  setTrackRating,
+  nextLikeStatus,
+  type TrackLikeStatus,
   isEditablePlaylist,
   toPlainPlaylistId,
   invalidateLibraryCache,
@@ -88,9 +91,9 @@ import {
   itemClickPlan,
   sidebarClickPlan,
 } from './utils/itemClick';
-import { ctxTrackAttr } from './utils/ctxTrack';
+import { ctxTrackAttr, parseCtxTrackAttr } from './utils/ctxTrack';
 import { SyncedLyricsRail } from './components/SyncedLyricsRail';
-import { LIB_EMPTY_KEYS, LIBRARY_CATEGORIES } from './constants/library';
+import { LIB_EMPTY_KEYS, LIBRARY_CATEGORIES, nextLibraryViewState } from './constants/library';
 import {
   MINI_PLAYER_SYNC_MS,
   STREAM_CACHE_LIMIT,
@@ -101,6 +104,8 @@ import {
 import { useDebounce } from './hooks/useDebounce';
 import { useScrubBar } from './hooks/useScrubBar';
 import { PopoverMenu } from './components/ui/PopoverMenu';
+import { ModalOverlay } from './components/ui/ModalOverlay';
+import { YtmRatingButtons } from './components/player/YtmRatingButtons';
 import { PlaylistManager } from './components/PlaylistManager';
 import { translations, type Language } from './i18n';
 import { AUX_WINDOW_PLUGINS, pluginManager } from './plugins';
@@ -421,6 +426,7 @@ export default function App() {
   const [libAccount, setLibAccount] = useState<AccountProfile | null>(null);
   const [pmOpen, setPmOpen] = useState(false);
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; track: Track } | null>(null);
+  const [trackRating, setTrackRatingState] = useState<TrackLikeStatus>('INDIFFERENT');
   const [loginBusy, setLoginBusy] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [userPlaylists, setUserPlaylists] = useState<Track[]>([]);
@@ -1315,8 +1321,12 @@ export default function App() {
   }, [lang, loadHome, stopLoginPoll]);
 
   const changeLibCategory = useCallback((category: LibraryCategory) => {
-    setLibCategory(category);
-  }, []);
+    const plan = nextLibraryViewState(libCategory, category);
+    if (!plan.clear) return;
+    setLibSections([]);
+    setLibLoading(true);
+    setLibCategory(plan.category);
+  }, [libCategory]);
 
   const handleLogin = useCallback(async () => {
     clearAuthCache();
@@ -2083,30 +2093,60 @@ export default function App() {
     }
   }, [queue, queueIndex, shuffleOn, currentTrack]);
 
-  const toggleSave = useCallback(() => {
-    if (!currentTrack) return;
-    const track: Track = {
-      id: currentTrack.id,
-      type: 'track',
-      title: currentTrack.title,
-      artist: currentTrack.artist,
-      cover: currentTrack.cover,
-      coverSmall: currentTrack.coverSmall,
-      coverLarge: currentTrack.coverLarge,
-    };
-    const had = savedTracks.some((x) => x.id === track.id);
-    pushToast(had ? t.removedFromFavs : t.addedToFavs, 'success', 1800);
-    setSavedTracks((prev) =>
-      prev.some((x) => x.id === track.id) ? prev.filter((x) => x.id !== track.id) : [track, ...prev]
+  useEffect(() => {
+    const id = currentTrack?.id;
+    setTrackRatingState(
+      id && savedTracks.some((x) => x.id === id) ? 'LIKE' : 'INDIFFERENT'
     );
-    // signed in: mirror the heart to youtube music's Liked Music
-    if (libAuthed && /^[\w-]{11}$/.test(track.id)) {
-      setTrackLiked(track.id, !had, lang).catch((e) => {
-        console.warn('[like] sync failed', e);
-        pushToast(translations[lang].likeSyncFailed, 'error');
-      });
-    }
-  }, [currentTrack, savedTracks, t, libAuthed, lang]);
+    // only resync when the playing song changes; dislike must survive a local unsave
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentTrack?.id]);
+
+  const applyTrackRating = useCallback(
+    (next: TrackLikeStatus) => {
+      if (!currentTrack) return;
+      const track: Track = {
+        id: currentTrack.id,
+        type: 'track',
+        title: currentTrack.title,
+        artist: currentTrack.artist,
+        cover: currentTrack.cover,
+        coverSmall: currentTrack.coverSmall,
+        coverLarge: currentTrack.coverLarge,
+      };
+      const wasSaved = savedTracks.some((x) => x.id === track.id);
+      setTrackRatingState(next);
+      if (next === 'LIKE' && !wasSaved) {
+        pushToast(t.addedToFavs, 'success', 1800);
+        setSavedTracks((prev) => [track, ...prev]);
+      } else if (next !== 'LIKE' && wasSaved) {
+        pushToast(t.removedFromFavs, 'success', 1800);
+        setSavedTracks((prev) => prev.filter((x) => x.id !== track.id));
+      }
+      if (libAuthed && /^[\w-]{11}$/.test(track.id)) {
+        setTrackRating(track.id, next, lang).catch((e) => {
+          console.warn('[like] sync failed', e);
+          pushToast(
+            translations[lang][next === 'DISLIKE' ? 'dislikeSyncFailed' : 'likeSyncFailed'],
+            'error'
+          );
+        });
+      }
+    },
+    [currentTrack, savedTracks, t, libAuthed, lang]
+  );
+
+  const toggleSave = useCallback(() => {
+    applyTrackRating(savedTracks.some((x) => x.id === currentTrack?.id) ? 'INDIFFERENT' : 'LIKE');
+  }, [applyTrackRating, savedTracks, currentTrack]);
+
+  const toggleLike = useCallback(() => {
+    applyTrackRating(nextLikeStatus(trackRating, 'like'));
+  }, [applyTrackRating, trackRating]);
+
+  const toggleDislike = useCallback(() => {
+    applyTrackRating(nextLikeStatus(trackRating, 'dislike'));
+  }, [applyTrackRating, trackRating]);
 
   const addCurrentToPlaylist = useCallback(
     async (pl: Track, allowDuplicate = false, picked?: Track) => {
@@ -3162,21 +3202,29 @@ export default function App() {
       if (target?.closest('input, textarea, [contenteditable="true"]')) return;
       e.preventDefault();
       const row = target?.closest<HTMLElement>('[data-ctx-track]');
-      if (row?.dataset.ctxTrack) {
-        try {
-          const track = JSON.parse(row.dataset.ctxTrack) as Track;
-          const x = Math.min(e.clientX, window.innerWidth - 230);
-          const y = Math.min(e.clientY, window.innerHeight - 260);
-          setCtxMenu({ x, y, track });
-        } catch {
-          /* not a track row after all */
-        }
+      const track = parseCtxTrackAttr(row?.dataset.ctxTrack);
+      if (track) {
+        e.stopPropagation();
+        const x = Math.min(e.clientX, window.innerWidth - 230);
+        const y = Math.min(e.clientY, window.innerHeight - 260);
+        setCtxMenu({ x, y, track });
       } else {
         setCtxMenu(null);
       }
     };
-    window.addEventListener('contextmenu', onContext);
-    return () => window.removeEventListener('contextmenu', onContext);
+    const onAuxClick = (e: MouseEvent) => {
+      if (e.button !== 2) return;
+      if ((e.target as HTMLElement | null)?.closest('[data-ctx-track]')) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    };
+    window.addEventListener('contextmenu', onContext, true);
+    window.addEventListener('auxclick', onAuxClick, true);
+    return () => {
+      window.removeEventListener('contextmenu', onContext, true);
+      window.removeEventListener('auxclick', onAuxClick, true);
+    };
   }, []);
 
   useEffect(() => {
@@ -4254,18 +4302,33 @@ export default function App() {
             })()}
           </div>
           <div className="sidebar-bottom-actions">
-            <div
+            <button
+              type="button"
               className="nav-item settings-link"
-              onClick={() => setIsPluginsOpen(true)}
               data-tour="plugins"
+              data-testid="open-plugins"
+              onClick={() => {
+                setIsSettingsOpen(false);
+                setIsPluginsOpen(true);
+                void appWindow.setFocus();
+              }}
             >
               <Puzzle size={22} />
               <span>{t.plugins}</span>
-            </div>
-            <div className="nav-item settings-link" onClick={() => setIsSettingsOpen(true)}>
+            </button>
+            <button
+              type="button"
+              className="nav-item settings-link"
+              data-testid="open-settings"
+              onClick={() => {
+                setIsPluginsOpen(false);
+                setIsSettingsOpen(true);
+                void appWindow.setFocus();
+              }}
+            >
               <Settings size={22} />
               <span>{t.settings}</span>
-            </div>
+            </button>
           </div>
         </aside>
 
@@ -4322,6 +4385,15 @@ export default function App() {
                         </div>
                       )}
                       <div className="player-view-actions">
+                        {currentTrack && /^[\w-]{11}$/.test(currentTrack.id) && (
+                          <YtmRatingButtons
+                            rating={trackRating}
+                            onLike={toggleLike}
+                            onDislike={toggleDislike}
+                            likeLabel={t.likeTrack}
+                            dislikeLabel={t.dislikeTrack}
+                          />
+                        )}
                         <button className="primary-action-btn" onClick={toggleSave}>
                           {isSaved ? t.saved : t.save}
                         </button>
@@ -4963,6 +5035,15 @@ export default function App() {
             </div>
 
             <div className="player-extra-controls-group">
+              {currentTrack && /^[\w-]{11}$/.test(currentTrack.id) && (
+                <YtmRatingButtons
+                  rating={trackRating}
+                  onLike={toggleLike}
+                  onDislike={toggleDislike}
+                  likeLabel={t.likeTrack}
+                  dislikeLabel={t.dislikeTrack}
+                />
+              )}
               {pluginStates['ab-loop'] && (
                 <Repeat2
                   size={18}
@@ -5120,13 +5201,28 @@ export default function App() {
       </div>
 
       {isSettingsOpen && (
-        <div className="global-modal-overlay" onClick={() => setIsSettingsOpen(false)}>
+        <ModalOverlay onClick={() => setIsSettingsOpen(false)} testId="settings-overlay">
           <div className="glass-modal-container" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header-polished">
               <h2>{t.generalSettings}</h2>
               <X size={26} className="modal-close-icon" onClick={() => setIsSettingsOpen(false)} />
             </div>
             <div className="modal-body-polished">
+              <div className="settings-row-item settings-toggle-row">
+                <div className="settings-account-info">
+                  <span className="setting-label">{t.offlineDownloads}</span>
+                  <span className="plugin-desc">{t.offlineDownloadsDesc}</span>
+                </div>
+                <button
+                  type="button"
+                  className={`lang-option-btn remember-login-toggle${pluginStates['offline-downloads'] ? ' active' : ''}`}
+                  aria-pressed={Boolean(pluginStates['offline-downloads'])}
+                  data-testid="offline-downloads-toggle"
+                  onClick={() => togglePlugin('offline-downloads')}
+                >
+                  {pluginStates['offline-downloads'] ? t.pluginEnabled : t.pluginDisabled}
+                </button>
+              </div>
               <div className="settings-row-item settings-toggle-row">
                 <div className="settings-account-info">
                   <span className="setting-label">{t.rememberLogin}</span>
@@ -5294,7 +5390,7 @@ export default function App() {
               </div>
             </div>
           </div>
-        </div>
+        </ModalOverlay>
       )}
 
       {pmOpen && (
@@ -5318,14 +5414,15 @@ export default function App() {
           }}
         />
       )}
-      {ctxMenu && (
-        <>
+      {ctxMenu &&
+        createPortal(
+          <>
           <div
             className="ctx-menu-catcher"
             onClick={() => setCtxMenu(null)}
             onContextMenu={() => setCtxMenu(null)}
           />
-          <div className="ctx-menu" style={{ left: ctxMenu.x, top: ctxMenu.y }} role="menu">
+          <div className="ctx-menu" style={{ left: ctxMenu.x, top: ctxMenu.y }} role="menu" data-testid="track-ctx-menu">
             <div className="ctx-menu-label">{t.ctxAddToPlaylist}</div>
             {userPlaylists.filter((p) => isEditablePlaylist(p.id)).length === 0 ? (
               <div className="ctx-menu-empty">{t.ctxNoPlaylists}</div>
@@ -5358,10 +5455,17 @@ export default function App() {
               </button>
             )}
           </div>
-        </>
-      )}
+          </>,
+          document.body
+        )}
       {isPluginsOpen && (
-        <Suspense fallback={null}>
+        <Suspense
+          fallback={
+            <ModalOverlay onClick={() => setIsPluginsOpen(false)} testId="plugins-overlay">
+              <div className="glass-modal-container" onClick={(e) => e.stopPropagation()} />
+            </ModalOverlay>
+          }
+        >
           <PluginsPanel
             lang={lang}
             pluginStates={pluginStates}
@@ -5380,7 +5484,7 @@ export default function App() {
       )}
 
       {plEdit && (
-        <div className="global-modal-overlay" onClick={() => !plEditBusy && setPlEdit(null)}>
+        <ModalOverlay onClick={() => !plEditBusy && setPlEdit(null)}>
           <div className="glass-modal-container" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header-polished">
               <h2>{plEdit.mode === 'rename' ? t.renamePlaylist : t.deletePlaylist}</h2>
@@ -5427,11 +5531,11 @@ export default function App() {
               </div>
             </div>
           </div>
-        </div>
+        </ModalOverlay>
       )}
 
       {fdEdit && (
-        <div className="global-modal-overlay" onClick={() => setFdEdit(null)}>
+        <ModalOverlay onClick={() => setFdEdit(null)}>
           <div className="glass-modal-container" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header-polished">
               <h2>{fdEdit.mode === 'rename' ? t.renameFolder : t.moveToFolder}</h2>
@@ -5487,11 +5591,11 @@ export default function App() {
               </div>
             </div>
           </div>
-        </div>
+        </ModalOverlay>
       )}
 
       {npOpen && (
-        <div className="global-modal-overlay" onClick={() => setNpOpen(false)}>
+        <ModalOverlay onClick={() => setNpOpen(false)}>
           <div className="glass-modal-container" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header-polished">
               <h2>{t.newPlaylist}</h2>
@@ -5559,7 +5663,7 @@ export default function App() {
               </div>
             </div>
           </div>
-        </div>
+        </ModalOverlay>
       )}
     </div>
   );

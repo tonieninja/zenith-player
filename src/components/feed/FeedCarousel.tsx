@@ -5,7 +5,7 @@ import { usePager } from '../../hooks/usePager';
 import { useResponsivePageSize } from '../../hooks/useResponsivePageSize';
 import { coverAttrs } from '../../utils/imgError';
 import { currentT } from '../../utils/uiLang';
-import { ctxTrackAttr } from '../../utils/ctxTrack';
+import { ctxTrackAttr, isPrimaryButton } from '../../utils/ctxTrack';
 
 export const PAGE_SIZE = 8;
 
@@ -25,7 +25,10 @@ const AlbumCard = memo(function AlbumCard({
   priority?: boolean;
 }) {
   const handleClick = useCallback(
-    () => onClick(track, sectionTitle, sectionItems),
+    (e: { button?: number }) => {
+      if (!isPrimaryButton(e.button)) return;
+      onClick(track, sectionTitle, sectionItems);
+    },
     [onClick, track, sectionTitle, sectionItems]
   );
   return (

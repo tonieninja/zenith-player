@@ -42,3 +42,13 @@ export const LIB_EMPTY_KEYS: Record<
   history: 'libEmptyHistory',
   podcasts: 'libEmptyPodcasts',
 };
+
+/** drop the previous tab's items immediately so the chip never shows stale rows */
+export function nextLibraryViewState(
+  current: LibraryCategory,
+  next: LibraryCategory
+): { category: LibraryCategory; clear: boolean } {
+  if (current === next) return { category: current, clear: false };
+  return { category: next, clear: true };
+}
+

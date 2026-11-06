@@ -1562,15 +1562,41 @@ export async function addToPlaylist(
   invalidateLibraryCache();
 }
 
+export type TrackLikeStatus = 'LIKE' | 'DISLIKE' | 'INDIFFERENT';
+
+export function likeEndpointFor(status: TrackLikeStatus): string {
+  if (status === 'LIKE') return 'like/like';
+  if (status === 'DISLIKE') return 'like/dislike';
+  return 'like/removelike';
+}
+
+/** click a thumb again to clear it; the other thumb replaces the current rating */
+export function nextLikeStatus(
+  current: TrackLikeStatus,
+  action: 'like' | 'dislike'
+): TrackLikeStatus {
+  if (action === 'like') return current === 'LIKE' ? 'INDIFFERENT' : 'LIKE';
+  return current === 'DISLIKE' ? 'INDIFFERENT' : 'DISLIKE';
+}
+
+/** thumbs-up / thumbs-down / clear on youtube music (feeds Liked Music) */
+export async function setTrackRating(
+  videoId: string,
+  status: TrackLikeStatus,
+  lang: Language
+): Promise<void> {
+  if (!isYoutubeVideoId(videoId)) throw new Error('not a track');
+  await ytmAction(likeEndpointFor(status), { target: { videoId } }, lang);
+  invalidateLibraryCache();
+}
+
 /** thumbs-up / remove like on youtube music (feeds the Liked Music playlist) */
 export async function setTrackLiked(
   videoId: string,
   liked: boolean,
   lang: Language
 ): Promise<void> {
-  if (!isYoutubeVideoId(videoId)) throw new Error('not a track');
-  await ytmAction(liked ? 'like/like' : 'like/removelike', { target: { videoId } }, lang);
-  invalidateLibraryCache();
+  await setTrackRating(videoId, liked ? 'LIKE' : 'INDIFFERENT', lang);
 }
 
 // related tab, playlists / similar artists / the about blurb
@@ -2053,20 +2079,79 @@ function acceptMatch(
   );
 }
 
+/** browser-like headers; a bare GET to timedtext is often 403 without a watch Referer */
+export function youtubeTimedtextHeaders(videoId: string): Record<string, string> {
+  return {
+    Accept: 'text/vtt, text/plain, */*',
+    'Accept-Language': 'en-US,en;q=0.9,pl;q=0.8',
+    'User-Agent': LYRICS_BROWSER_UA,
+    Referer: `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}`,
+    Origin: 'https://www.youtube.com',
+  };
+}
+
+export function withVttFmt(url: string): string {
+  if (/[?&]fmt=/.test(url)) return url;
+  return `${url}${url.includes('?') ? '&' : '?'}fmt=vtt`;
+}
+
+/** caption baseUrls buried in a player / next payload */
+export function captionTrackUrlsFromPlayer(data: unknown): string[] {
+  const urls: string[] = [];
+  const seen = new Set<string>();
+  const add = (raw: unknown) => {
+    if (typeof raw !== 'string' || !raw.startsWith('http')) return;
+    if (!/timedtext|caption/i.test(raw) && !/[?&](?:kind|lang|fmt|v)=/.test(raw)) return;
+    if (seen.has(raw)) return;
+    seen.add(raw);
+    urls.push(raw);
+  };
+  const walk = (node: unknown, depth: number) => {
+    if (!node || depth > 12 || urls.length >= 16) return;
+    if (Array.isArray(node)) {
+      for (const item of node) walk(item, depth + 1);
+      return;
+    }
+    if (typeof node !== 'object') return;
+    const rec = node as Record<string, unknown>;
+    add(rec.baseUrl);
+    if (Array.isArray(rec.captionTracks)) {
+      for (const track of rec.captionTracks) {
+        if (track && typeof track === 'object') add((track as { baseUrl?: unknown }).baseUrl);
+      }
+    }
+    for (const value of Object.values(rec)) walk(value, depth + 1);
+  };
+  walk(data, 0);
+  return urls;
+}
+
+async function fetchTimedtextVtt(url: string, videoId: string): Promise<LyricsLine[] | null> {
+  const headers = youtubeTimedtextHeaders(videoId);
+  try {
+    const cookie = await getYtmCookie();
+    if (cookie) headers.Cookie = cookie;
+  } catch {
+    /* guest timedtext still works with Referer + UA */
+  }
+  const response = await fetch(withVttFmt(url), { method: 'GET', headers });
+  if (!response.ok) return null;
+  const raw = await response.text();
+  if (!raw || raw.length < 20 || !raw.includes('-->')) return null;
+  const synced = parseVtt(raw);
+  return synced.length >= 4 ? synced : null;
+}
+
 async function getYoutubeTimedtext(videoId: string, lang: Language): Promise<LyricsLine[] | null> {
   if (!/^[A-Za-z0-9_-]{11}$/.test(videoId)) return null;
   const langs = lang === 'pl' ? ['pl', 'en', 'en-US', 'en-GB'] : ['en', 'en-US', 'en-GB', 'pl'];
   const kinds = ['', '&kind=asr'];
-  for (const lang of langs) {
+  for (const trackLang of langs) {
     for (const kind of kinds) {
       try {
-        const url = `https://www.youtube.com/api/timedtext?v=${encodeURIComponent(videoId)}&fmt=vtt&lang=${lang}${kind}`;
-        const response = await fetch(url, { method: 'GET' });
-        if (!response.ok) continue;
-        const raw = await response.text();
-        if (!raw || raw.length < 20 || !raw.includes('-->')) continue;
-        const synced = parseVtt(raw);
-        if (synced.length >= 4) return synced;
+        const url = `https://www.youtube.com/api/timedtext?v=${encodeURIComponent(videoId)}&fmt=vtt&lang=${trackLang}${kind}`;
+        const synced = await fetchTimedtextVtt(url, videoId);
+        if (synced) return synced;
       } catch {
         /* next one */
       }
@@ -2087,6 +2172,16 @@ async function getYouTubeMusicLyrics(track: Track, lang: Language): Promise<Lyri
   });
   if (!response.ok) throw new Error(`YouTube Music HTTP ${response.status}`);
   const data = JSON.parse(await response.text());
+  for (const captionUrl of captionTrackUrlsFromPlayer(data)) {
+    try {
+      const fromPlayer = await fetchTimedtextVtt(captionUrl, track.id);
+      if (fromPlayer?.length) {
+        return { provider: 'YouTube Music', text: null, synced: fromPlayer, matchScore: 3 };
+      }
+    } catch {
+      /* try the lyrics tab next */
+    }
+  }
   const browseId = findLyricsBrowseId(data, lang);
   if (!browseId) throw new Error('This video has no Lyrics tab on YouTube Music');
   const lyricsResponse = await fetch(ytmUrl('browse'), {
@@ -2096,9 +2191,9 @@ async function getYouTubeMusicLyrics(track: Track, lang: Language): Promise<Lyri
   });
   if (!lyricsResponse.ok) throw new Error(`YouTube Music lyrics HTTP ${lyricsResponse.status}`);
   const lyricsData = JSON.parse(await lyricsResponse.text());
-  const text = extractLyricsText(lyricsData);
-  if (!text) throw new Error('Lyrics tab exists but returned no text (possibly region-restricted)');
-  return { provider: 'YouTube Music', text };
+  const lyricsText = extractLyricsText(lyricsData);
+  if (!lyricsText) throw new Error('Lyrics tab exists but returned no text (possibly region-restricted)');
+  return { provider: 'YouTube Music', text: lyricsText };
 }
 
 async function getLrclibLyrics(track: Track): Promise<LyricsResult | null> {
