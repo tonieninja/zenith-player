@@ -55,6 +55,13 @@ pub(crate) fn mark(label: impl Into<String>) {
     eprintln!("[trace {ms}] {}", label.into());
 }
 
+pub(crate) fn now_secs() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
+
 #[tauri::command]
 async fn post_webhook(url: String, body: String) -> Result<u16, String> {
     let parsed = url::Url::parse(url.trim()).map_err(|_| "invalid url".to_string())?;

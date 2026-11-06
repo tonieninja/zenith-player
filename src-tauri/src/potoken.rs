@@ -1,11 +1,13 @@
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicU8, Ordering};
 use std::sync::{Mutex, OnceLock};
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant};
 
 use tauri::webview::PageLoadEvent;
 use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
 use tokio::sync::oneshot;
+
+use crate::now_secs;
 
 pub const LABEL: &str = "zenith-pot";
 const REPLY_HOST: &str = "zenith-pot.invalid";
@@ -37,13 +39,6 @@ fn pending() -> &'static Pending {
 fn cache() -> &'static Mutex<HashMap<String, (String, Instant)>> {
     static C: OnceLock<Mutex<HashMap<String, (String, Instant)>>> = OnceLock::new();
     C.get_or_init(Default::default)
-}
-
-fn now_secs() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0)
 }
 
 const INIT_JS: &str = r#"(() => {

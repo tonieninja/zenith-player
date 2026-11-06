@@ -217,10 +217,7 @@ async fn fetch_to_disk(
         .await
         .map_err(|e| e.to_string())?;
     meta.size = done;
-    meta.saved_at = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
+    meta.saved_at = crate::now_secs();
     if let Ok(mut m) = index().lock() {
         m.insert(meta.id.clone(), meta.clone());
     }

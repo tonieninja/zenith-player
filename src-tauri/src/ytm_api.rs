@@ -1,11 +1,13 @@
 use std::fs;
 use std::sync::Mutex;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha1::{Digest, Sha1};
 use tauri::{AppHandle, Manager};
+
+use crate::now_secs;
 
 const YTM_KEY_FALLBACK: &str = "AIzaSyC9XL3ZjWddXya6X74dJoCTL-WEYFDNX30";
 const YTM_BROWSE: &str = "https://music.youtube.com/youtubei/v1/browse";
@@ -35,11 +37,7 @@ static INNERTUBE: Mutex<InnertubeConfig> = Mutex::new(InnertubeConfig {
 });
 
 fn date_client_version() -> String {
-    let secs = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
-    let days = secs / 86400;
+    let days = now_secs() / 86400;
     let mut y = 1970i32;
     let mut rem = days as i32;
     loop {
@@ -257,13 +255,6 @@ fn innertube_api_key() -> String {
 
 const MUSIC_HOST: &str = "music.youtube.com";
 const MUSIC_ORIGIN: &str = "https://music.youtube.com";
-
-fn now_secs() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0)
-}
 
 fn sha1_hex(raw: &str) -> String {
     let mut hasher = Sha1::new();

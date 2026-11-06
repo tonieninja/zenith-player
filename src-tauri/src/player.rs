@@ -3,6 +3,8 @@ use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
+use crate::now_secs;
+
 const ANDROID_KEY: &str = "AIzaSyA8eiZmM1FaDVjRy-df2KTyQ_vfUWA0yam";
 const PLAYER_URL: &str = "https://www.youtube.com/youtubei/v1/player";
 
@@ -389,13 +391,6 @@ fn playable(data: &Value) -> bool {
         .and_then(|v| v.as_str())
         .unwrap_or("");
     status.is_empty() || status.eq_ignore_ascii_case("ok")
-}
-
-fn now_secs() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0)
 }
 
 const EMBED_URL: &str = "https://www.reddit.com/";

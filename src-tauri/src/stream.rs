@@ -7,6 +7,7 @@ use serde::Serialize;
 use serde_json::{json, Value};
 use tauri::{command, AppHandle, Manager};
 
+use crate::now_secs;
 use crate::player::{self, Auth, Client, DirectAudio};
 use crate::resolve_plan::{self, Step};
 use crate::stream_proxy;
@@ -93,13 +94,6 @@ pub fn init(app: &AppHandle) {
             }
         }
     }
-}
-
-fn now_secs() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0)
 }
 
 fn pref_file() -> Option<std::path::PathBuf> {
@@ -358,10 +352,7 @@ const INNERTUBE_HEAD_START_MS: u64 = 2500;
 static INNERTUBE_MISS: AtomicU64 = AtomicU64::new(0);
 
 pub fn innertube_struggling() -> bool {
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
+    let now = now_secs();
     let at = INNERTUBE_MISS.load(Ordering::SeqCst);
     at > 0 && now.saturating_sub(at) < 15 * 60
 }
