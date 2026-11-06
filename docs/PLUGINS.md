@@ -58,7 +58,7 @@ whatever you had.
 | Discord Rich Presence | `discord-rpc`      | no            | Shows the currently playing track, artist, cover art and a live progress bar on your Discord profile.     |
 | Listening room        | `listening-room`   | no            | Sync playback with friends over a local WebSocket room (same PC / LAN).                                   |
 | Zenith Stage          | `zenith-stage`     | no            | Streamer pack: opens lyrics overlay and enables the share card in one toggle.                             |
-| Share card            | `share-card`       | no            | Makes a 1080×1080 Now Playing card and copies it to the clipboard.                                        |
+| Share card            | `share-card`       | no            | Makes a 1080x1080 Now Playing card and copies it to the clipboard.                                        |
 | Copy track link       | `copy-track-link`  | no            | Right click the cover in the player to copy a clean YouTube Music link, with or without the current time. |
 
 ### Window and stats
@@ -109,10 +109,11 @@ phone viewport against the real server: PIN gate, controls, hold-to-scrub, sleep
   (Q 1.4) in `dsp.rs` with a preamp that keeps boosted bands from clipping.
 - `src/audio/webFx.ts` is only used when the Rust engine can't open an output device, and in the
   browser build used by the e2e tests.
-- Normalization measures the first ~12 s of each track (RMS, gated below −50 dB), then turns tracks
-  louder than −16 dBFS down by up to 10 dB, in ≤1 dB steps. Quiet tracks are never boosted.
-  Element volume is divided out of the measurement (verified: Chromium applies `audio.volume`
-  before the Web Audio graph).
+- Normalization starts from the `loudnessDb` YouTube sends with the stream, then measures the
+  first ~12 s of each track (RMS, gated below -50 dB) and turns tracks louder than -16 dBFS down by
+  up to 10 dB, 1 dB per step. Quiet tracks are never boosted.
+- In the web fallback the element volume is divided out of the measurement, Chromium applies
+  `audio.volume` before the Web Audio graph.
 
 ## Last.fm Scrobbler
 

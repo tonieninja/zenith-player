@@ -27,8 +27,8 @@ crossfade, a 15-band EQ, offline downloads, a phone remote and a pile of plugins
 
 <a href="https://github.com/tonieninja/zenith-player/releases/latest"><img src="assets/dl-windows.svg" width="33.33%" alt="Download for Windows 10 and 11, 64 or 32 bit"></a><a href="https://github.com/tonieninja/zenith-player/releases/latest"><img src="assets/dl-linux.svg" width="33.33%" alt="Download for Linux: deb, rpm or AppImage"></a><a href="https://github.com/tonieninja/zenith-player/releases/latest"><img src="assets/dl-macos.svg" width="33.33%" alt="Download for macOS 11 or newer, universal"></a>
 
-Windows builds aren't signed, so SmartScreen will complain. More info, Run anyway.
-On macOS right click, Open the first time (or System Settings, Privacy & Security, Open Anyway). `SHA256SUMS` is attached to every release.
+Windows builds aren't signed, so SmartScreen will complain. More info → Run anyway.
+On macOS right click → Open the first time (or System Settings → Privacy & Security → Open Anyway). `SHA256SUMS` is attached to every release.
 
 With [Scoop](https://scoop.sh) on Windows:
 
@@ -86,7 +86,7 @@ Full plugin list: [docs/PLUGINS.md](docs/PLUGINS.md).
 
 ## Phone remote
 
-Turn on _Plugins, Utility, Phone remote_. You get an address like
+Turn on _Plugins → Utility → Phone remote_. You get an address like
 `http://192.168.x.x:8765/` and a QR code, open it on your phone on the same network.
 Only local addresses get an answer. On Windows allow it on **private** networks when the firewall
 asks, on Linux open the port (`sudo ufw allow 8765/tcp`). With the plugin off there's no server at all.
@@ -100,7 +100,7 @@ asks, on Linux open the port (`sudo ufw allow 8765/tcp`). With the plugin off th
   run it with `ZENITH_DEBUG=1` and open an issue with the log (no cookies in it).
 - Every track fails at school or work: if the network really blocks YouTube there's not
   much to do. The error tells you why after three tracks.
-- High CPU in lyrics: without a GPU the karaoke fill is expensive, turn on _Settings, Light lyrics mode_.
+- High CPU in lyrics: without a GPU the karaoke fill is expensive, turn on _Settings → Light lyrics mode_.
 - Reset: delete `%LOCALAPPDATA%\com.zenithplayer.desktop` on Windows or
   `~/.local/share/com.zenithplayer.desktop` on Linux.
 

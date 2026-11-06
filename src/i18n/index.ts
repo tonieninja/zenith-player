@@ -379,7 +379,7 @@ const en = {
   queueCleared: 'Queue cleared',
   streamUnavailable: "Can't play this one, skipping",
   streamBlockedNetwork:
-    'This network blocks or filters YouTube (school or work filter, proxy, or firewall). Try a different network.',
+    'This network blocks or filters YouTube (school or work filter, proxy or firewall). Try a different network.',
   streamBlockedBot:
     'YouTube wants you to sign in on this network (shared IP). Sign in to keep listening.',
   streamBlockedComponent:
@@ -405,16 +405,16 @@ const en = {
     'A desktop player with its own UI. Independent project, not affiliated with Google or YouTube.',
   onbBrowseTitle: 'Browse everything',
   onbBrowseDesc:
-    'Home, Explore, and Moods load live from YouTube Music. Search for any artist, album, or track.',
+    'Home, Explore and Moods load live from YouTube Music. Search for any artist, album or track.',
   onbPlayerTitle: 'The player',
   onbPlayerDesc:
-    'Queue, crossfade, shuffle, repeat, synced lyrics, a mini player, and a lyrics overlay.',
+    'Queue, crossfade, shuffle, repeat, synced lyrics, a mini player and a lyrics overlay.',
   onbPluginsTitle: 'Plugins',
   onbPluginsDesc:
     'Discord presence, DualSense controller, listening room, sleep timer, smart lyrics. Turn on only what you need.',
   onbLibraryTitle: 'Your library',
   onbLibraryDesc:
-    'Sign in with Google to bring in your playlists, liked songs, albums, and artists from YouTube Music.',
+    'Sign in with Google to bring in your playlists, liked songs, albums and artists from YouTube Music.',
   onbSkip: 'Skip',
   onbBack: 'Back',
   onbNext: 'Next',
@@ -424,13 +424,13 @@ const en = {
   onbExploreCta: 'Start listening',
   onbTourLabel: 'Quick tour',
   tourSearchTitle: 'Search',
-  tourSearchDesc: 'Find tracks, albums, playlists, and artists across YouTube Music.',
+  tourSearchDesc: 'Find tracks, albums, playlists and artists across YouTube Music.',
   tourHomeTitle: 'Home & Explore',
   tourHomeDesc: 'Your YouTube Music home feed and recommendations.',
   tourLibraryTitle: 'Library',
-  tourLibraryDesc: 'Your playlists, liked songs, albums, and podcasts once you sign in.',
+  tourLibraryDesc: 'Your playlists, liked songs, albums and podcasts once you sign in.',
   tourPluginsTitle: 'Plugins',
-  tourPluginsDesc: 'Discord status, crossfade, lyrics overlay, listening room, and more.',
+  tourPluginsDesc: 'Discord status, crossfade, lyrics overlay, listening room and more.',
   tourLoginTitle: 'Sign in',
   tourLoginDesc: 'Connect Google to get your library. Turn on "Keep me signed in" in Settings.',
   replayOnboarding: 'Replay welcome tour',
@@ -1002,7 +1002,7 @@ const pl: Record<keyof typeof en, string> = {
   libraryLoadError: 'Nie udało się wczytać biblioteki. Sprawdź internet i spróbuj jeszcze raz.',
   librarySignedInAs: 'Zalogowano jako',
   libraryRetry: 'Spróbuj jeszcze raz',
-  playlistEmpty: 'Ta playlista jest pusta. Pusta jak portfel dzień przed wypłatą.',
+  playlistEmpty: 'Ta playlista jest pusta.',
   playlistEmptyOrUnsupported:
     'Nie ma tu nic do puszczenia: lista jest pusta albo ma tylko pozycje, których Zenith nie odtworzy.',
   episodesEmptyTitle: 'Brak odcinków na później',
