@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { resolveFeedItem } from '../utils/feedItem';
-import { itemClickPlan, shouldOpenCollection } from '../utils/itemClick';
+import { itemClickPlan, shouldOpenCollection, sidebarClickPlan } from '../utils/itemClick';
 
 describe('search / feed item identity', () => {
   it('opens an artist page rather than playing the overlay song (Instant Crush)', () => {
@@ -85,5 +85,12 @@ describe('optimistic click routing', () => {
     expect(itemClickPlan({ id: 'MPREb_x', type: 'album' }).kind).toBe('browse-page');
     expect(itemClickPlan({ id: 'VLPLxxxx', type: 'playlist' }).kind).toBe('play-collection');
     expect(itemClickPlan({ id: 'dQw4w9WgXcQ', type: 'track' }).kind).toBe('play-track');
+  });
+
+  it('opens sidebar playlists and episodes-for-later as a page', () => {
+    expect(sidebarClickPlan({ id: 'VLSE', type: 'playlist' }).kind).toBe('browse-page');
+    expect(sidebarClickPlan({ id: 'SE', type: 'podcast' }).kind).toBe('browse-page');
+    expect(sidebarClickPlan({ id: 'VLPLxxxx', type: 'playlist' }).kind).toBe('browse-page');
+    expect(itemClickPlan({ id: 'VLPLxxxx', type: 'playlist' }).kind).toBe('play-collection');
   });
 });

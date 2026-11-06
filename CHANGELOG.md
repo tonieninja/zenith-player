@@ -34,6 +34,14 @@ Versioning is SemVer. Legal context: [DISCLAIMER.md](./DISCLAIMER.md).
 
 ### Fixed
 
+- Linux AppImage playback staying at 0:00: pick opus/webm over muxed AAC+H.264, and bundle
+  `gstreamer1.0-libav` so AAC still decodes when that is all YouTube gives us
+- Musixmatch picking a different song (NOKIA for Get Lucky): drop a hit when the title, artist
+  or duration does not match
+- Sidebar Favorites, Episodes for Later and playlist rows now open their page instead of
+  jumping to another track
+
+
 - **Playback on school / office networks**: every track failed with "YouTube blocked the stream"
   where the network inspects HTTPS (own root certificate in Windows). yt-dlp now uses the Windows
   certificate store, retries once without the auto-detected proxy on a network error, and the

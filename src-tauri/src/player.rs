@@ -190,6 +190,36 @@ fn format_score(fmt: &Value) -> i32 {
     }
 }
 
+fn is_audio_only_fmt(fmt: &Value) -> bool {
+    let mime = fmt
+        .get("mimeType")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    mime.starts_with("audio/")
+}
+
+fn pick_from<'a>(formats: &[&'a Value], audio_only: bool) -> Option<(i32, String)> {
+    let mut best: Option<(i32, String)> = None;
+    for fmt in formats {
+        if audio_only && !is_audio_only_fmt(fmt) {
+            continue;
+        }
+        let url = match fmt.get("url").and_then(|v| v.as_str()) {
+            Some(u) if is_progressive_url(u) => u.to_string(),
+            _ => continue,
+        };
+        let score = format_score(fmt);
+        if score <= 0 {
+            continue;
+        }
+        if best.as_ref().map(|(s, _)| *s).unwrap_or(0) < score {
+            best = Some((score, url));
+        }
+    }
+    best
+}
+
 fn pick_audio_url(data: &Value) -> Option<String> {
     let mut formats: Vec<&Value> = Vec::new();
     if let Some(arr) = data
@@ -205,22 +235,11 @@ fn pick_audio_url(data: &Value) -> Option<String> {
         formats.extend(arr);
     }
 
-    let mut best: Option<(i32, String)> = None;
-    for fmt in formats {
-        let url = match fmt.get("url").and_then(|v| v.as_str()) {
-            Some(u) if is_progressive_url(u) => u.to_string(),
-            _ => continue,
-        };
-        // signatureCipher-only rows have no url, already skipped above
-        let score = format_score(fmt);
-        if score <= 0 {
-            continue;
-        }
-        if best.as_ref().map(|(s, _)| *s).unwrap_or(0) < score {
-            best = Some((score, url));
-        }
-    }
-    best.map(|(_, u)| u)
+    // audio-only first (opus/webm or m4a). muxed itag 18 is a last resort because
+    // it needs an aac+h264 decoder that a stripped AppImage may not ship
+    pick_from(&formats, true)
+        .or_else(|| pick_from(&formats, false))
+        .map(|(_, u)| u)
 }
 
 fn playable(data: &Value) -> bool {
@@ -417,9 +436,29 @@ mod tests {
                 ]
             }
         });
+        let picked = pick_audio_url(&data).as_deref().map(str::to_string);
+        if crate::native_audio::available() {
+            assert_eq!(picked.as_deref(), Some("https://g.example/opus"));
+        } else {
+            assert_eq!(picked.as_deref(), Some("https://g.example/m4a"));
+        }
+    }
+
+    #[test]
+    fn skips_muxed_when_opus_exists() {
+        let data = json!({
+            "streamingData": {
+                "adaptiveFormats": [
+                    { "itag": 251, "mimeType": "audio/webm; codecs=\"opus\"", "url": "https://g.example/opus" }
+                ],
+                "formats": [
+                    { "itag": 18, "mimeType": "video/mp4; codecs=\"avc1.42001E, mp4a.40.2\"", "url": "https://g.example/mux" }
+                ]
+            }
+        });
         assert_eq!(
             pick_audio_url(&data).as_deref(),
-            Some("https://g.example/m4a")
+            Some("https://g.example/opus")
         );
     }
 }

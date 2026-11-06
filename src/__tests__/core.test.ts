@@ -27,6 +27,7 @@ import {
   moodBrowseIdFor,
   MOODS_AND_MOMENTS,
   GENRES,
+  parseClockDuration,
   toPlainPlaylistId,
   type Track,
 } from '../api/youtube';
@@ -104,6 +105,9 @@ describe('youtube ids', () => {
   it('playlist ids', () => {
     expect(toPlainPlaylistId('VLPL123')).toBe('PL123');
     expect(toPlainPlaylistId('PL123')).toBe('PL123');
+    expect(parseClockDuration('6:09')).toBe(369);
+    expect(parseClockDuration('1:02:03')).toBe(3723);
+    expect(parseClockDuration('2013')).toBeUndefined();
     expect(isEditablePlaylist('VLLM')).toBe(false);
     expect(isEditablePlaylist('RDCLAK5uy')).toBe(false);
     expect(isEditablePlaylist('VLPLabc')).toBe(true);

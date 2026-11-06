@@ -17,6 +17,14 @@ export function browseIdFromMood(activeMood: string | null | undefined): string 
   return activeMood.slice(BROWSE_MOOD_PREFIX.length) || null;
 }
 
+/** sidebar playlists and podcasts open their page instead of starting playback */
+export function sidebarClickPlan(track: Pick<Track, 'id' | 'type'>): { kind: ItemClickKind } {
+  if (track.type === 'playlist' || track.type === 'podcast') {
+    return { kind: 'browse-page' };
+  }
+  return itemClickPlan(track);
+}
+
 /** click plan: artist/profile/album open a browse page; playlists play; songs play */
 export function itemClickPlan(track: Pick<Track, 'id' | 'type'>): { kind: ItemClickKind } {
   if (track.type === 'artist' || track.type === 'profile' || track.type === 'album') {

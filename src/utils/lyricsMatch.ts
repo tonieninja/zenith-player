@@ -96,6 +96,10 @@ export function isAcceptableLyricsMatch(
   const aScore = artistSimilarity(query.artist, cand.artist);
   const s = score ?? scoreLyricsMatch(query, cand);
   if (tScore < 3) return false;
+  const d = durationDeltaSec(query.durationSec, cand.durationSec);
+  if (d != null && d > 8 && d / Math.max(query.durationSec || 0, cand.durationSec || 0) > 0.12) {
+    return false;
+  }
   const durOk = durationClose(query.durationSec, cand.durationSec, 5);
   if (aScore < 2 && !(tScore >= 7 && durOk)) return false;
   if (tScore < 4 && aScore < 4) return false;

@@ -62,6 +62,21 @@ describe('lyrics title/artist/duration matching', () => {
       )
     ).toBe(false);
   });
+
+  it('rejects a Get Lucky hit whose duration is NOKIA-length', () => {
+    expect(
+      isAcceptableLyricsMatch(
+        { title: 'Get Lucky', artist: 'Daft Punk', durationSec: 248 },
+        { title: 'Get Lucky', artist: 'Daft Punk', durationSec: 221 }
+      )
+    ).toBe(true);
+    expect(
+      isAcceptableLyricsMatch(
+        { title: 'Get Lucky', artist: 'Daft Punk', durationSec: 369 },
+        { title: 'Get Lucky', artist: 'Daft Punk', durationSec: 221 }
+      )
+    ).toBe(false);
+  });
 });
 
 describe('Auto lyrics display rules', () => {
@@ -79,9 +94,15 @@ describe('Auto lyrics display rules', () => {
 
   it('allows verified plain text and YouTube Music', () => {
     expect(
-      shouldShowEarlyPlain({ provider: 'Musixmatch', text: 'like the legend of the phoenix', matchScore: 15 })
+      shouldShowEarlyPlain({
+        provider: 'Musixmatch',
+        text: 'like the legend of the phoenix',
+        matchScore: 15,
+      })
     ).toBe(true);
-    expect(shouldShowEarlyPlain({ provider: 'YouTube Music', text: 'around the world' })).toBe(true);
+    expect(shouldShowEarlyPlain({ provider: 'YouTube Music', text: 'around the world' })).toBe(
+      true
+    );
   });
 });
 
@@ -115,11 +136,13 @@ describe('Musixmatch secret extraction and Genius 403', () => {
     expect(localizeLyricsReason(g, 'en')).toMatch(/403/);
     expect(localizeLyricsReason(g, 'pl')).toMatch(/403/);
     expect(localizeLyricsReason(MXM_SECRET_MISSING, 'pl')).toMatch(/Musixmatch/);
-    expect(localizeLyricsReason('Musixmatch timed out after 22s', 'en')).toBe('Timed out after 22 s');
+    expect(localizeLyricsReason('Musixmatch timed out after 22s', 'en')).toBe(
+      'Timed out after 22 s'
+    );
     expect(localizeLyricsReason('Musixmatch timed out after 8s', 'pl')).toMatch(/8/);
 
-    expect(localizeLyricsReason('Signature secret not found in Musixmatch app bundle', 'en')).toMatch(
-      /signing secret/i
-    );
+    expect(
+      localizeLyricsReason('Signature secret not found in Musixmatch app bundle', 'en')
+    ).toMatch(/signing secret/i);
   });
 });

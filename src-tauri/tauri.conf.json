@@ -107,13 +107,13 @@
       },
       "rpm": {
         "desktopTemplate": "linux/zenith.desktop",
-        "depends": ["webkit2gtk4.1", "gtk3", "libayatana-appindicator-gtk3", "gstreamer1-plugins-base", "gstreamer1-plugins-good"]
+        "depends": ["webkit2gtk4.1", "gtk3", "libayatana-appindicator-gtk3", "gstreamer1-plugins-base", "gstreamer1-plugins-good", "gstreamer1-plugin-libav"]
       },
       "deb": {
         "section": "sound",
         "desktopTemplate": "linux/zenith.desktop",
         "files": { "/usr/share/metainfo/com.zenithplayer.desktop.metainfo.xml": "linux/zenith.metainfo.xml" },
-        "depends": ["libwebkit2gtk-4.1-0", "libgtk-3-0", "libayatana-appindicator3-1", "gstreamer1.0-plugins-base", "gstreamer1.0-plugins-good"]
+        "depends": ["libwebkit2gtk-4.1-0", "libgtk-3-0", "libayatana-appindicator3-1", "gstreamer1.0-plugins-base", "gstreamer1.0-plugins-good", "gstreamer1.0-libav"]
       }
     }
   },

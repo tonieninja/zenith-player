@@ -80,7 +80,13 @@ import { WindowedList } from './components/ui/WindowedList';
 import { QueueDrawer } from './components/queue/QueueDrawer';
 import { ToastHost, pushToast } from './components/Toast';
 import { tmark } from './utils/timeline';
-import { browseIdFromMood, browseMoodId, isBrowseMood, itemClickPlan } from './utils/itemClick';
+import {
+  browseIdFromMood,
+  browseMoodId,
+  isBrowseMood,
+  itemClickPlan,
+  sidebarClickPlan,
+} from './utils/itemClick';
 import { SyncedLyricsRail } from './components/SyncedLyricsRail';
 import { LIB_EMPTY_KEYS, LIBRARY_CATEGORIES } from './constants/library';
 import {
@@ -195,11 +201,7 @@ const PluginsPanel = lazy(() =>
   import('./components/PluginsPanel').then((m) => ({ default: m.PluginsPanel }))
 );
 import { smartShuffle } from './utils/smartShuffle';
-import {
-  decidePrevious,
-  popPlayHistory,
-  pushPlayHistory,
-} from './utils/playbackNav';
+import { decidePrevious, popPlayHistory, pushPlayHistory } from './utils/playbackNav';
 import { stableOrderSections } from './utils/sections';
 import { streamCacheSet } from './utils/streamCache';
 import {
@@ -1037,7 +1039,7 @@ export default function App() {
     setFeedTabLoading('mood', false);
     navigateTo('mood');
     setSearchQuery('');
-    setBrowseTitle(null);
+    setBrowseTitle(t.favs);
     setBrowseEmptyKind(null);
     setActiveMood(FAVORITES_ID);
     setSections(savedTracks.length ? [{ title: t.favs, items: savedTracks }] : []);
@@ -1500,9 +1502,13 @@ export default function App() {
       lyricsRef.current = null;
       activeLyricLineRef.current = -1;
       setActiveLyricLine(-1);
-      debugLyricsProviders(track);
+      const lyricsTrack =
+        !track.durationSec && durationRef.current > 0
+          ? { ...track, durationSec: durationRef.current }
+          : track;
+      debugLyricsProviders(lyricsTrack);
       tmark(`lyrics start ${track.id}`);
-      getLyrics(track, lang, provider, (plain) => {
+      getLyrics(lyricsTrack, lang, provider, (plain) => {
         if (reqId !== lyricsReqIdRef.current) return;
         tmark(`lyrics plain ${track.id}`);
         setLyrics(plain);
@@ -1857,10 +1863,7 @@ export default function App() {
         forceBlendRef.current = false;
       }
       // remember where we came from so Previous under shuffle is not random
-      playHistoryRef.current = pushPlayHistory(
-        playHistoryRef.current,
-        currentTrackIdRef.current
-      );
+      playHistoryRef.current = pushPlayHistory(playHistoryRef.current, currentTrackIdRef.current);
       queueIndexRef.current = index;
       setQueueIndex(index);
       await loadTrack(nextTrack, true, manualFade);
@@ -4145,7 +4148,13 @@ export default function App() {
                   className={`nav-item playlist-link user-playlist-link${
                     activeTab === 'mood' && activeMood === browseMoodId(pl.id) ? ' active' : ''
                   }`}
-                  onClick={() => void handleCollectionClick(pl)}
+                  onClick={() => {
+                    if (sidebarClickPlan(pl).kind === 'browse-page') {
+                      void openCollectionPage(pl);
+                      return;
+                    }
+                    void handleCollectionClick(pl);
+                  }}
                   title={pl.title}
                 >
                   <ListMusic size={18} />
@@ -4698,7 +4707,10 @@ export default function App() {
                   )
                 ) : (
                   <>
-                    {(activeTab === 'home' || (activeTab === 'mood' && !isBrowseMood(activeMood))) && (
+                    {(activeTab === 'home' ||
+                      (activeTab === 'mood' &&
+                        !isBrowseMood(activeMood) &&
+                        activeMood !== FAVORITES_ID)) && (
                       <MoodChips
                         activeCategory={activeMood}
                         onCategoryClick={loadMood}
@@ -4706,9 +4718,11 @@ export default function App() {
                         t={t}
                       />
                     )}
-                    {activeTab === 'mood' && isBrowseMood(activeMood) && browseTitle && (
-                      <h2 className="library-section-title">{browseTitle}</h2>
-                    )}
+                    {activeTab === 'mood' &&
+                      browseTitle &&
+                      (isBrowseMood(activeMood) || activeMood === FAVORITES_ID) && (
+                        <h2 className="library-section-title">{browseTitle}</h2>
+                      )}
 
                     {activeTab === 'home' && homeHeroTrack && (
                       <FeedHero

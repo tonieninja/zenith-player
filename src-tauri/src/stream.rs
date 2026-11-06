@@ -201,6 +201,17 @@ fn ytdlp_cache_dir(app: &AppHandle) -> Option<std::path::PathBuf> {
     Some(dir)
 }
 
+fn ytdlp_audio_format() -> &'static str {
+    // native engine decodes opus out of the box (libgstopus). aac/h264 need
+    // gst-libav, which older AppImages did not ship. prefer audio-only so we
+    // never pick a muxed itag-18 mp4 when a webm/m4a stream exists.
+    if crate::native_audio::available() {
+        "bestaudio[ext=webm]/bestaudio[acodec=opus]/bestaudio[ext=m4a]/bestaudio[vcodec=none]/bestaudio/best"
+    } else {
+        "bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio[vcodec=none]/bestaudio/best[ext=mp4]/best"
+    }
+}
+
 /// googlevideo answered 403/410/429 for the url we handed out: resolve the same video
 /// again with a different player client (the session cookies on the last one) and
 /// return the new upstream, so the proxy can retry the request without the <audio>
@@ -228,7 +239,7 @@ pub async fn recover_upstream(
         let app2 = app.clone();
         let vid2 = vid.clone();
         let fast = tokio::task::spawn_blocking(move || {
-            let fmt = "bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio/best";
+            let fmt = ytdlp_audio_format();
             crate::stream_worker::resolve_clients(
                 &app2,
                 &vid2,
@@ -280,7 +291,7 @@ pub async fn recover_upstream(
             &vid,
             cookies.as_deref(),
             cache.as_deref(),
-            "bestaudio/best",
+            ytdlp_audio_format(),
             clients,
         )
         .ok()
@@ -341,11 +352,7 @@ fn fetch_stream_url_any(
     cookie_file: Option<&Path>,
     cache_dir: Option<&Path>,
 ) -> Result<Option<String>, String> {
-    let format = if crate::native_audio::available() {
-        "bestaudio[ext=webm]/bestaudio[ext=m4a]/bestaudio/best[ext=mp4]/best"
-    } else {
-        "bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio/best[ext=mp4]/best"
-    };
+    let format = ytdlp_audio_format();
     // warm resident resolver first (~1.1 s instead of ~3 s). its client gives urls that
     // play without a PO token; if googlevideo refuses one anyway the proxy recovers it
     // warm resident resolvers first: web_music (~0.25 s warm), and web_embedded only if
@@ -504,11 +511,7 @@ fn fetch_stream_url_sync(
     cookie_file: Option<&Path>,
     cache_dir: Option<&Path>,
 ) -> Result<Option<String>, String> {
-    let format = if crate::native_audio::available() {
-        "bestaudio[ext=webm]/bestaudio[ext=m4a]/bestaudio/best[ext=mp4]/best"
-    } else {
-        "bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio/best[ext=mp4]/best"
-    };
+    let format = ytdlp_audio_format();
     let extractor = extractor_args_for(cookie_file.is_some());
     run_ytdlp_get_url(
         ytdlp_bin,
@@ -538,7 +541,7 @@ fn fetch_stream_url_last_resort(
         video_id,
         cookie_file,
         cache_dir,
-        "bestaudio/best",
+        ytdlp_audio_format(),
         LAST_RESORT_CLIENTS.to_string(),
     )
 }
@@ -1489,6 +1492,15 @@ mod tests {
             p,
             vec!["bbbbbbbbbbb".to_string(), "aaaaaaaaaaa".to_string()]
         );
+    }
+
+    #[test]
+    fn ytdlp_format_stays_audio_first() {
+        let fmt = super::ytdlp_audio_format();
+        assert!(fmt.contains("bestaudio"));
+        assert!(fmt.contains("[vcodec=none]") || fmt.contains("webm") || fmt.contains("m4a"));
+        let first = fmt.split('/').next().unwrap_or("");
+        assert!(first.starts_with("bestaudio"), "{first}");
     }
 
     #[test]

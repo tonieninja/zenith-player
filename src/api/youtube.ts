@@ -221,6 +221,7 @@ export interface Track {
   cover: string;
   coverSmall?: string;
   coverLarge?: string;
+  durationSec?: number;
 }
 
 export interface Section {
@@ -1943,6 +1944,11 @@ function normalizeSynced(lines: LyricsLine[]): LyricsLine[] {
   return out;
 }
 
+function queryDuration(track: Track): number | undefined {
+  const d = track.durationSec;
+  return typeof d === 'number' && Number.isFinite(d) && d > 0 ? d : undefined;
+}
+
 function scoreMatch(
   title: string,
   artist: string,
@@ -2052,8 +2058,25 @@ async function getLrclibLyrics(track: Track): Promise<LyricsResult | null> {
         const candDuration = Number(item?.duration);
         const durationSec =
           Number.isFinite(candDuration) && candDuration > 0 ? candDuration : undefined;
-        const score = scoreMatch(title, artist, candTitle, candArtist, undefined, durationSec);
-        if (!acceptMatch(title, artist, candTitle, candArtist, score, undefined, durationSec)) {
+        const score = scoreMatch(
+          title,
+          artist,
+          candTitle,
+          candArtist,
+          queryDuration(track),
+          durationSec
+        );
+        if (
+          !acceptMatch(
+            title,
+            artist,
+            candTitle,
+            candArtist,
+            score,
+            queryDuration(track),
+            durationSec
+          )
+        ) {
           continue;
         }
         if (item?.syncedLyrics) {
@@ -2201,7 +2224,7 @@ async function getMusixmatchLyricsSigned(track: Track): Promise<LyricsResult> {
       artist,
       cand.track_name || '',
       cand.artist_name || '',
-      undefined,
+      queryDuration(track),
       durationSec
     );
     if (score > bestScore) {
@@ -2217,7 +2240,7 @@ async function getMusixmatchLyricsSigned(track: Track): Promise<LyricsResult> {
       best.track_name || '',
       best.artist_name || '',
       bestScore,
-      undefined,
+      queryDuration(track),
       Number.isFinite(Number(best.track_length)) && Number(best.track_length) > 0
         ? Number(best.track_length)
         : undefined
@@ -2392,8 +2415,17 @@ async function getMusixmatchLyricsDesktop(track: Track): Promise<LyricsResult> {
       const candDuration = Number(trackInfo.track_length);
       const durationSec =
         Number.isFinite(candDuration) && candDuration > 0 ? candDuration : undefined;
-      const score = scoreMatch(title, artist, candTitle, candArtist, undefined, durationSec);
-      if (!acceptMatch(title, artist, candTitle, candArtist, score, undefined, durationSec)) {
+      const score = scoreMatch(
+        title,
+        artist,
+        candTitle,
+        candArtist,
+        queryDuration(track),
+        durationSec
+      );
+      if (
+        !acceptMatch(title, artist, candTitle, candArtist, score, queryDuration(track), durationSec)
+      ) {
         lastError = new Error(
           `Musixmatch matched "${trackInfo.track_name}" which is the wrong song`
         );
@@ -2446,7 +2478,11 @@ async function getMusixmatchLyrics(track: Track): Promise<LyricsResult | null> {
     desktopError = errorMessage(e);
   }
   try {
-    return await withTimeout(getMusixmatchLyricsSignedWithRetry(track, 2), 14000, 'Musixmatch community');
+    return await withTimeout(
+      getMusixmatchLyricsSignedWithRetry(track, 2),
+      14000,
+      'Musixmatch community'
+    );
   } catch (e) {
     const signedError = errorMessage(e);
     throw new Error(`desktop API: ${desktopError}; community API: ${signedError}`);
@@ -2561,11 +2597,26 @@ async function getGeniusLyrics(track: Track): Promise<LyricsResult | null> {
   });
 
   const hit = hits[0]?.result;
-  const hitScore = scoreMatch(title, artist, hit?.title || '', hit?.primary_artist?.name || '');
+  const hitScore = scoreMatch(
+    title,
+    artist,
+    hit?.title || '',
+    hit?.primary_artist?.name || '',
+    queryDuration(track)
+  );
   if (!hit?.path || hit?.primary_artist?.url === 'https://genius.com/artists/Deleted-artist') {
     throw new Error('No usable Genius result for this title/artist');
   }
-  if (!acceptMatch(title, artist, hit?.title || '', hit?.primary_artist?.name || '', hitScore)) {
+  if (
+    !acceptMatch(
+      title,
+      artist,
+      hit?.title || '',
+      hit?.primary_artist?.name || '',
+      hitScore,
+      queryDuration(track)
+    )
+  ) {
     throw new Error('Genius search did not return a close enough title/artist match');
   }
 
@@ -2772,6 +2823,31 @@ function extractVideoId(r: any): string | undefined {
   return undefined;
 }
 
+export function parseClockDuration(text: string): number | undefined {
+  const raw = text.trim();
+  if (!/^\d+:\d{2}(:\d{2})?$/.test(raw)) return undefined;
+  const parts = raw.split(':').map((n) => Number(n));
+  if (parts.some((n) => !Number.isFinite(n))) return undefined;
+  if (parts.length === 2) return parts[0] * 60 + parts[1];
+  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  return undefined;
+}
+
+function extractDurationSec(r: any): number | undefined {
+  const texts = [
+    r?.lengthText?.runs?.[0]?.text,
+    r?.fixedColumns?.[0]?.musicResponsiveListItemFixedColumnRenderer?.text?.runs?.[0]?.text,
+    r?.fixedColumns?.[1]?.musicResponsiveListItemFixedColumnRenderer?.text?.runs?.[0]?.text,
+  ];
+  for (const t of texts) {
+    if (typeof t === 'string') {
+      const sec = parseClockDuration(t);
+      if (sec) return sec;
+    }
+  }
+  return undefined;
+}
+
 function coversForItem(
   thumbs: Thumb[],
   videoId: string | undefined,
@@ -2863,6 +2939,7 @@ function extractAllTracks(data: any, t: TranslationBundle): Track[] {
           cover,
           coverSmall,
           coverLarge,
+          durationSec: extractDurationSec(r),
         });
       }
     }
@@ -2992,6 +3069,7 @@ function parseShelves(data: any, t: TranslationBundle): Section[] {
         cover,
         coverSmall,
         coverLarge,
+        durationSec: extractDurationSec(r),
       });
     }
     return items;
