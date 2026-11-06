@@ -48,7 +48,7 @@ whatever you had.
 | Keyboard shortcuts          | `keyboard-shortcuts` | yes           | Space = play/pause, ←/→ or P/N = prev/next, Shift+←/→ = seek ±10s, ↑/↓ = volume, M = mute, Ctrl+F or / = search.                                                               |
 | Phone remote                | `remote-control`     | no            | Control Zenith from your phone or any device on your network: volume, play/pause, skip, seek, queue, like and search in a browser.                                             |
 | DualSense pad               | `dualsense-pad`      | no            | Control Zenith with a DualSense: touchpad swipe (next/prev/play) + face buttons. LED follows cover art while playing.                                                          |
-| Webhook / Stream Deck       | `webhook`            | no            | POST JSON to a URL on every track change - works with Stream Deck, Home Assistant, n8n.                                                                                        |
+| Webhook / Stream Deck       | `webhook`            | no            | POST JSON to a URL on every track change. Works with Stream Deck, Home Assistant and n8n.                                                                                      |
 
 ### Sharing and services
 
