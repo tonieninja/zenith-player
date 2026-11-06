@@ -54,6 +54,15 @@ describe('lyrics title/artist/duration matching', () => {
     ).toBe(true);
   });
 
+  it('accepts a radio-edit vs album duration gap when title and artist match', () => {
+    expect(
+      isAcceptableLyricsMatch(
+        { title: 'Get Lucky (Radio Edit)', artist: 'Daft Punk', durationSec: 248 },
+        { title: 'Get Lucky', artist: 'Daft Punk', durationSec: 369 }
+      )
+    ).toBe(true);
+  });
+
   it('rejects a large duration mismatch even with the same title', () => {
     expect(
       isAcceptableLyricsMatch(

@@ -1188,44 +1188,56 @@ export async function getPlaylistItems(browseId: string, lang: Language): Promis
 /** like getPlaylistItems but tells an empty playlist apart from a failed request */
 export async function loadPlaylistItems(browseId: string, lang: Language): Promise<PlaylistLoad> {
   const ids = playlistBrowseCandidates(browseId);
+  const generated = isGeneratedMixId(browseId);
+  const attempts = generated ? 3 : 2;
+  const timeoutMs = generated ? 26000 : 20000;
   let sawEmpty = false;
-  for (const id of ids) {
-    try {
-      const headers = await buildAuthHeaders(lang);
-      const response = await fetchWithTimeout(ytmUrl('browse'), {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ ...buildClientContext(lang), browseId: id }),
-      });
-      if (!response.ok) continue;
-      const data = JSON.parse(await response.text());
-      if (data?.error || !data?.contents) continue;
-      const root = playlistContentRoot(data, id);
-      if (root === EMPTY_PLAYLIST) {
-        sawEmpty = true;
-        continue;
-      }
-      const tracks: Track[] = [];
-      const seen = new Set<string>();
-      const addFrom = (payload: unknown) => {
-        for (const t of extractAllTracks(payload, translations[lang])) {
-          if (!seen.has(t.id)) {
-            seen.add(t.id);
-            tracks.push(t);
-          }
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    if (attempt > 0) {
+      await new Promise((r) => setTimeout(r, 450 * attempt));
+    }
+    for (const id of ids) {
+      try {
+        const headers = await buildAuthHeaders(lang);
+        const response = await fetchWithTimeout(
+          ytmUrl('browse'),
+          {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({ ...buildClientContext(lang), browseId: id }),
+          },
+          timeoutMs
+        );
+        if (!response.ok) continue;
+        const data = JSON.parse(await response.text());
+        if (data?.error || !data?.contents) continue;
+        const root = playlistContentRoot(data, id);
+        if (root === EMPTY_PLAYLIST) {
+          sawEmpty = true;
+          continue;
         }
-      };
-      addFrom(root);
-      let token = findContinuationToken(root);
-      for (let round = 0; token && round < 50; round += 1) {
-        const cont = await fetchPlaylistContinuation(token, lang);
-        addFrom(cont.data);
-        token = cont.next;
+        const tracks: Track[] = [];
+        const seen = new Set<string>();
+        const addFrom = (payload: unknown) => {
+          for (const t of extractAllTracks(payload, translations[lang])) {
+            if (!seen.has(t.id)) {
+              seen.add(t.id);
+              tracks.push(t);
+            }
+          }
+        };
+        addFrom(root);
+        let token = findContinuationToken(root);
+        for (let round = 0; token && round < 50; round += 1) {
+          const cont = await fetchPlaylistContinuation(token, lang);
+          addFrom(cont.data);
+          token = cont.next;
+        }
+        if (tracks.length) return { items: tracks, status: 'ok' };
+        sawEmpty = true;
+      } catch {
+        /* nah that id sucked, next */
       }
-      if (tracks.length) return { items: tracks, status: 'ok' };
-      sawEmpty = true;
-    } catch {
-      /* nah that id sucked, next */
     }
   }
   return { items: [], status: sawEmpty ? 'empty' : 'failed' };
@@ -1255,10 +1267,10 @@ export const LIBRARY_BROWSE_IDS: Record<LibraryCategory, string> = {
 
 const libraryContinuations = new Map<string, string | null>();
 /** pages fetched before the first paint (each ~25 rows). more load in the background. */
-const LIBRARY_INITIAL_PAGE_LIMIT = 2;
+const LIBRARY_INITIAL_PAGE_LIMIT = 1;
 const LIBRARY_BACKGROUND_PAGE_LIMIT = 40;
 
-const LIBRARY_CACHE_TTL_MS = 60_000;
+const LIBRARY_CACHE_TTL_MS = 10 * 60 * 1000;
 
 function libraryCacheKey(category: LibraryCategory, lang: Language) {
   return `${category}:${lang}`;
@@ -1314,6 +1326,36 @@ export async function extendLibrarySections(
   const cacheKey = libraryCacheKey(category, lang);
   librarySectionCache.set(cacheKey, { at: Date.now(), sections: cloned });
   return cloned;
+}
+
+export function peekLibraryCache(category: LibraryCategory, lang: Language): Section[] | null {
+  const hit = librarySectionCache.get(libraryCacheKey(category, lang));
+  if (!hit?.sections?.length) return null;
+  return hit.sections.map((sec) => ({ ...sec, items: applyPlaylistOverrides(sec.items) }));
+}
+
+const LIBRARY_PREFETCH_ORDER: LibraryCategory[] = [
+  'playlists',
+  'songs',
+  'albums',
+  'artists',
+  'subscriptions',
+  'history',
+  'podcasts',
+];
+
+/** warm sibling library tabs in the background so switching chips is instant */
+export function prefetchLibrary(lang: Language, except?: LibraryCategory) {
+  void (async () => {
+    for (const cat of LIBRARY_PREFETCH_ORDER) {
+      if (cat === except) continue;
+      try {
+        await getLibrary(cat, lang);
+      } catch {
+        /* keep going */
+      }
+    }
+  })();
 }
 
 export async function getLibrary(
@@ -2184,16 +2226,64 @@ async function getYouTubeMusicLyrics(track: Track, lang: Language): Promise<Lyri
   }
   const browseId = findLyricsBrowseId(data, lang);
   if (!browseId) throw new Error('This video has no Lyrics tab on YouTube Music');
-  const lyricsResponse = await fetch(ytmUrl('browse'), {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({ ...buildClientContext(lang), browseId }),
-  });
-  if (!lyricsResponse.ok) throw new Error(`YouTube Music lyrics HTTP ${lyricsResponse.status}`);
-  const lyricsData = JSON.parse(await lyricsResponse.text());
-  const lyricsText = extractLyricsText(lyricsData);
-  if (!lyricsText) throw new Error('Lyrics tab exists but returned no text (possibly region-restricted)');
+  const browseLyrics = async () => {
+    const lyricsResponse = await fetch(ytmUrl('browse'), {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ ...buildClientContext(lang), browseId }),
+    });
+    if (!lyricsResponse.ok) throw new Error(`YouTube Music lyrics HTTP ${lyricsResponse.status}`);
+    const lyricsData = JSON.parse(await lyricsResponse.text());
+    return extractLyricsText(lyricsData);
+  };
+  let lyricsText = await browseLyrics();
+  if (!lyricsText) {
+    await new Promise((r) => setTimeout(r, 450));
+    lyricsText = await browseLyrics();
+  }
+  if (!lyricsText)
+    throw new Error('Lyrics tab exists but returned no text (possibly region-restricted)');
   return { provider: 'YouTube Music', text: lyricsText };
+}
+
+function pickLrclibHit(
+  data: any[],
+  title: string,
+  artist: string,
+  duration?: number
+): { synced?: LyricsLine[]; plain?: LyricsResult; score: number } | null {
+  let best: { score: number; synced?: LyricsLine[]; plain?: LyricsResult } | null = null;
+  for (const item of data) {
+    if (item?.instrumental) continue;
+    const candTitle = String(item?.trackName || item?.name || '');
+    const candArtist = String(item?.artistName || item?.artist || '');
+    const candDuration = Number(item?.duration);
+    const durationSec =
+      Number.isFinite(candDuration) && candDuration > 0 ? candDuration : undefined;
+    const score = scoreMatch(title, artist, candTitle, candArtist, duration, durationSec);
+    if (!acceptMatch(title, artist, candTitle, candArtist, score, duration, durationSec)) {
+      continue;
+    }
+    if (item?.syncedLyrics) {
+      const synced = parseLrc(String(item.syncedLyrics));
+      if (
+        synced.length >= 2 &&
+        (!best ||
+          score > (best.score || 0) ||
+          (score === best.score && synced.length > (best.synced?.length || 0)))
+      ) {
+        best = { score, synced };
+      }
+    } else if (item?.plainLyrics && (!best || score > best.score || !best.synced)) {
+      if (!best || score > best.score) {
+        best = {
+          score,
+          plain: { provider: 'LRCLib', text: String(item.plainLyrics), matchScore: score },
+        };
+      }
+    }
+  }
+  return best;
 }
 
 async function getLrclibLyrics(track: Track): Promise<LyricsResult | null> {
@@ -2205,8 +2295,8 @@ async function getLrclibLyrics(track: Track): Promise<LyricsResult | null> {
     `track_name=${encodeURIComponent(title)}`,
   ];
   let lastErr: Error | null = null;
-  let bestPlain: LyricsResult | null = null;
-  let bestPlainScore = 0;
+  const fetched: any[][] = [];
+  const duration = queryDuration(track);
 
   for (const qs of attempts) {
     try {
@@ -2218,59 +2308,27 @@ async function getLrclibLyrics(track: Track): Promise<LyricsResult | null> {
         lastErr = new Error('No entry in the LRCLib database for this title/artist');
         continue;
       }
-
-      let best: { score: number; synced?: LyricsLine[]; plain?: string } | null = null;
-      for (const item of data) {
-        if (item?.instrumental) continue;
-        const candTitle = String(item?.trackName || item?.name || '');
-        const candArtist = String(item?.artistName || item?.artist || '');
-        const candDuration = Number(item?.duration);
-        const durationSec =
-          Number.isFinite(candDuration) && candDuration > 0 ? candDuration : undefined;
-        const score = scoreMatch(
-          title,
-          artist,
-          candTitle,
-          candArtist,
-          queryDuration(track),
-          durationSec
-        );
-        if (
-          !acceptMatch(
-            title,
-            artist,
-            candTitle,
-            candArtist,
-            score,
-            queryDuration(track),
-            durationSec
-          )
-        ) {
-          continue;
-        }
-        if (item?.syncedLyrics) {
-          const synced = parseLrc(String(item.syncedLyrics));
-          if (
-            synced.length >= 2 &&
-            (!best ||
-              score > best.score ||
-              (score === best.score && synced.length > (best.synced?.length || 0)))
-          ) {
-            best = { score, synced };
-          }
-        } else if (item?.plainLyrics && score > bestPlainScore) {
-          bestPlainScore = score;
-          bestPlain = { provider: 'LRCLib', text: String(item.plainLyrics), matchScore: score };
-        }
+      fetched.push(data);
+      const hit = pickLrclibHit(data, title, artist, duration);
+      if (hit?.synced?.length) {
+        return { provider: 'LRCLib', text: null, synced: hit.synced, matchScore: hit.score };
       }
-      if (best?.synced?.length) {
-        return { provider: 'LRCLib', text: null, synced: best.synced, matchScore: best.score };
-      }
+      if (hit?.plain) return hit.plain;
     } catch (e) {
       lastErr = e instanceof Error ? e : new Error(String(e));
     }
   }
-  if (bestPlain) return bestPlain;
+
+  // alternative versions (radio edit vs album) often miss the duration filter
+  if (duration != null) {
+    for (const data of fetched) {
+      const hit = pickLrclibHit(data, title, artist, undefined);
+      if (hit?.synced?.length) {
+        return { provider: 'LRCLib', text: null, synced: hit.synced, matchScore: hit.score };
+      }
+      if (hit?.plain) return hit.plain;
+    }
+  }
   throw lastErr || new Error('LRCLib failed');
 }
 
@@ -2386,40 +2444,43 @@ function pickMusixmatchCatalogTrack(
   artist: string,
   duration?: number
 ): { track: any; score: number } | null {
-  let best: any = null;
-  let bestScore = -1;
-  for (const item of list) {
-    const cand = item?.track ?? item;
-    if (!cand || cand.track_id === MXM_FALSE_POSITIVE_TRACK_ID) continue;
-    const durationSec = catalogDuration(cand);
-    const score = scoreMatch(
-      title,
-      artist,
-      cand.track_name || '',
-      cand.artist_name || '',
-      duration,
-      durationSec
-    );
-    if (score > bestScore) {
-      bestScore = score;
-      best = cand;
+  const pick = (dur?: number) => {
+    let best: any = null;
+    let bestScore = -1;
+    for (const item of list) {
+      const cand = item?.track ?? item;
+      if (!cand || cand.track_id === MXM_FALSE_POSITIVE_TRACK_ID) continue;
+      const durationSec = catalogDuration(cand);
+      const score = scoreMatch(
+        title,
+        artist,
+        cand.track_name || '',
+        cand.artist_name || '',
+        dur,
+        durationSec
+      );
+      if (score > bestScore) {
+        bestScore = score;
+        best = cand;
+      }
     }
-  }
-  if (
-    !best ||
-    !acceptMatch(
-      title,
-      artist,
-      best.track_name || '',
-      best.artist_name || '',
-      bestScore,
-      duration,
-      catalogDuration(best)
-    )
-  ) {
-    return null;
-  }
-  return { track: best, score: bestScore };
+    if (
+      !best ||
+      !acceptMatch(
+        title,
+        artist,
+        best.track_name || '',
+        best.artist_name || '',
+        bestScore,
+        dur,
+        catalogDuration(best)
+      )
+    ) {
+      return null;
+    }
+    return { track: best, score: bestScore };
+  };
+  return pick(duration) || (duration != null ? pick(undefined) : null);
 }
 
 async function searchMusixmatchCatalog(title: string, artist: string): Promise<any[]> {
@@ -2543,19 +2604,23 @@ function mxmInvalidateToken() {
   } catch {}
 }
 
+function mxmTokenLooksValid(token: unknown): token is string {
+  const s = String(token || '');
+  return Boolean(s) && !s.includes('UpgradeOnly') && !/^0+$/.test(s);
+}
+
 async function mxmEnsureToken(force = false): Promise<string> {
+  let stale: string | null = null;
   if (!force) {
-    if (mxmToken) return mxmToken;
+    if (mxmToken && mxmTokenLooksValid(mxmToken)) return mxmToken;
     try {
       const stored = JSON.parse(localStorage.getItem(MXM_TOKEN_KEY) || 'null');
-      if (
-        stored?.token &&
-        stored.expires > Date.now() &&
-        !String(stored.token).includes('UpgradeOnly') &&
-        !/^0+$/.test(String(stored.token))
-      ) {
-        mxmToken = String(stored.token);
-        return stored.token as string;
+      if (mxmTokenLooksValid(stored?.token)) {
+        if (stored.expires > Date.now()) {
+          mxmToken = String(stored.token);
+          return mxmToken;
+        }
+        stale = String(stored.token);
       }
     } catch {}
   }
@@ -2563,26 +2628,39 @@ async function mxmEnsureToken(force = false): Promise<string> {
   if (!mxmTokenInflight) {
     mxmTokenInflight = (async () => {
       try {
-        const params = new URLSearchParams({
-          app_id: MXM_DESKTOP_APP_ID,
-          t: Math.random().toString(36).slice(2, 10),
-        });
-        const res = await mxmDesktopFetch(`${MXM_DESKTOP_BASE}token.get?${params}`);
-        if (!res.ok) throw new Error(`token.get HTTP ${res.status}`);
-        const json = JSON.parse(await res.text());
-        const token = json?.message?.body?.user_token;
-        if (!token || String(token).includes('UpgradeOnly') || /^0+$/.test(String(token))) {
-          const hint = json?.message?.header?.hint;
-          throw new Error(`token.get failed${hint ? ` (${hint})` : ' (restricted token)'}`);
+        let lastErr: Error | null = null;
+        for (let attempt = 0; attempt < 3; attempt += 1) {
+          try {
+            const params = new URLSearchParams({
+              app_id: MXM_DESKTOP_APP_ID,
+              t: Math.random().toString(36).slice(2, 10),
+            });
+            const res = await mxmDesktopFetch(`${MXM_DESKTOP_BASE}token.get?${params}`);
+            if (!res.ok) throw new Error(`token.get HTTP ${res.status}`);
+            const json = JSON.parse(await res.text());
+            const token = json?.message?.body?.user_token;
+            if (!mxmTokenLooksValid(token)) {
+              const hint = json?.message?.header?.hint;
+              throw new Error(`token.get failed${hint ? ` (${hint})` : ' (restricted token)'}`);
+            }
+            mxmToken = String(token);
+            try {
+              localStorage.setItem(
+                MXM_TOKEN_KEY,
+                JSON.stringify({ token: mxmToken, expires: Date.now() + MXM_TOKEN_TTL_MS })
+              );
+            } catch {}
+            return mxmToken;
+          } catch (e) {
+            lastErr = e instanceof Error ? e : new Error(String(e));
+            if (attempt < 2) await new Promise((r) => setTimeout(r, 350 * (attempt + 1)));
+          }
         }
-        mxmToken = String(token);
-        try {
-          localStorage.setItem(
-            MXM_TOKEN_KEY,
-            JSON.stringify({ token: mxmToken, expires: Date.now() + MXM_TOKEN_TTL_MS })
-          );
-        } catch {}
-        return mxmToken;
+        if (stale) {
+          mxmToken = stale;
+          return stale;
+        }
+        throw lastErr || new Error('Failed to get Musixmatch token');
       } finally {
         mxmTokenInflight = null;
       }
@@ -2725,11 +2803,15 @@ async function getMusixmatchLyricsDesktop(track: Track): Promise<LyricsResult> {
     const rounded = String(Math.round(duration));
     durationParams.q_duration = rounded;
     durationParams.f_subtitle_length = rounded;
-    durationParams.f_subtitle_length_max_deviation = '5';
+    // radio edits vs album cuts are often a minute or two apart
+    durationParams.f_subtitle_length_max_deviation = '120';
   }
+  const artistFirst = artist.split(/[,&]/)[0]?.trim() || artist;
   const queries: Record<string, string>[] = [
     { q_track: title, q_artist: artist, ...durationParams },
-    { q_track: title, q_artist: artist.split(/[,&]/)[0]?.trim() || artist, ...durationParams },
+    { q_track: title, q_artist: artistFirst, ...durationParams },
+    { q_track: title, q_artist: artist },
+    { q_track: title, q_artist: artistFirst },
   ];
 
   let lastError: Error | null = null;
@@ -2872,15 +2954,18 @@ async function getGeniusLyrics(track: Track): Promise<LyricsResult | null> {
   ];
   let searchRes: Response | null = null;
   let lastStatus = 0;
-  for (const url of searchUrls) {
-    const res = await fetch(url, { method: 'GET', headers: GENIUS_BROWSER_HEADERS });
-    lastStatus = res.status;
-    if (res.ok) {
-      searchRes = res;
-      break;
-    }
-    if (res.status !== 403 && res.status !== 429) {
-      throw new Error(geniusHttpError(res.status, 'search'));
+  for (let attempt = 0; attempt < 3 && !searchRes; attempt += 1) {
+    if (attempt > 0) await new Promise((r) => setTimeout(r, 400 * attempt));
+    for (const url of searchUrls) {
+      const res = await fetch(url, { method: 'GET', headers: GENIUS_BROWSER_HEADERS });
+      lastStatus = res.status;
+      if (res.ok) {
+        searchRes = res;
+        break;
+      }
+      if (res.status !== 403 && res.status !== 429) {
+        throw new Error(geniusHttpError(res.status, 'search'));
+      }
     }
   }
   if (!searchRes?.ok) throw new Error(geniusHttpError(lastStatus || 403, 'search'));

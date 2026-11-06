@@ -12,7 +12,7 @@ vi.mock('@tauri-apps/api/event', () => ({
 const fetchMock = vi.fn();
 vi.mock('@tauri-apps/plugin-http', () => ({ fetch: (...a: unknown[]) => fetchMock(...a) }));
 
-import { clearCaches, getLibrary, verifyYtmSession } from '../api/youtube';
+import { clearCaches, extendLibrarySections, getLibrary, verifyYtmSession } from '../api/youtube';
 
 const ctx = (loggedIn: '0' | '1') => ({
   serviceTrackingParams: [
@@ -161,7 +161,10 @@ describe('signed-in library', () => {
       .mockResolvedValueOnce(reply(third));
     const sections = await getLibrary('artists', 'en');
     const items = sections.flatMap((s) => s.items);
-    expect(items.map((i) => i.title)).toEqual(['First', 'Second', 'Third']);
-    expect(items.every((i) => i.type === 'artist' && i.id.startsWith('UC'))).toBe(true);
+    expect(items.map((i) => i.title)).toEqual(['First', 'Second']);
+    const filled = await extendLibrarySections('artists', 'en', sections);
+    const all = filled.flatMap((s) => s.items);
+    expect(all.map((i) => i.title)).toEqual(['First', 'Second', 'Third']);
+    expect(all.every((i) => i.type === 'artist' && i.id.startsWith('UC'))).toBe(true);
   });
 });

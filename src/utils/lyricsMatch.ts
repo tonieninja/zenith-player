@@ -100,7 +100,16 @@ export function isAcceptableLyricsMatch(
   const s = score ?? scoreLyricsMatch(query, cand);
   if (tScore < 3) return false;
   const d = durationDeltaSec(query.durationSec, cand.durationSec);
-  if (d != null && d > 8 && d / Math.max(query.durationSec || 0, cand.durationSec || 0) > 0.12) {
+  // radio edits vs album cuts share title+artist (~2 min apart for Get Lucky);
+  // keep a tighter gate when the names themselves are weak
+  const strongNames = tScore >= 7 && aScore >= 4;
+  const maxDelta = strongNames ? 140 : 8;
+  const maxRatio = strongNames ? 0.38 : 0.12;
+  if (
+    d != null &&
+    d > maxDelta &&
+    d / Math.max(query.durationSec || 0, cand.durationSec || 0) > maxRatio
+  ) {
     return false;
   }
   const durOk = durationClose(query.durationSec, cand.durationSec, 5);

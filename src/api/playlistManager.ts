@@ -377,3 +377,24 @@ export function markOwned(list: PlaylistSummary[], id: string): PlaylistSummary[
     samePlaylist(p.id, id) && isEditablePlaylist(p.id) ? { ...p, kind: 'own', editable: true } : p
   );
 }
+
+/** keep probed "Mine" flags when YouTube re-sends the library as untitled Saved rows */
+export function preserveOwned(
+  fresh: PlaylistSummary[],
+  prev?: PlaylistSummary[] | null,
+  extraIds: string[] = []
+): PlaylistSummary[] {
+  const owned = new Set(extraIds.map((id) => toPlainPlaylistId(id)));
+  for (const p of prev ?? []) {
+    if (p.kind === 'own' || p.editable) owned.add(toPlainPlaylistId(p.id));
+  }
+  if (!owned.size) return fresh;
+  return extraIds.reduce(
+    (acc, id) => markOwned(acc, id),
+    fresh.map((p) =>
+      owned.has(toPlainPlaylistId(p.id)) && isEditablePlaylist(p.id)
+        ? { ...p, kind: 'own' as const, editable: true }
+        : p
+    )
+  );
+}

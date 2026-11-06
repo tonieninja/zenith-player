@@ -25,6 +25,7 @@ import {
   createWithTracks,
   samePlaylist,
   markOwned,
+  preserveOwned,
   filterAndSort,
   listAllPlaylists,
   loadPlaylistDetails,
@@ -169,7 +170,7 @@ export function PlaylistManager({
   const refreshLists = useCallback(async () => {
     try {
       const fresh = await listAllPlaylists(lang, ownerName);
-      setLists(fresh);
+      setLists((prev) => preserveOwned(fresh, prev));
       // the owner name on a row is not reliable, the edit header is: ask once per list
       void Promise.all(
         fresh
@@ -305,7 +306,7 @@ export function PlaylistManager({
       for (let i = 0; i < 4; i += 1) {
         const fresh = await listAllPlaylists(lang, ownerName).catch(() => null);
         if (fresh?.some((p) => samePlaylist(p.id, id))) {
-          setLists(markOwned(fresh, id));
+          setLists((prev) => preserveOwned(fresh, prev, [id]));
           break;
         }
         if (i === 3) {
@@ -318,7 +319,7 @@ export function PlaylistManager({
             kind: 'own',
             editable: true,
           };
-          setLists((prev) => [stub, ...(fresh ?? prev ?? [])]);
+          setLists((prev) => [stub, ...preserveOwned(fresh ?? prev ?? [], prev)]);
         }
         await new Promise((r) => setTimeout(r, 800));
       }

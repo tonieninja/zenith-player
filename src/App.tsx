@@ -36,6 +36,8 @@ import {
   moodBrowseIdFor,
   getHomeFeed,
   getLibrary,
+  peekLibraryCache,
+  prefetchLibrary,
   extendLibrarySections,
   getLyrics,
   getMoodPlaylist,
@@ -111,12 +113,7 @@ import { translations, type Language } from './i18n';
 import { AUX_WINDOW_PLUGINS, pluginManager } from './plugins';
 import { syncCloseToTray } from './plugins/systemTray';
 import { pushHotkeyBindings, syncGlobalHotkeys } from './plugins/globalHotkeys';
-import {
-  cycleAbLoop,
-  getAbLoop,
-  registerAbLoopSeek,
-  tickAbLoop,
-} from './plugins/abLoop';
+import { cycleAbLoop, getAbLoop, registerAbLoopSeek, tickAbLoop } from './plugins/abLoop';
 import { registerAutoPauseCallback } from './plugins/autoPauseBlur';
 import { Select } from './components/ui/Select';
 import {
@@ -1074,8 +1071,14 @@ export default function App() {
   const loadLibrary = useCallback(
     async (category: LibraryCategory = libCategory) => {
       const reqId = ++libReqIdRef.current;
-      setLibLoading(true);
       setLibError(null);
+      const cached = peekLibraryCache(category, lang);
+      if (cached?.length) {
+        setLibSections(cached);
+        setLibLoading(false);
+      } else {
+        setLibLoading(true);
+      }
       const safety = window.setTimeout(() => setLibLoading(false), 8000);
       try {
         let authed = await isLoggedIn();
@@ -1089,7 +1092,7 @@ export default function App() {
           setLibSections([]);
           return;
         }
-        // first paint: only a couple of continuation pages (was up to 60 sequential awaits)
+        // first paint: cached shelves instantly, otherwise one page then fill in
         let sections = await getLibrary(category, lang);
         if (sections.length === 0) {
           await new Promise((r) => setTimeout(r, 400));
@@ -1102,6 +1105,7 @@ export default function App() {
         setLibSections(sections);
         setLibLoading(false);
         window.clearTimeout(safety);
+        prefetchLibrary(lang, category);
         // background: keep filling the open shelf without blocking the UI
         void extendLibrarySections(category, lang, sections).then((more) => {
           if (reqId !== libReqIdRef.current) return;
@@ -1109,7 +1113,7 @@ export default function App() {
         });
       } catch (e) {
         console.warn('[library] load failed', e);
-        if (reqId === libReqIdRef.current) {
+        if (reqId === libReqIdRef.current && !cached?.length) {
           setLibSections([]);
           setLibError(translations[lang].libraryLoadError);
         }
@@ -1319,13 +1323,16 @@ export default function App() {
     })();
   }, [lang, loadHome, stopLoginPoll]);
 
-  const changeLibCategory = useCallback((category: LibraryCategory) => {
-    const plan = nextLibraryViewState(libCategory, category);
-    if (!plan.clear) return;
-    setLibSections([]);
-    setLibLoading(true);
-    setLibCategory(plan.category);
-  }, [libCategory]);
+  const changeLibCategory = useCallback(
+    (category: LibraryCategory) => {
+      const plan = nextLibraryViewState(libCategory, category);
+      if (!plan.clear) return;
+      setLibSections([]);
+      setLibLoading(true);
+      setLibCategory(plan.category);
+    },
+    [libCategory]
+  );
 
   const handleLogin = useCallback(async () => {
     clearAuthCache();
@@ -2094,9 +2101,7 @@ export default function App() {
 
   useEffect(() => {
     const id = currentTrack?.id;
-    setTrackRatingState(
-      id && savedTracks.some((x) => x.id === id) ? 'LIKE' : 'INDIFFERENT'
-    );
+    setTrackRatingState(id && savedTracks.some((x) => x.id === id) ? 'LIKE' : 'INDIFFERENT');
     // only resync when the playing song changes; dislike must survive a local unsave
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentTrack?.id]);
@@ -5416,44 +5421,49 @@ export default function App() {
       {ctxMenu &&
         createPortal(
           <>
-          <div
-            className="ctx-menu-catcher"
-            onClick={() => setCtxMenu(null)}
-            onContextMenu={() => setCtxMenu(null)}
-          />
-          <div className="ctx-menu" style={{ left: ctxMenu.x, top: ctxMenu.y }} role="menu" data-testid="track-ctx-menu">
-            <div className="ctx-menu-label">{t.ctxAddToPlaylist}</div>
-            {userPlaylists.filter((p) => isEditablePlaylist(p.id)).length === 0 ? (
-              <div className="ctx-menu-empty">{t.ctxNoPlaylists}</div>
-            ) : (
-              userPlaylists
-                .filter((p) => isEditablePlaylist(p.id))
-                .map((p) => (
-                  <button
-                    key={p.id}
-                    role="menuitem"
-                    onClick={() => {
-                      const track = ctxMenu.track;
-                      setCtxMenu(null);
-                      void addCurrentToPlaylist(p, false, track);
-                    }}
-                  >
-                    {p.title}
-                  </button>
-                ))
-            )}
-            {libAuthed && (
-              <button
-                role="menuitem"
-                onClick={() => {
-                  setCtxMenu(null);
-                  setPmOpen(true);
-                }}
-              >
-                {t.pmOpen}
-              </button>
-            )}
-          </div>
+            <div
+              className="ctx-menu-catcher"
+              onClick={() => setCtxMenu(null)}
+              onContextMenu={() => setCtxMenu(null)}
+            />
+            <div
+              className="ctx-menu"
+              style={{ left: ctxMenu.x, top: ctxMenu.y }}
+              role="menu"
+              data-testid="track-ctx-menu"
+            >
+              <div className="ctx-menu-label">{t.ctxAddToPlaylist}</div>
+              {userPlaylists.filter((p) => isEditablePlaylist(p.id)).length === 0 ? (
+                <div className="ctx-menu-empty">{t.ctxNoPlaylists}</div>
+              ) : (
+                userPlaylists
+                  .filter((p) => isEditablePlaylist(p.id))
+                  .map((p) => (
+                    <button
+                      key={p.id}
+                      role="menuitem"
+                      onClick={() => {
+                        const track = ctxMenu.track;
+                        setCtxMenu(null);
+                        void addCurrentToPlaylist(p, false, track);
+                      }}
+                    >
+                      {p.title}
+                    </button>
+                  ))
+              )}
+              {libAuthed && (
+                <button
+                  role="menuitem"
+                  onClick={() => {
+                    setCtxMenu(null);
+                    setPmOpen(true);
+                  }}
+                >
+                  {t.pmOpen}
+                </button>
+              )}
+            </div>
           </>,
           document.body
         )}

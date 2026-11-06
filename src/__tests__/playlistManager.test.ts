@@ -23,6 +23,7 @@ import {
   type PlaylistSummary,
   findHeader,
   markOwned,
+  preserveOwned,
 } from '../api/playlistManager';
 import {
   normalizeTitle,
@@ -244,6 +245,37 @@ describe('ownership', () => {
     const out = markOwned(list, 'PLabc');
     expect(out[0]).toMatchObject({ kind: 'own', editable: true });
     expect(markOwned(list, 'LM')[1].editable).toBe(false);
+  });
+
+  it('keeps previously probed Mine flags when a refresh reclassifies them as Saved', () => {
+    const prev: PlaylistSummary[] = [
+      {
+        id: 'VLPLmine',
+        title: 'Workout',
+        subtitle: '12 tracks',
+        cover: '',
+        count: 12,
+        kind: 'own',
+        editable: true,
+      },
+      {
+        id: 'VLPLsaved',
+        title: 'Someone else',
+        subtitle: '',
+        cover: '',
+        count: 3,
+        kind: 'saved',
+        editable: false,
+      },
+    ];
+    const fresh: PlaylistSummary[] = prev.map((p) => ({
+      ...p,
+      kind: 'saved' as const,
+      editable: false,
+    }));
+    const out = preserveOwned(fresh, prev, ['VLPLnew']);
+    expect(out[0]).toMatchObject({ id: 'VLPLmine', kind: 'own', editable: true });
+    expect(out[1]).toMatchObject({ id: 'VLPLsaved', kind: 'saved', editable: false });
   });
 });
 
