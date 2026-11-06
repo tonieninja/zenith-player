@@ -1102,7 +1102,12 @@ export async function getAudioStream(
   return task;
 }
 
-/** playlist browse ids are VL + the playlistId, like VLPL... / VLLM / VLRD... */
+/** radio / supermix / generated stations use an RD... id that is already a browse id */
+export function isGeneratedMixId(id: string): boolean {
+  return toPlainPlaylistId(id).startsWith('RD');
+}
+
+/** playlist browse ids are VL + the playlistId, like VLPL... / VLLM. RD mixes stay unprefixed. */
 export function toPlaylistBrowseId(id: string): string {
   const raw = (id || '').trim();
   if (!raw) return raw;
@@ -1115,8 +1120,21 @@ export function toPlaylistBrowseId(id: string): string {
   ) {
     return raw;
   }
-  if (/^(PL|OL|RD|LM|UU)/.test(raw)) return `VL${raw}`;
+  // prefixing VL turns Energy Supermix / radio pages into a "empty playlist" miss
+  if (raw.startsWith('RD')) return raw;
+  if (/^(PL|OL|LM|UU)/.test(raw)) return `VL${raw}`;
   return raw;
+}
+
+/** ids to try when opening a playlist page; generated mixes prefer the raw RD id */
+export function playlistBrowseCandidates(browseId: string): string[] {
+  const raw = (browseId || '').trim();
+  if (!raw) return [];
+  if (isGeneratedMixId(raw)) {
+    const plain = toPlainPlaylistId(raw);
+    return Array.from(new Set([plain, raw].filter(Boolean)));
+  }
+  return Array.from(new Set([toPlaylistBrowseId(raw), raw].filter(Boolean)));
 }
 
 const EMPTY_PLAYLIST = Symbol('empty-playlist');
@@ -1146,7 +1164,9 @@ function findRenderer(node: any, key: string, depth = 0): any {
 export function playlistContentRoot(data: any, browseId: string): any {
   const shelf = findRenderer(data, 'musicPlaylistShelfRenderer');
   if (shelf) return shelf;
-  if (browseId.startsWith('VL')) {
+  // generated mixes (Energy Supermix, radio, etc.) list tracks in a plain music shelf,
+  // even when someone stored the id with a VL prefix
+  if (browseId.startsWith('VL') && !isGeneratedMixId(browseId)) {
     // "episodes for later" (SE) lists its episodes in a plain music shelf; on a normal
     // playlist a plain shelf is the suggestions block, so no playlist shelf == empty
     if (browseId === 'VLSE') {
@@ -1155,7 +1175,7 @@ export function playlistContentRoot(data: any, browseId: string): any {
     }
     return EMPTY_PLAYLIST;
   }
-  // albums & co: their tracks sit in a plain music shelf too
+  // albums, radio and supermix pages: their tracks sit in a plain music shelf too
   return findRenderer(data, 'musicShelfRenderer') ?? data;
 }
 
@@ -1167,7 +1187,7 @@ export async function getPlaylistItems(browseId: string, lang: Language): Promis
 
 /** like getPlaylistItems but tells an empty playlist apart from a failed request */
 export async function loadPlaylistItems(browseId: string, lang: Language): Promise<PlaylistLoad> {
-  const ids = Array.from(new Set([toPlaylistBrowseId(browseId), browseId].filter(Boolean)));
+  const ids = playlistBrowseCandidates(browseId);
   let sawEmpty = false;
   for (const id of ids) {
     try {
@@ -1895,7 +1915,9 @@ function parseRichsync(text: string): LyricsLine[] {
       const time = Number(row?.ts ?? row?.time?.total ?? row?.time);
       let lyricText = '';
       if (Array.isArray(row?.l)) {
-        lyricText = row.l.map((w: { c?: string; text?: string }) => String(w?.c ?? w?.text ?? '')).join('');
+        lyricText = row.l
+          .map((w: { c?: string; text?: string }) => String(w?.c ?? w?.text ?? ''))
+          .join('');
       } else {
         lyricText = String(row?.x ?? row?.text ?? '');
       }
@@ -1915,7 +1937,9 @@ function parseMxmSubtitles(text: string): LyricsLine[] {
     const lines: LyricsLine[] = [];
     for (const row of data) {
       const time = Number(row?.time?.total ?? row?.ts ?? row?.time);
-      const lyricText = String(row?.text ?? row?.x ?? '').replace(/\s+/g, ' ').trim();
+      const lyricText = String(row?.text ?? row?.x ?? '')
+        .replace(/\s+/g, ' ')
+        .trim();
       if (Number.isFinite(time) && lyricText) lines.push({ time, text: lyricText });
     }
     return normalizeSynced(lines);
@@ -2254,8 +2278,9 @@ async function musixmatchRequest(endpoint: string): Promise<any> {
   return json;
 }
 
-
-function catalogDuration(trackLike: { track_length?: number } | null | undefined): number | undefined {
+function catalogDuration(
+  trackLike: { track_length?: number } | null | undefined
+): number | undefined {
   const candDuration = Number(trackLike?.track_length);
   return Number.isFinite(candDuration) && candDuration > 0 ? candDuration : undefined;
 }
@@ -2325,10 +2350,7 @@ async function searchMusixmatchCatalog(title: string, artist: string): Promise<a
   return list;
 }
 
-async function lyricsFromMusixmatchCatalog(
-  best: any,
-  bestScore: number
-): Promise<LyricsResult> {
+async function lyricsFromMusixmatchCatalog(best: any, bestScore: number): Promise<LyricsResult> {
   if (best.has_richsync && (best.track_id || best.commontrack_id)) {
     try {
       const idParam = best.track_id

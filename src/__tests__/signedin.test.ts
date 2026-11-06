@@ -17,10 +17,13 @@ import {
   addToPlaylist,
   AlreadyInPlaylistError,
   applyPlaylistOverrides,
+  isGeneratedMixId,
   loadPlaylistItems,
+  playlistBrowseCandidates,
   playlistContentRoot,
   rememberPlaylistDeleted,
   rememberPlaylistRenamed,
+  toPlaylistBrowseId,
 } from '../api/youtube';
 import { loadPersistedQueue, savePersistedQueue } from '../plugins/queuePersist';
 
@@ -105,6 +108,57 @@ describe('playlist content', () => {
     fetchMock.mockReset();
     fetchMock.mockResolvedValue({ ok: false, status: 500, text: async () => '' });
     expect((await loadPlaylistItems('VLPLx', 'en')).status).toBe('failed');
+  });
+
+  it('does not prefix generated mix / supermix ids with VL', () => {
+    expect(isGeneratedMixId('VLRDTMAK5uyEnergy')).toBe(true);
+    expect(isGeneratedMixId('RDTMAK5uyEnergy')).toBe(true);
+    expect(isGeneratedMixId('VLPLabc')).toBe(false);
+    expect(toPlaylistBrowseId('RDTMAK5uyEnergy')).toBe('RDTMAK5uyEnergy');
+    expect(toPlaylistBrowseId('VLRDTMAK5uyEnergy')).toBe('VLRDTMAK5uyEnergy');
+    expect(toPlaylistBrowseId('PLabc')).toBe('VLPLabc');
+    expect(playlistBrowseCandidates('VLRDTMAK5uyEnergy')).toEqual([
+      'RDTMAK5uyEnergy',
+      'VLRDTMAK5uyEnergy',
+    ]);
+    expect(playlistBrowseCandidates('RDTMAK5uyEnergy')).toEqual(['RDTMAK5uyEnergy']);
+  });
+
+  it('reads Energy Supermix tracks from a plain music shelf, even on a VLRD id', () => {
+    const page = {
+      contents: {
+        sectionListRenderer: {
+          contents: [{ musicShelfRenderer: { contents: [item('ddddddddddd', 'High Energy')] } }],
+        },
+      },
+    };
+    const root = playlistContentRoot(page, 'VLRDTMAK5uyEnergy');
+    expect(JSON.stringify(root)).toContain('ddddddddddd');
+  });
+
+  it('loads a generated mix stored as VLRD... from its music shelf', async () => {
+    const page = {
+      contents: {
+        sectionListRenderer: {
+          contents: [{ musicShelfRenderer: { contents: [item('ddddddddddd', 'High Energy')] } }],
+        },
+      },
+    };
+    fetchMock.mockReset();
+    fetchMock.mockImplementation(async (_url: unknown, init?: { body?: string }) => {
+      const body = JSON.parse(String(init?.body || '{}')) as { browseId?: string };
+      if (body.browseId === 'RDTMAK5uyEnergy' || body.browseId === 'VLRDTMAK5uyEnergy') {
+        return jsonResponse(page);
+      }
+      return { ok: false, status: 404, text: async () => '' };
+    });
+    const res = await loadPlaylistItems('VLRDTMAK5uyEnergy', 'en');
+    expect(res.status).toBe('ok');
+    expect(res.items.map((t) => t.id)).toEqual(['ddddddddddd']);
+    const firstBrowse = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body || '{}')) as {
+      browseId?: string;
+    };
+    expect(firstBrowse.browseId).toBe('RDTMAK5uyEnergy');
   });
 });
 

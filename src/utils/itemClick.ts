@@ -1,4 +1,4 @@
-import type { Track } from '../api/youtube';
+import { toPlainPlaylistId, type Track } from '../api/youtube';
 
 export const BROWSE_MOOD_PREFIX = 'browse:';
 
@@ -15,6 +15,18 @@ export function browseMoodId(itemId: string): string {
 export function browseIdFromMood(activeMood: string | null | undefined): string | null {
   if (!activeMood?.startsWith(BROWSE_MOOD_PREFIX)) return null;
   return activeMood.slice(BROWSE_MOOD_PREFIX.length) || null;
+}
+
+/** true when the main view is the browse page for this playlist */
+export function isViewingPlaylist(
+  activeTab: string,
+  activeMood: string | null | undefined,
+  playlistId: string
+): boolean {
+  if (activeTab !== 'mood') return false;
+  const openId = browseIdFromMood(activeMood);
+  if (!openId) return false;
+  return toPlainPlaylistId(openId) === toPlainPlaylistId(playlistId);
 }
 
 /** sidebar playlists and podcasts open their page instead of starting playback */

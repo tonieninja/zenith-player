@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { resolveFeedItem } from '../utils/feedItem';
-import { itemClickPlan, shouldOpenCollection, sidebarClickPlan } from '../utils/itemClick';
+import {
+  browseMoodId,
+  isViewingPlaylist,
+  itemClickPlan,
+  shouldOpenCollection,
+  sidebarClickPlan,
+} from '../utils/itemClick';
 
 describe('search / feed item identity', () => {
   it('opens an artist page rather than playing the overlay song (Instant Crush)', () => {
@@ -91,6 +97,34 @@ describe('optimistic click routing', () => {
     expect(sidebarClickPlan({ id: 'VLSE', type: 'playlist' }).kind).toBe('browse-page');
     expect(sidebarClickPlan({ id: 'SE', type: 'podcast' }).kind).toBe('browse-page');
     expect(sidebarClickPlan({ id: 'VLPLxxxx', type: 'playlist' }).kind).toBe('browse-page');
+    expect(sidebarClickPlan({ id: 'VLRDTMAK5uyEnergy', type: 'playlist' }).kind).toBe(
+      'browse-page'
+    );
     expect(itemClickPlan({ id: 'VLPLxxxx', type: 'playlist' }).kind).toBe('play-collection');
+  });
+
+  it('classifies generated mix / supermix browse ids as playlists', () => {
+    expect(
+      resolveFeedItem({
+        browseId: 'RDTMAK5uyEnergy',
+        primaryIsBrowse: true,
+      })
+    ).toEqual({ id: 'RDTMAK5uyEnergy', type: 'playlist' });
+    expect(
+      resolveFeedItem({
+        browseId: 'RDTMAK5uyEnergy',
+        videoId: 'anHK6aMMcOM',
+        primaryIsBrowse: true,
+      })
+    ).toEqual({ id: 'RDTMAK5uyEnergy', type: 'playlist' });
+  });
+
+  it('leaves a deleted playlist view and ignores a different open playlist', () => {
+    const open = browseMoodId('VLPL123');
+    expect(isViewingPlaylist('mood', open, 'PL123')).toBe(true);
+    expect(isViewingPlaylist('mood', open, 'VLPL123')).toBe(true);
+    expect(isViewingPlaylist('mood', open, 'VLPL999')).toBe(false);
+    expect(isViewingPlaylist('home', open, 'PL123')).toBe(false);
+    expect(isViewingPlaylist('mood', 'focus', 'PL123')).toBe(false);
   });
 });

@@ -4844,6 +4844,15 @@ html.has-cover-theme .main-play-pause-circle {
   max-width: 320px;
 }
 
+/* portaled copy: not a child of .zen-popover, so it keeps the same sizing
+   and sits above overflow:hidden scroll areas (player "Add to playlist") */
+.zen-popover-menu-list {
+  position: fixed;
+  z-index: 5000;
+  min-width: 200px;
+  max-width: 320px;
+}
+
 .zen-popover .zen-select-option > span {
   overflow: hidden;
   text-overflow: ellipsis;

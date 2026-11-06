@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 
 export type PopoverItem = {
   key: string;
@@ -9,9 +10,36 @@ export type PopoverItem = {
   onSelect: () => void;
 };
 
+export type PopoverCoords = {
+  left: number;
+  top?: number;
+  bottom?: number;
+  minWidth: number;
+  dropUp: boolean;
+};
+
+/** fixed-position box for a menu anchored to a trigger; used so overflow:hidden parents cannot clip it */
+export function popoverMenuCoords(
+  anchor: Pick<DOMRect, 'left' | 'right' | 'top' | 'bottom' | 'width'>,
+  itemCount: number,
+  align: 'left' | 'right',
+  viewport: Pick<Window, 'innerWidth' | 'innerHeight'> = window
+): PopoverCoords {
+  const minWidth = Math.max(anchor.width, 200);
+  const estHeight = Math.min(260, Math.max(1, itemCount) * 36 + 16);
+  const dropUp = viewport.innerHeight - anchor.bottom < estHeight + 8;
+  let left = align === 'left' ? anchor.left : anchor.right - minWidth;
+  left = Math.max(8, Math.min(left, viewport.innerWidth - minWidth - 8));
+  if (dropUp) {
+    return { left, bottom: viewport.innerHeight - anchor.top + 6, minWidth, dropUp };
+  }
+  return { left, top: anchor.bottom + 6, minWidth, dropUp };
+}
+
 /**
  * small themed action menu (same look as the Select list). closes on outside click,
- * Escape (without closing the surrounding modal) and after picking an item
+ * Escape (without closing the surrounding modal) and after picking an item.
+ * the list is portaled to document.body so "Add to playlist" is not clipped.
  */
 export function PopoverMenu({
   trigger,
@@ -31,15 +59,30 @@ export function PopoverMenu({
   triggerClassName?: string;
 }) {
   const [open, setOpen] = useState(false);
-  const [dropUp, setDropUp] = useState(false);
+  const [coords, setCoords] = useState<PopoverCoords | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
+  const listRef = useRef<HTMLUListElement | null>(null);
+
+  const place = () => {
+    const r = rootRef.current?.getBoundingClientRect();
+    if (!r) return;
+    setCoords(popoverMenuCoords(r, items.length, align));
+  };
+
+  useLayoutEffect(() => {
+    if (!open) {
+      setCoords(null);
+      return;
+    }
+    place();
+  }, [open, items.length, align]);
 
   useEffect(() => {
     if (!open) return;
-    const r = rootRef.current?.getBoundingClientRect();
-    if (r) setDropUp(window.innerHeight - r.bottom < Math.min(260, items.length * 36 + 16));
     const onDown = (e: MouseEvent) => {
-      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
+      const t = e.target as Node;
+      if (rootRef.current?.contains(t) || listRef.current?.contains(t)) return;
+      setOpen(false);
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -49,16 +92,65 @@ export function PopoverMenu({
     };
     window.addEventListener('mousedown', onDown, true);
     window.addEventListener('keydown', onKey);
+    window.addEventListener('resize', place);
+    window.addEventListener('scroll', place, true);
     return () => {
       window.removeEventListener('mousedown', onDown, true);
       window.removeEventListener('keydown', onKey);
+      window.removeEventListener('resize', place);
+      window.removeEventListener('scroll', place, true);
     };
-  }, [open, items.length]);
+  }, [open, items.length, align]);
+
+  const list =
+    open && coords ? (
+      <ul
+        ref={listRef}
+        className="zen-select-list zen-popover-menu-list"
+        role="menu"
+        aria-label={ariaLabel}
+        data-zen-popover-menu="true"
+        style={{
+          position: 'fixed',
+          top: coords.dropUp ? undefined : coords.top,
+          bottom: coords.dropUp ? coords.bottom : undefined,
+          left: coords.left,
+          right: 'auto',
+          minWidth: coords.minWidth,
+        }}
+      >
+        {items.length === 0 && emptyLabel && (
+          <li className="zen-select-option is-empty" role="presentation">
+            {emptyLabel}
+          </li>
+        )}
+        {items.map((item) => (
+          <li
+            key={item.key}
+            role="menuitem"
+            aria-disabled={item.disabled}
+            tabIndex={-1}
+            className={`zen-select-option${item.danger ? ' danger' : ''}${
+              item.disabled ? ' disabled' : ''
+            }`}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (item.disabled) return;
+              setOpen(false);
+              item.onSelect();
+            }}
+          >
+            <span>{item.label}</span>
+          </li>
+        ))}
+      </ul>
+    ) : null;
 
   return (
     <div
       ref={rootRef}
-      className={`zen-select zen-popover ${open ? 'open' : ''} ${dropUp ? 'drop-up' : ''} ${
+      className={`zen-select zen-popover ${open ? 'open' : ''} ${coords?.dropUp ? 'drop-up' : ''} ${
         align === 'left' ? 'align-left' : ''
       } ${className}`}
     >
@@ -71,40 +163,17 @@ export function PopoverMenu({
         title={ariaLabel}
         onClick={(e) => {
           e.stopPropagation();
+          if (!open && rootRef.current) {
+            setCoords(
+              popoverMenuCoords(rootRef.current.getBoundingClientRect(), items.length, align)
+            );
+          }
           setOpen((o) => !o);
         }}
       >
         {trigger}
       </button>
-      {open && (
-        <ul className="zen-select-list" role="menu" aria-label={ariaLabel}>
-          {items.length === 0 && emptyLabel && (
-            <li className="zen-select-option is-empty" role="presentation">
-              {emptyLabel}
-            </li>
-          )}
-          {items.map((item) => (
-            <li
-              key={item.key}
-              role="menuitem"
-              aria-disabled={item.disabled}
-              tabIndex={-1}
-              className={`zen-select-option${item.danger ? ' danger' : ''}${
-                item.disabled ? ' disabled' : ''
-              }`}
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={(e) => {
-                e.stopPropagation();
-                if (item.disabled) return;
-                setOpen(false);
-                item.onSelect();
-              }}
-            >
-              <span>{item.label}</span>
-            </li>
-          ))}
-        </ul>
-      )}
+      {list && createPortal(list, document.body)}
     </div>
   );
 }

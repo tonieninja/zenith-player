@@ -84,9 +84,11 @@ import {
   browseIdFromMood,
   browseMoodId,
   isBrowseMood,
+  isViewingPlaylist,
   itemClickPlan,
   sidebarClickPlan,
 } from './utils/itemClick';
+import { ctxTrackAttr } from './utils/ctxTrack';
 import { SyncedLyricsRail } from './components/SyncedLyricsRail';
 import { LIB_EMPTY_KEYS, LIBRARY_CATEGORIES } from './constants/library';
 import {
@@ -201,7 +203,12 @@ const PluginsPanel = lazy(() =>
   import('./components/PluginsPanel').then((m) => ({ default: m.PluginsPanel }))
 );
 import { smartShuffle } from './utils/smartShuffle';
-import { decidePrevious, pickPrevPosition, popPlayHistory, pushPlayHistory } from './utils/playbackNav';
+import {
+  decidePrevious,
+  pickPrevPosition,
+  popPlayHistory,
+  pushPlayHistory,
+} from './utils/playbackNav';
 import { stableOrderSections } from './utils/sections';
 import { streamCacheSet } from './utils/streamCache';
 import {
@@ -265,18 +272,6 @@ const FEED_LOADING_INITIAL: Record<FeedLoadTab, boolean> = {
 function PlayerLyricsRail(props: Omit<ComponentProps<typeof SyncedLyricsRail>, 'idx'>) {
   const idx = useActiveLyricLine();
   return <SyncedLyricsRail {...props} idx={idx} />;
-}
-
-/** serialized track for the right-click menu, only rows that are real songs get one */
-function ctxTrackAttr(item: Track): string | undefined {
-  if (item.type !== 'track' || !/^[\w-]{11}$/.test(item.id)) return undefined;
-  return JSON.stringify({
-    id: item.id,
-    type: 'track',
-    title: item.title,
-    artist: item.artist,
-    cover: item.cover,
-  });
 }
 
 export default function App() {
@@ -2173,6 +2168,14 @@ export default function App() {
           playingFromIdRef.current = null;
           setPlayingFrom(null);
         }
+        if (isViewingPlaylist(activeTab, activeMood, plEdit.pl.id)) {
+          ++feedSeqRef.current.mood;
+          setSections([]);
+          setBrowseTitle(null);
+          setBrowseEmptyKind(null);
+          setActiveMood(null);
+          navigateTo('library');
+        }
         pushToast(translations[lang].playlistDeleted, 'success');
       }
       setPlEdit(null);
@@ -2193,7 +2196,9 @@ export default function App() {
     loadUserPlaylists,
     loadLibrary,
     activeTab,
+    activeMood,
     libCategory,
+    navigateTo,
   ]);
 
   useEffect(() => {
@@ -5300,7 +5305,17 @@ export default function App() {
           onPlay={(tracks, index, title) => {
             if (tracks[index]) handleItemClick(tracks[index], title, tracks);
           }}
-          onChanged={() => void loadUserPlaylists()}
+          onChanged={(change) => {
+            void loadUserPlaylists();
+            if (change?.deletedId && isViewingPlaylist(activeTab, activeMood, change.deletedId)) {
+              ++feedSeqRef.current.mood;
+              setSections([]);
+              setBrowseTitle(null);
+              setBrowseEmptyKind(null);
+              setActiveMood(null);
+              navigateTo('library');
+            }
+          }}
         />
       )}
       {ctxMenu && (

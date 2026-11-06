@@ -5,6 +5,7 @@ import { usePager } from '../../hooks/usePager';
 import { useResponsivePageSize } from '../../hooks/useResponsivePageSize';
 import { coverAttrs } from '../../utils/imgError';
 import { currentT } from '../../utils/uiLang';
+import { ctxTrackAttr } from '../../utils/ctxTrack';
 
 export const PAGE_SIZE = 8;
 
@@ -28,7 +29,7 @@ const AlbumCard = memo(function AlbumCard({
     [onClick, track, sectionTitle, sectionItems]
   );
   return (
-    <div className="yt-card" onClick={handleClick}>
+    <div className="yt-card" onClick={handleClick} data-ctx-track={ctxTrackAttr(track)}>
       <div className="yt-card-thumb">
         <img
           loading={priority ? 'eager' : 'lazy'}

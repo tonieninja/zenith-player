@@ -50,18 +50,14 @@ export function resolveFeedItem(input: ResolveFeedItemInput): FeedItemIdentity |
         !pageType.includes('ALBUM') &&
         !pageType.includes('PLAYLIST')))
   ) {
-    const profile =
-      pageType === 'MUSIC_PAGE_TYPE_USER_CHANNEL' || /\b(profile|profil)\b/.test(sub);
+    const profile = pageType === 'MUSIC_PAGE_TYPE_USER_CHANNEL' || /\b(profile|profil)\b/.test(sub);
     return { id: browseId, type: profile ? 'profile' : 'artist' };
   }
 
   if (pageType === 'MUSIC_PAGE_TYPE_ALBUM' && browseId) {
     return { id: browseId, type: 'album' };
   }
-  if (
-    (pageType === 'MUSIC_PAGE_TYPE_PLAYLIST' || pageType.includes('PODCAST')) &&
-    browseId
-  ) {
+  if ((pageType === 'MUSIC_PAGE_TYPE_PLAYLIST' || pageType.includes('PODCAST')) && browseId) {
     return { id: browseId, type: pageType.includes('PODCAST') ? 'podcast' : 'playlist' };
   }
 
@@ -69,6 +65,12 @@ export function resolveFeedItem(input: ResolveFeedItemInput): FeedItemIdentity |
   // keep the browse target when the id itself says what this row is
   if (browseId && (browseId.startsWith('MPREb') || browseId.startsWith('OLAK5uy'))) {
     return { id: browseId, type: 'album' };
+  }
+  // Energy Supermix / radio / generated mixes: RD... (or VLRD...) even when a
+  // card also carries an overlay videoId for the first track
+  if (browseId) {
+    const mixId = browseId.startsWith('VL') ? browseId.slice(2) : browseId;
+    if (mixId.startsWith('RD')) return { id: browseId, type: 'playlist' };
   }
   if (
     browseId &&

@@ -142,7 +142,7 @@ export function PlaylistManager({
   ownerName: string | null;
   onClose: () => void;
   onPlay: (tracks: Track[], index: number, title: string) => void;
-  onChanged?: () => void;
+  onChanged?: (change?: { deletedId?: string }) => void;
 }) {
   const t = translations[lang];
   const [lists, setLists] = useState<PlaylistSummary[] | null>(null);
@@ -366,7 +366,7 @@ export function PlaylistManager({
       setDetails(null);
       setLists((prev) => prev?.filter((p) => p.id !== active.id) ?? prev);
       pushToast(t.pmDeleted, 'success');
-      onChanged?.();
+      onChanged?.({ deletedId: active.id });
     });
 
   const removeSelected = () =>
