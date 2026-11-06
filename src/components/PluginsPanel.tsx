@@ -163,6 +163,7 @@ function PluginCard({
           role="switch"
           aria-checked={enabled}
           className={`plugin-toggle ${enabled ? 'on' : ''}`}
+          data-testid={`plugin-toggle-${name}`}
           onClick={onToggle}
           aria-label={name}
         >

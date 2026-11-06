@@ -24,6 +24,14 @@ export function clearAbLoop() {
   state = { a: null, b: null, active: false };
 }
 
+/** first click sets A, second sets B (and arms the loop if B is after A), third clears */
+export function cycleAbLoop(time: number): AbLoopState {
+  if (state.a === null) setAbPoint('a', time);
+  else if (state.b === null) setAbPoint('b', time);
+  else clearAbLoop();
+  return getAbLoop();
+}
+
 export function registerAbLoopSeek(fn: (t: number) => void) {
   onLoop = fn;
 }

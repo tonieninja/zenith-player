@@ -196,10 +196,19 @@ pub fn app_prepare_shutdown(app: AppHandle) -> Result<(), String> {
 }
 
 /// aux windows must never grab keyboard focus from the main window
+fn refocus_main(app: &AppHandle) {
+    if let Some(main) = app.get_webview_window("main") {
+        let _ = main.set_focus();
+    }
+}
+
 fn show_without_focus(win: &tauri::WebviewWindow) -> Result<(), String> {
     if !win.is_visible().unwrap_or(false) {
         win.show().map_err(|e| e.to_string())?;
     }
+    // some compositors still focus a newly shown window; give it back so the
+    // first click on Settings / plugin toggles in the main UI actually lands
+    refocus_main(win.app_handle());
     Ok(())
 }
 
@@ -212,7 +221,8 @@ pub async fn open_lyrics_overlay(app: AppHandle) -> Result<(), String> {
         return show_without_focus(&existing);
     }
 
-    let (w, h) = (860.0, 330.0);
+    // start small; the overlay page resizes the window to the visible panel
+    let (w, h) = (640.0, 160.0);
     let (x, y) = saved_position(&app, "lyrics-overlay").unwrap_or_else(|| {
         // bottom-centre of the monitor, lifted above the main window's player bar
         main_monitor_rect(&app)
@@ -231,13 +241,15 @@ pub async fn open_lyrics_overlay(app: AppHandle) -> Result<(), String> {
         .skip_taskbar(true)
         .focused(false)
         .inner_size(w, h)
-        .min_inner_size(480.0, 220.0)
+        .min_inner_size(320.0, 64.0)
         .position(x, y)
         .resizable(true)
         .build()
         .map_err(|e| e.to_string())?;
+    let _ = win.set_ignore_cursor_events(true);
     keep_on_screen(&win);
     crate::webview_tuning::tune(&win);
+    refocus_main(&app);
     Ok(())
 }
 
@@ -364,6 +376,7 @@ pub async fn open_lyrics_second_screen(app: AppHandle) -> Result<(), String> {
         .build()
         .map_err(|e| e.to_string())?;
     crate::webview_tuning::tune(&win);
+    refocus_main(&app);
     Ok(())
 }
 
@@ -401,6 +414,7 @@ pub async fn open_mini_player(app: AppHandle) -> Result<(), String> {
         .build()
         .map_err(|e| e.to_string())?;
     crate::webview_tuning::tune(&win);
+    refocus_main(&app);
     Ok(())
 }
 

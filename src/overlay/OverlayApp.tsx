@@ -12,6 +12,7 @@ import {
   startWindowDrag,
   useAuxLang,
 } from '../utils/auxWindow';
+import { attachOverlayWindowFit } from './windowFit';
 import './overlay.css';
 
 const STORAGE_KEY = 'zenith_overlay_last';
@@ -70,6 +71,19 @@ export default function OverlayApp() {
   const lastLineRef = useRef(-1);
   const lastPersistKeyRef = useRef('');
   const [syncOffsetMs, setSyncOffsetMs] = useState(getLyricsSyncOffset);
+  const fitCleanup = useRef<(() => void) | null>(null);
+  const setPanelRef = useCallback((node: HTMLDivElement | null) => {
+    fitCleanup.current?.();
+    fitCleanup.current = null;
+    if (node && !IS_SECOND_SCREEN) fitCleanup.current = attachOverlayWindowFit(node);
+  }, []);
+  useEffect(
+    () => () => {
+      fitCleanup.current?.();
+      fitCleanup.current = null;
+    },
+    [],
+  );
 
   useEffect(() => {
     const onSync = () => setSyncOffsetMs(getLyricsSyncOffset());
@@ -189,7 +203,7 @@ export default function OverlayApp() {
         onMouseDown={startWindowDrag}
         title={s.drag}
       >
-        <div className="overlay-panel overlay-panel--idle">
+        <div className="overlay-panel overlay-panel--idle" ref={setPanelRef}>
           <OverlayChrome label={s.close} />
           <div className="overlay-idle">
             {data?.title ? s.lyricsNone : s.lyricsIdle}
@@ -230,7 +244,7 @@ export default function OverlayApp() {
         } as CSSProperties
       }
     >
-      <div className="overlay-panel">
+      <div className="overlay-panel" ref={setPanelRef}>
         <OverlayChrome label={s.close} />
         {beat && data.karaoke && <div className="overlay-beat" />}
         {!data.secondScreen && !data.hideTrackMeta && (

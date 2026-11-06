@@ -19,7 +19,14 @@ import { smartShuffle } from '../utils/smartShuffle';
 import { getListenStats } from '../plugins/statsTracker';
 import { getListeningHistory } from '../plugins/listeningHistory';
 import { loadPersistedQueue, savePersistedQueue } from '../plugins/queuePersist';
-import { clearAbLoop, getAbLoop, setAbPoint } from '../plugins/abLoop';
+import {
+  clearAbLoop,
+  cycleAbLoop,
+  getAbLoop,
+  registerAbLoopSeek,
+  setAbPoint,
+  tickAbLoop,
+} from '../plugins/abLoop';
 import { ALL_PLUGINS } from '../plugins';
 import {
   isEditablePlaylist,
@@ -151,6 +158,32 @@ describe('plugins storage', () => {
     expect(getAbLoop().active).toBe(true);
     setAbPoint('a', 30);
     expect(getAbLoop().active).toBe(false);
+  });
+
+  it('cycles A, then B, then clear on successive clicks', () => {
+    clearAbLoop();
+    expect(cycleAbLoop(10)).toEqual({ a: 10, b: null, active: false });
+    expect(cycleAbLoop(25)).toEqual({ a: 10, b: 25, active: true });
+    expect(cycleAbLoop(30)).toEqual({ a: null, b: null, active: false });
+  });
+
+  it('third click still clears when B was too close to A to arm the loop', () => {
+    clearAbLoop();
+    cycleAbLoop(10);
+    expect(cycleAbLoop(10.1)).toEqual({ a: 10, b: 10.1, active: false });
+    expect(cycleAbLoop(12)).toEqual({ a: null, b: null, active: false });
+  });
+
+  it('seeks back to A when playback reaches B', () => {
+    clearAbLoop();
+    const seeks: number[] = [];
+    registerAbLoopSeek((t) => seeks.push(t));
+    cycleAbLoop(10);
+    cycleAbLoop(20);
+    tickAbLoop(19.9, 100);
+    expect(seeks).toEqual([]);
+    tickAbLoop(19.96, 100);
+    expect(seeks).toEqual([10]);
   });
 });
 

@@ -112,10 +112,9 @@ import { AUX_WINDOW_PLUGINS, pluginManager } from './plugins';
 import { syncCloseToTray } from './plugins/systemTray';
 import { pushHotkeyBindings, syncGlobalHotkeys } from './plugins/globalHotkeys';
 import {
-  clearAbLoop,
+  cycleAbLoop,
   getAbLoop,
   registerAbLoopSeek,
-  setAbPoint,
   tickAbLoop,
 } from './plugins/abLoop';
 import { registerAutoPauseCallback } from './plugins/autoPauseBlur';
@@ -4307,10 +4306,14 @@ export default function App() {
               className="nav-item settings-link"
               data-tour="plugins"
               data-testid="open-plugins"
+              onPointerDown={(e) => {
+                if (e.button !== 0) return;
+                setIsSettingsOpen(false);
+                setIsPluginsOpen(true);
+              }}
               onClick={() => {
                 setIsSettingsOpen(false);
                 setIsPluginsOpen(true);
-                void appWindow.setFocus();
               }}
             >
               <Puzzle size={22} />
@@ -4320,10 +4323,14 @@ export default function App() {
               type="button"
               className="nav-item settings-link"
               data-testid="open-settings"
+              onPointerDown={(e) => {
+                if (e.button !== 0) return;
+                setIsPluginsOpen(false);
+                setIsSettingsOpen(true);
+              }}
               onClick={() => {
                 setIsPluginsOpen(false);
                 setIsSettingsOpen(true);
-                void appWindow.setFocus();
               }}
             >
               <Settings size={22} />
@@ -5047,18 +5054,10 @@ export default function App() {
               {pluginStates['ab-loop'] && (
                 <Repeat2
                   size={18}
-                  className={`extra-icon-btn ${abLoop.active ? 'active' : ''}`}
+                  className={`extra-icon-btn ${abLoop.active ? 'active' : abLoop.a !== null ? 'armed' : ''}`}
                   aria-label={t.abLoop}
-                  onClick={() => {
-                    if (abLoop.active) {
-                      clearAbLoop();
-                      setAbLoop(getAbLoop());
-                    } else {
-                      setAbPoint('a', progressRef.current);
-                      setAbPoint('b', Math.min(duration, progressRef.current + 15));
-                      setAbLoop(getAbLoop());
-                    }
-                  }}
+                  data-testid="ab-loop-btn"
+                  onClick={() => setAbLoop(cycleAbLoop(progressRef.current))}
                 />
               )}
               {pluginStates['share-card'] && (
