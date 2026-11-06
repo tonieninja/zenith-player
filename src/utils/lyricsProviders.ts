@@ -27,6 +27,15 @@ export function absolutizeMusixmatchUrl(src: string): string {
   return src;
 }
 
+export const MXM_COMMUNITY_HEADERS: Record<string, string> = {
+  Accept: 'application/json',
+  'Accept-Language': 'en-US,en;q=0.9',
+  'User-Agent': LYRICS_BROWSER_UA,
+  Referer: 'https://www.musixmatch.com/search',
+  Origin: 'https://www.musixmatch.com',
+  Cookie: 'mxm_bab=AB',
+};
+
 export function collectMusixmatchBundleUrls(html: string): string[] {
   const urls: string[] = [];
   const seen = new Set<string>();
@@ -38,6 +47,8 @@ export function collectMusixmatchBundleUrls(html: string): string[] {
     urls.push(src);
   };
   for (const m of html.matchAll(/src="([^"]+\.js[^"]*)"/g)) add(m[1]);
+  for (const m of html.matchAll(/src='([^']+\.js[^']*)'/g)) add(m[1]);
+  for (const m of html.matchAll(/href="([^"]+\.js[^"]*)"/g)) add(m[1]);
   const rank = (u: string) => {
     const name = u.toLowerCase();
     if (name.includes('pages/_app-')) return 0;
@@ -54,15 +65,18 @@ export function collectMusixmatchBundleUrls(html: string): string[] {
 }
 
 export function extractMusixmatchSecretFromJs(js: string): string | null {
-  const patterns = [/from\(\s*"([^"]+)"\s*\.split/, /from\(\s*'([^']+)'\s*\.split/];
+  const patterns = [/from\(\s*"([^"]+)"\s*\.split/g, /from\(\s*'([^']+)'\s*\.split/g];
   for (const re of patterns) {
-    const match = js.match(re);
-    if (!match?.[1]) continue;
-    try {
-      const secret = atob(match[1].split('').reverse().join(''));
-      if (secret && secret.length >= 8 && /^[\x20-\x7E]+$/.test(secret)) return secret;
-    } catch {
-      /* next pattern */
+    for (const match of js.matchAll(re)) {
+      if (!match[1] || match[1].length < 8) continue;
+      try {
+        const secret = atob(match[1].split('').reverse().join(''));
+        if (secret && secret.length >= 8 && secret.length <= 128 && /^[\x20-\x7E]+$/.test(secret)) {
+          return secret;
+        }
+      } catch {
+        /* next match */
+      }
     }
   }
   return null;

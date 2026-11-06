@@ -24,6 +24,7 @@ import { ALL_PLUGINS } from '../plugins';
 import {
   isEditablePlaylist,
   lyricsSearchTitle,
+  lyricsSearchArtist,
   moodBrowseIdFor,
   MOODS_AND_MOMENTS,
   GENRES,
@@ -92,6 +93,13 @@ describe('lyrics helpers', () => {
     expect(lyricsSearchTitle('Artist - Song (Official Video)', 'Artist')).toBe(
       'Artist - Song (Official Video)'
     );
+    localStorage.removeItem('zenith_smart_lyrics');
+  });
+
+  it('strips feat and Topic suffixes from the artist name', () => {
+    expect(lyricsSearchArtist('Daft Punk - Topic')).toBe('Daft Punk');
+    expect(lyricsSearchArtist('Daft Punk feat. Pharrell Williams')).toBe('Daft Punk');
+    expect(lyricsSearchArtist('Sanah - Topic')).toBe('Sanah');
   });
 });
 

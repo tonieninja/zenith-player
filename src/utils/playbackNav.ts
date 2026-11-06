@@ -8,24 +8,31 @@ export type PrevDecision =
   | { kind: 'goto'; index: number }
   | { kind: 'noop' };
 
-/** Previous: restart after a few seconds, else last shuffle history item, else queue-1. */
+/** Prefer the painted time for this track; the audio element can still report the old deck. */
+export function pickPrevPosition(painted: number, played?: number | null): number {
+  if (Number.isFinite(painted) && painted >= 0) return painted;
+  if (played != null && Number.isFinite(played) && played >= 0) return played;
+  return 0;
+}
+
+/** Previous: restart after a few seconds, else last history item, else queue-1. */
 export function decidePrevious(opts: {
   positionSec: number;
   queueIndex: number;
   queueLength: number;
   loopMode: LoopMode;
-  /** track ids played before the current one (most recent last); used under shuffle */
+  /** track ids played before the current one (most recent last) */
   historyIds?: string[];
   queueIds?: string[];
   shuffleOn?: boolean;
 }): PrevDecision {
   const pos = Number.isFinite(opts.positionSec) ? opts.positionSec : 0;
-  if (pos > PREV_RESTART_SECS) return { kind: 'restart' };
+  if (pos >= PREV_RESTART_SECS) return { kind: 'restart' };
 
   const len = opts.queueLength;
   if (len <= 0) return { kind: 'noop' };
 
-  if (opts.shuffleOn && opts.historyIds?.length && opts.queueIds?.length) {
+  if (opts.historyIds?.length && opts.queueIds?.length) {
     for (let h = opts.historyIds.length - 1; h >= 0; h -= 1) {
       const id = opts.historyIds[h];
       const idx = opts.queueIds.indexOf(id);

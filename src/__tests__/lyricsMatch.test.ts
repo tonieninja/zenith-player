@@ -63,6 +63,21 @@ describe('lyrics title/artist/duration matching', () => {
     ).toBe(false);
   });
 
+  it('treats Polish diacritics as the same letters when scoring', () => {
+    expect(
+      isAcceptableLyricsMatch(
+        { title: 'Wehikuł czasu', artist: 'Dżem' },
+        { title: 'Wehikul czasu', artist: 'Dzem' }
+      )
+    ).toBe(true);
+    expect(
+      scoreLyricsMatch(
+        { title: 'Wehikuł czasu', artist: 'Dżem' },
+        { title: 'Wehikul czasu', artist: 'Dzem' }
+      )
+    ).toBeGreaterThanOrEqual(15);
+  });
+
   it('rejects a Get Lucky hit whose duration is NOKIA-length', () => {
     expect(
       isAcceptableLyricsMatch(
@@ -127,6 +142,8 @@ describe('Musixmatch secret extraction and Genius 403', () => {
     const js = `const x = from("${payload}".split("").reverse().join(""));`;
     expect(extractMusixmatchSecretFromJs(js)).toBe(secret);
     expect(extractMusixmatchSecretFromJs('no secret here')).toBeNull();
+    const bufferJs = `u=i.Buffer.from("${payload}".split("").reverse().join(""),"base64").toString()`;
+    expect(extractMusixmatchSecretFromJs(bufferJs)).toBe(secret);
   });
 
   it('explains Genius 403 and a missing Musixmatch signature in both languages', () => {

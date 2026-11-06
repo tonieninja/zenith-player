@@ -14,6 +14,7 @@ import {
   GENIUS_BROWSER_HEADERS,
   geniusHttpError,
   LYRICS_BROWSER_UA,
+  MXM_COMMUNITY_HEADERS,
   MXM_SECRET_MISSING,
 } from '../utils/lyricsProviders';
 
@@ -1885,6 +1886,55 @@ function parseLrc(text: string): LyricsLine[] {
   return normalizeSynced(lines);
 }
 
+function parseRichsync(text: string): LyricsLine[] {
+  try {
+    const data = JSON.parse(text);
+    if (!Array.isArray(data)) return [];
+    const lines: LyricsLine[] = [];
+    for (const row of data) {
+      const time = Number(row?.ts ?? row?.time?.total ?? row?.time);
+      let lyricText = '';
+      if (Array.isArray(row?.l)) {
+        lyricText = row.l.map((w: { c?: string; text?: string }) => String(w?.c ?? w?.text ?? '')).join('');
+      } else {
+        lyricText = String(row?.x ?? row?.text ?? '');
+      }
+      lyricText = lyricText.replace(/\s+/g, ' ').trim();
+      if (Number.isFinite(time) && lyricText) lines.push({ time, text: lyricText });
+    }
+    return normalizeSynced(lines);
+  } catch {
+    return [];
+  }
+}
+
+function parseMxmSubtitles(text: string): LyricsLine[] {
+  try {
+    const data = JSON.parse(text);
+    if (!Array.isArray(data)) return [];
+    const lines: LyricsLine[] = [];
+    for (const row of data) {
+      const time = Number(row?.time?.total ?? row?.ts ?? row?.time);
+      const lyricText = String(row?.text ?? row?.x ?? '').replace(/\s+/g, ' ').trim();
+      if (Number.isFinite(time) && lyricText) lines.push({ time, text: lyricText });
+    }
+    return normalizeSynced(lines);
+  } catch {
+    return [];
+  }
+}
+
+function parseMusixmatchSynced(body: string): LyricsLine[] {
+  const trimmed = body.trim();
+  if (trimmed.startsWith('[') && trimmed.includes('{')) {
+    const rich = parseRichsync(trimmed);
+    if (rich.length) return rich;
+    const mxm = parseMxmSubtitles(trimmed);
+    if (mxm.length) return mxm;
+  }
+  return parseLrc(body);
+}
+
 function parseVtt(text: string): LyricsLine[] {
   const lines: LyricsLine[] = [];
   const blocks = text.replace(/\r/g, '').split(/\n\n+/);
@@ -2120,7 +2170,8 @@ async function getLyricsOvh(track: Track): Promise<LyricsResult | null> {
 // musixmatch community api (that strvm musicxmatch thing)
 // dziala jak chce, jak nie to lrclib, nie pytać
 const MXM_WS_BASE = 'https://www.musixmatch.com/ws/1.1/';
-const MXM_APP_ID = 'community-app-v1.0';
+const MXM_APP_ID = 'mxm-com-v1.0';
+const MXM_FALSE_POSITIVE_TRACK_ID = 115264642;
 const MXM_SECRET_TTL = 6 * 60 * 60 * 1000;
 let mxmSecretCache: { secret: string; ts: number } | null = null;
 
@@ -2131,15 +2182,16 @@ async function fetchMusixmatchSecret(): Promise<string> {
   let bundleUrls: string[] = [];
   const pageRes = await fetch('https://www.musixmatch.com/search', {
     method: 'GET',
-    headers: { 'User-Agent': LYRICS_BROWSER_UA, Cookie: 'mxm_bab=AB' },
+    headers: MXM_COMMUNITY_HEADERS,
   });
   if (pageRes.ok) {
     bundleUrls = collectMusixmatchBundleUrls(await pageRes.text());
   }
 
   let lastErr: Error | null = null;
-  const candidates = bundleUrls.slice(0, 10);
-  const batchSize = 3;
+  // the signing secret lives in a hashed chunk now, not pages/_app, so search more of them
+  const candidates = bundleUrls.slice(0, 30);
+  const batchSize = 6;
   for (let i = 0; i < candidates.length; i += batchSize) {
     const batch = candidates.slice(i, i + batchSize);
     const results = await Promise.all(
@@ -2169,7 +2221,7 @@ async function fetchMusixmatchSecret(): Promise<string> {
 async function signMusixmatchUrl(url: string): Promise<string> {
   const secret = await fetchMusixmatchSecret();
   const now = new Date();
-  const dateStr = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
+  const dateStr = `${now.getUTCFullYear()}${String(now.getUTCMonth() + 1).padStart(2, '0')}${String(now.getUTCDate()).padStart(2, '0')}`;
   const enc = new TextEncoder();
   const key = await crypto.subtle.importKey(
     'raw',
@@ -2190,7 +2242,7 @@ async function musixmatchRequest(endpoint: string): Promise<any> {
   const signed = await signMusixmatchUrl(url);
   const res = await fetch(signed, {
     method: 'GET',
-    headers: { 'User-Agent': LYRICS_BROWSER_UA, Accept: 'application/json', Cookie: 'mxm_bab=AB' },
+    headers: MXM_COMMUNITY_HEADERS,
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const json = JSON.parse(await res.text());
@@ -2202,29 +2254,30 @@ async function musixmatchRequest(endpoint: string): Promise<any> {
   return json;
 }
 
-async function getMusixmatchLyricsSigned(track: Track): Promise<LyricsResult> {
-  const title = lyricsSearchTitle(track.title, track.artist);
-  const artist = lyricsSearchArtist(track.artist);
-  const q = encodeURIComponent(`${title} ${artist}`);
-  const searchJson = await musixmatchRequest(
-    `track.search?app_id=${MXM_APP_ID}&format=json&q=${q}&f_has_lyrics=true&page_size=10&page=1`
-  );
-  const list = searchJson?.message?.body?.track_list || [];
-  if (!list.length) throw new Error('No matching track in the Musixmatch catalog');
+
+function catalogDuration(trackLike: { track_length?: number } | null | undefined): number | undefined {
+  const candDuration = Number(trackLike?.track_length);
+  return Number.isFinite(candDuration) && candDuration > 0 ? candDuration : undefined;
+}
+
+function pickMusixmatchCatalogTrack(
+  list: any[],
+  title: string,
+  artist: string,
+  duration?: number
+): { track: any; score: number } | null {
   let best: any = null;
   let bestScore = -1;
   for (const item of list) {
-    const cand = item?.track;
-    if (!cand) continue;
-    const candDuration = Number(cand.track_length);
-    const durationSec =
-      Number.isFinite(candDuration) && candDuration > 0 ? candDuration : undefined;
+    const cand = item?.track ?? item;
+    if (!cand || cand.track_id === MXM_FALSE_POSITIVE_TRACK_ID) continue;
+    const durationSec = catalogDuration(cand);
     const score = scoreMatch(
       title,
       artist,
       cand.track_name || '',
       cand.artist_name || '',
-      queryDuration(track),
+      duration,
       durationSec
     );
     if (score > bestScore) {
@@ -2240,13 +2293,60 @@ async function getMusixmatchLyricsSigned(track: Track): Promise<LyricsResult> {
       best.track_name || '',
       best.artist_name || '',
       bestScore,
-      queryDuration(track),
-      Number.isFinite(Number(best.track_length)) && Number(best.track_length) > 0
-        ? Number(best.track_length)
-        : undefined
+      duration,
+      catalogDuration(best)
     )
   ) {
-    throw new Error('No matching track in the Musixmatch catalog');
+    return null;
+  }
+  return { track: best, score: bestScore };
+}
+
+async function searchMusixmatchCatalog(title: string, artist: string): Promise<any[]> {
+  const qTrack = encodeURIComponent(title);
+  const qArtist = encodeURIComponent(artist);
+  const q = encodeURIComponent(`${title} ${artist}`);
+  const endpoints = [
+    `track.search?app_id=${MXM_APP_ID}&format=json&q_track=${qTrack}&q_artist=${qArtist}&f_has_lyrics=true&page_size=10&page=1`,
+    `track.search?app_id=${MXM_APP_ID}&format=json&q=${q}&f_has_lyrics=true&page_size=10&page=1`,
+  ];
+  let list: any[] = [];
+  let lastError: Error | null = null;
+  for (const endpoint of endpoints) {
+    try {
+      const searchJson = await musixmatchRequest(endpoint);
+      list = searchJson?.message?.body?.track_list || [];
+      if (list.length) return list;
+    } catch (e) {
+      lastError = e instanceof Error ? e : new Error(String(e));
+    }
+  }
+  if (lastError && !list.length) throw lastError;
+  return list;
+}
+
+async function lyricsFromMusixmatchCatalog(
+  best: any,
+  bestScore: number
+): Promise<LyricsResult> {
+  if (best.has_richsync && (best.track_id || best.commontrack_id)) {
+    try {
+      const idParam = best.track_id
+        ? `track_id=${best.track_id}`
+        : `commontrack_id=${best.commontrack_id}`;
+      const rsJson = await musixmatchRequest(
+        `track.richsync.get?app_id=${MXM_APP_ID}&format=json&${idParam}`
+      );
+      const body = rsJson?.message?.body?.richsync?.richsync_body;
+      if (body) {
+        const synced = parseMusixmatchSynced(String(body));
+        if (synced.length > 0) {
+          return { provider: 'Musixmatch', text: null, synced, matchScore: bestScore };
+        }
+      }
+    } catch {
+      // synced lyrics are often locked; plain text below still works
+    }
   }
 
   if (best.has_subtitles && best.commontrack_id) {
@@ -2256,7 +2356,7 @@ async function getMusixmatchLyricsSigned(track: Track): Promise<LyricsResult> {
       );
       const body = subJson?.message?.body?.subtitle?.subtitle_body;
       if (body) {
-        const synced = parseLrc(String(body));
+        const synced = parseMusixmatchSynced(String(body));
         if (synced.length > 0) {
           return { provider: 'Musixmatch', text: null, synced, matchScore: bestScore };
         }
@@ -2276,12 +2376,21 @@ async function getMusixmatchLyricsSigned(track: Track): Promise<LyricsResult> {
   );
 }
 
+async function getMusixmatchLyricsSigned(track: Track): Promise<LyricsResult> {
+  const title = lyricsSearchTitle(track.title, track.artist);
+  const artist = lyricsSearchArtist(track.artist);
+  const list = await searchMusixmatchCatalog(title, artist);
+  if (!list.length) throw new Error('No matching track in the Musixmatch catalog');
+  const picked = pickMusixmatchCatalogTrack(list, title, artist, queryDuration(track));
+  if (!picked) throw new Error('No matching track in the Musixmatch catalog');
+  return lyricsFromMusixmatchCatalog(picked.track, picked.score);
+}
+
 // musixmatch desktop, token refresh the pear-desktop way
 const MXM_DESKTOP_BASE = 'https://apic-desktop.musixmatch.com/ws/1.1/';
 const MXM_DESKTOP_APP_ID = 'web-desktop-app-v1.0';
 const MXM_TOKEN_KEY = 'zenith_mxm_usertoken';
 const MXM_TOKEN_TTL_MS = 6 * 60 * 60 * 1000;
-const MXM_FALSE_POSITIVE_TRACK_ID = 115264642;
 
 let mxmCookie = 'x-mxm-user-id=';
 let mxmToken: string | null = null;
@@ -2322,7 +2431,12 @@ async function mxmEnsureToken(force = false): Promise<string> {
     if (mxmToken) return mxmToken;
     try {
       const stored = JSON.parse(localStorage.getItem(MXM_TOKEN_KEY) || 'null');
-      if (stored?.token && stored.expires > Date.now()) {
+      if (
+        stored?.token &&
+        stored.expires > Date.now() &&
+        !String(stored.token).includes('UpgradeOnly') &&
+        !/^0+$/.test(String(stored.token))
+      ) {
         mxmToken = String(stored.token);
         return stored.token as string;
       }
@@ -2332,14 +2446,17 @@ async function mxmEnsureToken(force = false): Promise<string> {
   if (!mxmTokenInflight) {
     mxmTokenInflight = (async () => {
       try {
-        const params = new URLSearchParams({ app_id: MXM_DESKTOP_APP_ID });
+        const params = new URLSearchParams({
+          app_id: MXM_DESKTOP_APP_ID,
+          t: Math.random().toString(36).slice(2, 10),
+        });
         const res = await mxmDesktopFetch(`${MXM_DESKTOP_BASE}token.get?${params}`);
         if (!res.ok) throw new Error(`token.get HTTP ${res.status}`);
         const json = JSON.parse(await res.text());
         const token = json?.message?.body?.user_token;
-        if (!token || String(token).includes('UpgradeOnly')) {
+        if (!token || String(token).includes('UpgradeOnly') || /^0+$/.test(String(token))) {
           const hint = json?.message?.header?.hint;
-          throw new Error(`token.get failed${hint ? ` (${hint})` : ''}`);
+          throw new Error(`token.get failed${hint ? ` (${hint})` : ' (restricted token)'}`);
         }
         mxmToken = String(token);
         try {
@@ -2386,12 +2503,116 @@ async function mxmDesktopQuery(
   return json.message;
 }
 
+function lyricsFromDesktopMacro(
+  macro: any,
+  title: string,
+  artist: string,
+  duration?: number
+): LyricsResult | Error | null {
+  const trackInfo = macro['matcher.track.get']?.message?.body?.track;
+  const lyrics = macro['track.lyrics.get']?.message?.body?.lyrics?.lyrics_body;
+  const subtitle = macro['track.subtitles.get']?.message?.body?.subtitle_list?.[0]?.subtitle;
+  const richsync = macro['track.richsync.get']?.message?.body?.richsync?.richsync_body;
+
+  if (!trackInfo || trackInfo.track_id === MXM_FALSE_POSITIVE_TRACK_ID) return null;
+  const candTitle = String(trackInfo.track_name || '');
+  const candArtist = String(trackInfo.artist_name || '');
+  const durationSec = catalogDuration(trackInfo);
+  const score = scoreMatch(title, artist, candTitle, candArtist, duration, durationSec);
+  if (!acceptMatch(title, artist, candTitle, candArtist, score, duration, durationSec)) {
+    return new Error(`Musixmatch matched "${trackInfo.track_name}" which is the wrong song`);
+  }
+
+  if (richsync) {
+    const synced = parseMusixmatchSynced(String(richsync));
+    if (synced.length > 0) {
+      return { provider: 'Musixmatch', text: null, synced, matchScore: score };
+    }
+  }
+  if (subtitle?.subtitle_body) {
+    const synced = parseMusixmatchSynced(String(subtitle.subtitle_body));
+    if (synced.length > 0) {
+      return { provider: 'Musixmatch', text: null, synced, matchScore: score };
+    }
+  }
+  if (lyrics) return { provider: 'Musixmatch', text: String(lyrics), matchScore: score };
+  return new Error(`Matched "${trackInfo.track_name}" but no lyrics returned (restricted?)`);
+}
+
+async function lyricsFromDesktopTrack(best: any, score: number): Promise<LyricsResult> {
+  if (best.has_richsync && best.track_id) {
+    try {
+      const rs = await mxmDesktopQuery('track.richsync.get', { track_id: String(best.track_id) });
+      const body = rs?.body?.richsync?.richsync_body;
+      if (body) {
+        const synced = parseMusixmatchSynced(String(body));
+        if (synced.length > 0) {
+          return { provider: 'Musixmatch', text: null, synced, matchScore: score };
+        }
+      }
+    } catch {
+      /* try subtitles next */
+    }
+  }
+  if (best.has_subtitles && best.commontrack_id) {
+    try {
+      const sub = await mxmDesktopQuery('track.subtitle.get', {
+        commontrack_id: String(best.commontrack_id),
+        subtitle_format: 'lrc',
+      });
+      const body = sub?.body?.subtitle?.subtitle_body;
+      if (body) {
+        const synced = parseMusixmatchSynced(String(body));
+        if (synced.length > 0) {
+          return { provider: 'Musixmatch', text: null, synced, matchScore: score };
+        }
+      }
+    } catch {
+      /* try plain text next */
+    }
+  }
+  const lyr = await mxmDesktopQuery('track.lyrics.get', { track_id: String(best.track_id) });
+  const body = lyr?.body?.lyrics?.lyrics_body;
+  if (body) return { provider: 'Musixmatch', text: String(body), matchScore: score };
+  throw new Error(`Matched "${best.track_name}" but no lyrics returned (restricted?)`);
+}
+
+async function searchMusixmatchDesktopCatalog(
+  title: string,
+  artist: string,
+  duration?: number
+): Promise<{ track: any; score: number } | null> {
+  const attempts: Record<string, string>[] = [
+    { q_track: title, q_artist: artist, f_has_lyrics: '1', page_size: '10', page: '1' },
+    { q: `${title} ${artist}`, f_has_lyrics: '1', page_size: '10', page: '1' },
+  ];
+  for (const params of attempts) {
+    try {
+      const msg = await mxmDesktopQuery('track.search', params);
+      const list = msg?.body?.track_list || [];
+      const picked = pickMusixmatchCatalogTrack(list, title, artist, duration);
+      if (picked) return picked;
+    } catch {
+      /* try the next query shape */
+    }
+  }
+  return null;
+}
+
 async function getMusixmatchLyricsDesktop(track: Track): Promise<LyricsResult> {
   const title = lyricsSearchTitle(track.title, track.artist);
   const artist = lyricsSearchArtist(track.artist);
+  const duration = queryDuration(track);
+  const durationParams: Record<string, string> = {};
+  if (duration) {
+    const rounded = String(Math.round(duration));
+    durationParams.q_duration = rounded;
+    durationParams.f_subtitle_length = rounded;
+    durationParams.f_subtitle_length_max_deviation = '5';
+  }
   const queries: Record<string, string>[] = [
-    { q_track: title, q_artist: artist },
-    { q_track: title, q_artist: artist.split(/[,&]/)[0]?.trim() || artist },
+    { q_track: title, q_artist: artist, ...durationParams },
+    { q_track: title, q_artist: artist.split(/[,&]/)[0]?.trim() || artist, ...durationParams },
   ];
 
   let lastError: Error | null = null;
@@ -2401,51 +2622,21 @@ async function getMusixmatchLyricsDesktop(track: Track): Promise<LyricsResult> {
         ...q,
         namespace: 'lyrics_richsynched',
         subtitle_format: 'lrc',
+        optional_calls: 'track.richsync',
       });
       const macro = msg?.body?.macro_calls;
       if (!macro) continue;
-
-      const trackInfo = macro['matcher.track.get']?.message?.body?.track;
-      const lyrics = macro['track.lyrics.get']?.message?.body?.lyrics?.lyrics_body;
-      const subtitle = macro['track.subtitles.get']?.message?.body?.subtitle_list?.[0]?.subtitle;
-
-      if (!trackInfo || trackInfo.track_id === MXM_FALSE_POSITIVE_TRACK_ID) continue;
-      const candTitle = String(trackInfo.track_name || '');
-      const candArtist = String(trackInfo.artist_name || '');
-      const candDuration = Number(trackInfo.track_length);
-      const durationSec =
-        Number.isFinite(candDuration) && candDuration > 0 ? candDuration : undefined;
-      const score = scoreMatch(
-        title,
-        artist,
-        candTitle,
-        candArtist,
-        queryDuration(track),
-        durationSec
-      );
-      if (
-        !acceptMatch(title, artist, candTitle, candArtist, score, queryDuration(track), durationSec)
-      ) {
-        lastError = new Error(
-          `Musixmatch matched "${trackInfo.track_name}" which is the wrong song`
-        );
-        continue;
-      }
-
-      if (subtitle?.subtitle_body) {
-        const synced = parseLrc(String(subtitle.subtitle_body));
-        if (synced.length > 0) {
-          return { provider: 'Musixmatch', text: null, synced, matchScore: score };
-        }
-      }
-      if (lyrics) return { provider: 'Musixmatch', text: String(lyrics), matchScore: score };
-      lastError = new Error(
-        `Matched "${trackInfo.track_name}" but no lyrics returned (restricted?)`
-      );
+      const result = lyricsFromDesktopMacro(macro, title, artist, duration);
+      if (result && !(result instanceof Error)) return result;
+      if (result instanceof Error) lastError = result;
     } catch (e) {
       lastError = e instanceof Error ? e : new Error(String(e));
     }
   }
+
+  const searched = await searchMusixmatchDesktopCatalog(title, artist, duration);
+  if (searched) return lyricsFromDesktopTrack(searched.track, searched.score);
+
   throw lastError || new Error('No matching track in the Musixmatch catalog');
 }
 
@@ -2698,6 +2889,9 @@ export function lyricsSearchArtist(artist: string): string {
   } catch {}
   return firstArtist(artist)
     .replace(/\s*[(\[]\s*(feat\.?|ft\.?|featuring|with)\s+[^)\]]+[)\]]/gi, '')
+    .replace(/\s+(feat\.?|ft\.?|featuring)\s+.+$/gi, '')
+    .replace(/\s+-\s+topic$/i, '')
+    .replace(/\s+-\s+vevo$/i, '')
     .trim();
 }
 

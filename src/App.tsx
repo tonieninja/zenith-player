@@ -201,7 +201,7 @@ const PluginsPanel = lazy(() =>
   import('./components/PluginsPanel').then((m) => ({ default: m.PluginsPanel }))
 );
 import { smartShuffle } from './utils/smartShuffle';
-import { decidePrevious, popPlayHistory, pushPlayHistory } from './utils/playbackNav';
+import { decidePrevious, pickPrevPosition, popPlayHistory, pushPlayHistory } from './utils/playbackNav';
 import { stableOrderSections } from './utils/sections';
 import { streamCacheSet } from './utils/streamCache';
 import {
@@ -1848,7 +1848,7 @@ export default function App() {
   );
 
   const playByIndex = useCallback(
-    async (index: number, fadeSeconds?: number) => {
+    async (index: number, fadeSeconds?: number, recordHistory = true) => {
       const q = queueRef.current;
       if (index < 0 || index >= q.length) return;
       const nextTrack = q[index];
@@ -1862,8 +1862,10 @@ export default function App() {
         autoFadeTrackRef.current = currentTrackIdRef.current;
         forceBlendRef.current = false;
       }
-      // remember where we came from so Previous under shuffle is not random
-      playHistoryRef.current = pushPlayHistory(playHistoryRef.current, currentTrackIdRef.current);
+      // previous already popped the stack, so don't push the track we are leaving back onto it
+      if (recordHistory) {
+        playHistoryRef.current = pushPlayHistory(playHistoryRef.current, currentTrackIdRef.current);
+      }
       queueIndexRef.current = index;
       setQueueIndex(index);
       await loadTrack(nextTrack, true, manualFade);
@@ -2024,7 +2026,7 @@ export default function App() {
 
   const playPrev = useCallback(() => {
     if (!currentTrack) return;
-    const positionSec = audioRef.current?.currentTime ?? progressRef.current;
+    const positionSec = pickPrevPosition(progressRef.current, audioRef.current?.currentTime);
     const q = queueRef.current;
     const decision = decidePrevious({
       positionSec,
@@ -2042,11 +2044,9 @@ export default function App() {
       return;
     }
     if (decision.kind === 'goto') {
-      if (shuffleOn) {
-        const popped = popPlayHistory(playHistoryRef.current, currentTrack.id);
-        playHistoryRef.current = popped.history;
-      }
-      playByIndex(decision.index);
+      const popped = popPlayHistory(playHistoryRef.current, currentTrack.id);
+      playHistoryRef.current = popped.history;
+      playByIndex(decision.index, undefined, false);
     }
   }, [audio, currentTrack, playByIndex, loopMode, shuffleOn]);
 
