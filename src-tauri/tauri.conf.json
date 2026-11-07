@@ -84,7 +84,7 @@
         "startMenuFolder": "Zenith",
         "headerImage": "nsis/header.bmp",
         "sidebarImage": "nsis/sidebar.bmp",
-        "installerHooks": "nsis/hooks.nsh",
+        "template": "nsis/installer.nsi",
         "customLanguageFiles": {
           "English": "nsis/English.nsh",
           "Polish": "nsis/Polish.nsh"

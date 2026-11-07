@@ -23,6 +23,7 @@ src-tauri/WixTools/
 src-tauri/nsis/*
 !src-tauri/nsis/*.nsh
 !src-tauri/nsis/*.bmp
+!src-tauri/nsis/installer.nsi
 
 # Debug API dumps (local only)
 scripts/*.json
