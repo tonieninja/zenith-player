@@ -3,11 +3,19 @@ on:
   push:
     branches: [main]
     tags: ['v*']
+    paths-ignore: ['**.md', 'docs/**', 'assets/**', 'LICENSE']
   pull_request:
+    paths-ignore: ['**.md', 'docs/**', 'assets/**', 'LICENSE']
   workflow_dispatch:
+# nowy push na main przerywa poprzedni przebieg, tagów nie ruszamy
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
 permissions:
   contents: write
 env:
+  # paczki budujemy tylko dla tagów i na żądanie, zwykły push na main to same testy
+  BUNDLE: ${{ startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch' }}
   TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
   TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 jobs:
@@ -45,6 +53,7 @@ jobs:
           pnpm exec playwright install --with-deps chromium
           pnpm e2e
       - name: build
+        if: env.BUNDLE == 'true'
         shell: bash
         run: |
           if [ -z "$TAURI_SIGNING_PRIVATE_KEY" ]; then
@@ -53,6 +62,7 @@ jobs:
             pnpm tauri build --bundles deb,appimage,rpm
           fi
       - uses: actions/upload-artifact@v4
+        if: env.BUNDLE == 'true'
         with:
           name: bundle-linux
           path: |
@@ -64,6 +74,7 @@ jobs:
             src-tauri/target/release/bundle/rpm/*.sig
 
   macos:
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -75,8 +86,6 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with: { workspaces: src-tauri }
       - run: pnpm install --frozen-lockfile
-      - run: pnpm test
-      - run: cargo test --manifest-path src-tauri/Cargo.toml
       - name: build
         shell: bash
         run: |
@@ -94,6 +103,7 @@ jobs:
             src-tauri/target/universal-apple-darwin/release/bundle/macos/*.sig
 
   windows:
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
     strategy:
       fail-fast: false
       matrix:
@@ -111,11 +121,9 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with: { workspaces: src-tauri, key: '${{ matrix.target }}' }
       - run: pnpm install --frozen-lockfile
-      - name: unit tests (x64)
+      - name: rust tests (x64, kod tylko dla Windows)
         if: matrix.arch == 'x64'
-        run: |
-          pnpm test
-          cargo test --manifest-path src-tauri/Cargo.toml
+        run: cargo test --manifest-path src-tauri/Cargo.toml
       - name: build installer
         shell: bash
         env:
@@ -141,6 +149,7 @@ jobs:
             portable/*.exe
 
   release:
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
     needs: [linux, macos, windows]
     runs-on: ubuntu-22.04
     steps:
