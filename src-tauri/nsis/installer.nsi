@@ -84,6 +84,7 @@ Var OldMainBinaryName
 
 Var ZenithFwMissing
 Var ZenithFwCheckbox
+Var ZenithLastLabel
 
 Name "${PRODUCTNAME}"
 BrandingText "${PRODUCTNAME} ${VERSION}"
@@ -396,6 +397,12 @@ Function PageLeaveReinstall
       MessageBox MB_ICONEXCLAMATION "$(unableToUninstall)"
       Abort
     ${EndIf}
+
+    ; Przy tej samej wersji „Odinstaluj” oznacza koniec, a nie instalację od nowa
+    ${If} $R0 = 0
+    ${AndIf} $WixMode <> 1
+      Quit
+    ${EndIf}
   reinst_done:
 FunctionEnd
 
@@ -444,6 +451,29 @@ Function ZenithFinishShow
     SetCtlColors $ZenithFwCheckbox "${Z_TEXT}" "${Z_BG}"
     Push $ZenithFwCheckbox
     Call ZenithLabel
+    ; Tarcza UAC tuż za napisem, bo dodanie reguły zapory poprosi o uprawnienia administratora
+    System::Call '*(i, i, i, i) p .r1'
+    System::Call 'user32::GetWindowRect(p $ZenithLastLabel, p r1)'
+    System::Call 'user32::MapWindowPoints(p 0, p $mui.FinishPage, p r1, i 2)'
+    System::Call '*$1(i .r2, i .r3, i .r4, i .r5)'
+    System::Free $1
+    System::Call 'user32::GetDpiForWindow(p $mui.FinishPage) i .r6'
+    ${IfThen} $6 = 0 ${|} StrCpy $6 96 ${|}
+    IntOp $7 $6 * 16
+    IntOp $7 $7 / 96
+    IntOp $8 $6 * 4
+    IntOp $8 $8 / 96
+    IntOp $2 $4 + $8
+    IntOp $5 $5 - $3
+    IntOp $5 $5 - $7
+    IntOp $5 $5 / 2
+    IntOp $3 $3 + $5
+    ${NSD_CreateIcon} $2 $3 $7 $7 ""
+    Pop $1
+    SetCtlColors $1 "" "${Z_BG}"
+    ; 32518 to IDI_SHIELD
+    System::Call 'comctl32::LoadIconWithScaleDown(p 0, p 32518, i r7, i r7, *p .r8) i .r9'
+    ${IfThen} $9 = 0 ${|} SendMessage $1 ${STM_SETICON} $8 0 ${|}
   ${EndIf}
 FunctionEnd
 
@@ -577,13 +607,31 @@ FunctionEnd
     IntOp $3 $3 + $2
     IntOp $5 $5 - $3
     ${NSD_GetText} $0 $1
-    ${NSD_CreateLabel} $3 $4 $5 $6 $1
-    Pop $1
-    SetCtlColors $1 "${Z_TEXT}" "${Z_BG}"
-    ${NSD_AddStyle} $1 ${SS_CENTERIMAGE}
-    nsDialogs::SetUserData $1 $0
-    ${NSD_OnClick} $1 ${UN}ZenithLabelClick
+    ; Przycięty własny napis zostawiał kreskę przy kwadraciku, więc kontrolka zostaje bez tekstu
+    SendMessage $0 ${WM_SETTEXT} 0 "STR:"
+    ; Bez własnego tła kontrolka rysowała biały kwadrat pod kropką
+    SetCtlColors $0 "${Z_TEXT}" "${Z_BG}"
     System::Call 'uxtheme::SetWindowTheme(p r0, w "DarkMode_Explorer", p 0)'
+    ${NSD_CreateLabel} $3 $4 $5 $6 $1
+    Pop $5
+    SetCtlColors $5 "${Z_TEXT}" "${Z_BG}"
+    ${NSD_AddStyle} $5 ${SS_CENTERIMAGE}
+    nsDialogs::SetUserData $5 $0
+    ${NSD_OnClick} $5 ${UN}ZenithLabelClick
+    StrCpy $ZenithLastLabel $5
+    ; Etykieta tylko na szerokość napisu, żeby klik obok nie przełączał opcji i było miejsce na tarczę UAC
+    System::Call 'user32::GetDC(p r5) p .r2'
+    SendMessage $5 ${WM_GETFONT} 0 0 $3
+    System::Call 'gdi32::SelectObject(p r2, p r3) p .r3'
+    StrLen $4 $1
+    System::Call '*(i, i) p .r0'
+    System::Call 'gdi32::GetTextExtentPoint32W(p r2, w r1, i r4, p r0)'
+    System::Call '*$0(i .r4, i)'
+    System::Free $0
+    System::Call 'gdi32::SelectObject(p r2, p r3)'
+    System::Call 'user32::ReleaseDC(p r5, p r2)'
+    IntOp $4 $4 + 4
+    System::Call 'user32::SetWindowPos(p r5, p 0, i 0, i 0, i r4, i r6, i 0x16)'
     Pop $6
     Pop $5
     Pop $4
