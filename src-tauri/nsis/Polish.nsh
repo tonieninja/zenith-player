@@ -33,6 +33,7 @@ LangString zenithDirText ${LANG_POLISH} "Zenith instaluje się tylko dla twojego
 LangString zenithFinishTitle ${LANG_POLISH} "Zenith jest gotowy"
 LangString zenithFinishText ${LANG_POLISH} "Zenith ${VERSION} jest zainstalowany. Kolejne aktualizacje przyjdą już w aplikacji."
 LangString zenithRun ${LANG_POLISH} "Otwórz Zenith"
+LangString zenithClosingApp ${LANG_POLISH} "Zamykam Zenith..."
 LangString zenithFirewall ${LANG_POLISH} "Wpuść „Sterowanie przez sieć” przez zaporę"
 LangString zenithUnTitle ${LANG_POLISH} "Odinstaluj Zenith"
 LangString zenithUnSubtitle ${LANG_POLISH} "Usuń Zenith z tego komputera."

@@ -33,6 +33,7 @@ LangString zenithDirText ${LANG_ENGLISH} "Zenith installs just for your Windows 
 LangString zenithFinishTitle ${LANG_ENGLISH} "Zenith is ready"
 LangString zenithFinishText ${LANG_ENGLISH} "Zenith ${VERSION} is installed. From now on updates arrive inside the app."
 LangString zenithRun ${LANG_ENGLISH} "Open Zenith"
+LangString zenithClosingApp ${LANG_ENGLISH} "Closing Zenith..."
 LangString zenithFirewall ${LANG_ENGLISH} "Allow the Phone remote through the firewall"
 LangString zenithUnTitle ${LANG_ENGLISH} "Uninstall Zenith"
 LangString zenithUnSubtitle ${LANG_ENGLISH} "Remove Zenith from this computer."

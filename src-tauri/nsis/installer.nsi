@@ -535,6 +535,8 @@ FunctionEnd
     System::Call 'dwmapi::DwmSetWindowAttribute(p $HWNDPARENT, i 35, *i ${Z_BG_REF}, i 4)'
     System::Call 'dwmapi::DwmSetWindowAttribute(p $HWNDPARENT, i 34, *i ${Z_LINE_REF}, i 4)'
     SetCtlColors $HWNDPARENT "${Z_TEXT}" "${Z_BG}"
+    ; UIS_SET z UISF_HIDEFOCUS|UISF_HIDEACCEL: kropkowany fokus pojawia się dopiero po Tab lub Alt
+    SendMessage $HWNDPARENT ${WM_CHANGEUISTATE} 0x30001 0
     GetDlgItem $0 $HWNDPARENT 1
     System::Call 'uxtheme::SetWindowTheme(p r0, w "DarkMode_Explorer", p 0)'
     GetDlgItem $0 $HWNDPARENT 2
@@ -599,8 +601,8 @@ FunctionEnd
     System::Free $2
     System::Call 'user32::GetDpiForWindow(p r0) i .r2'
     ${IfThen} $2 = 0 ${|} StrCpy $2 96 ${|}
-    ; 18 px przy 96 DPI mieści sam kwadracik z marginesem
-    IntOp $2 $2 * 18
+    ; 15 px przy 96 DPI to sam kwadracik, więc prostokąt fokusu za nim wypada poza kontrolkę
+    IntOp $2 $2 * 15
     IntOp $2 $2 / 96
     IntOp $6 $6 - $4
     System::Call 'user32::SetWindowPos(p r0, p 0, i 0, i 0, i r2, i r6, i 0x16)'
@@ -858,6 +860,30 @@ Section WebView2
   ${EndIf}
 SectionEnd
 
+; Zamyka Zenitha bez pytania: systemowy MessageBox był białą wyspą w ciemnym instalatorze, a OK i tak zamykało
+!macro ZenithCloseApp
+  !if "${INSTALLMODE}" == "currentUser"
+    nsis_tauri_utils::FindProcessCurrentUser "${MAINBINARYNAME}.exe"
+  !else
+    nsis_tauri_utils::FindProcess "${MAINBINARYNAME}.exe"
+  !endif
+  Pop $R0
+  ${If} $R0 = 0
+    DetailPrint "$(zenithClosingApp)"
+    !if "${INSTALLMODE}" == "currentUser"
+      nsis_tauri_utils::KillProcessCurrentUser "${MAINBINARYNAME}.exe"
+    !else
+      nsis_tauri_utils::KillProcess "${MAINBINARYNAME}.exe"
+    !endif
+    Pop $R0
+    Sleep 500
+    ${If} $R0 <> 0
+    ${AndIf} $R0 <> 2
+      Abort "$(failedToKillApp)"
+    ${EndIf}
+  ${EndIf}
+!macroend
+
 Section Install
   SetOutPath $INSTDIR
 
@@ -865,7 +891,7 @@ Section Install
     !insertmacro NSIS_HOOK_PREINSTALL
   !endif
 
-  !insertmacro CheckIfAppIsRunning "${MAINBINARYNAME}.exe" "${PRODUCTNAME}"
+  !insertmacro ZenithCloseApp
 
   ; Copy main executable
   File "${MAINBINARYSRCPATH}"
@@ -1010,7 +1036,7 @@ Section Uninstall
     !insertmacro NSIS_HOOK_PREUNINSTALL
   !endif
 
-  !insertmacro CheckIfAppIsRunning "${MAINBINARYNAME}.exe" "${PRODUCTNAME}"
+  !insertmacro ZenithCloseApp
 
   ; Delete the app directory and its content from disk
   ; Copy main executable
