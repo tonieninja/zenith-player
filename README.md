@@ -143,5 +143,5 @@ your session stay on your computer.
 
 ## License
 
-MIT, see [LICENSE](LICENSE). YouTube and Google names and logos belong to Google, the music and
+MIT, see [LICENSE](LICENSE). Bundled third-party code is listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). YouTube and Google names and logos belong to Google, the music and
 lyrics belong to whoever owns them.
