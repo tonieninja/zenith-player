@@ -1,6 +1,6 @@
 # Plugins
 
-Zenith ships 35 plugins. Toggle them in the Plugins panel, the enabled set is stored in
+Zenith ships 36 plugins. Toggle them in the Plugins panel, the enabled set is stored in
 `localStorage` key `zenith_plugins_enabled`.
 
 A fresh install turns on the ones marked below (preload, queue and volume memory, smart lyrics
@@ -52,14 +52,15 @@ whatever you had.
 
 ### Sharing and services
 
-| Name                  | Id                 | On by default | What it does                                                                                              |
-| --------------------- | ------------------ | ------------- | --------------------------------------------------------------------------------------------------------- |
-| Last.fm scrobbler     | `lastfm-scrobbler` | no            | Scrobbles what you listen to to your Last.fm profile and shows "now playing" there.                       |
-| Discord Rich Presence | `discord-rpc`      | no            | Shows the currently playing track, artist, cover art and a live progress bar on your Discord profile.     |
-| Listening room        | `listening-room`   | no            | Sync playback with friends over a local WebSocket room (same PC / LAN).                                   |
-| Zenith Stage          | `zenith-stage`     | no            | Streamer pack: opens lyrics overlay and enables the share card in one toggle.                             |
-| Share card            | `share-card`       | no            | Makes a 1080x1080 Now Playing card and copies it to the clipboard.                                        |
-| Copy track link       | `copy-track-link`  | no            | Right click the cover in the player to copy a clean YouTube Music link, with or without the current time. |
+| Name                  | Id                       | On by default | What it does                                                                                              |
+| --------------------- | ------------------------ | ------------- | --------------------------------------------------------------------------------------------------------- |
+| Last.fm scrobbler     | `lastfm-scrobbler`       | no            | Scrobbles what you listen to to your Last.fm profile and shows "now playing" there.                       |
+| ListenBrainz          | `listenbrainz-scrobbler` | no            | Sends what you listen to to your ListenBrainz profile. The token is stored encrypted on this computer.    |
+| Discord Rich Presence | `discord-rpc`            | no            | Shows the currently playing track, artist, cover art and a live progress bar on your Discord profile.     |
+| Listening room        | `listening-room`         | no            | Sync playback with friends over a local WebSocket room (same PC / LAN).                                   |
+| Zenith Stage          | `zenith-stage`           | no            | Streamer pack: opens lyrics overlay and enables the share card in one toggle.                             |
+| Share card            | `share-card`             | no            | Makes a 1080x1080 Now Playing card and copies it to the clipboard.                                        |
+| Copy track link       | `copy-track-link`        | no            | Right click the cover in the player to copy a clean YouTube Music link, with or without the current time. |
 
 ### Window and stats
 
