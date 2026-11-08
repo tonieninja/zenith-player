@@ -4,7 +4,7 @@
 </picture>
 
 <p align="center">
-  <a href="https://github.com/tonieninja/zenith-player/releases/latest"><b>download</b></a>
+  <a href="#download"><b>download</b></a>
   &nbsp;·&nbsp;
   <a href="#what-it-does">what it does</a>
   &nbsp;·&nbsp;
@@ -13,32 +13,17 @@
   <a href="#building">build it yourself</a>
 </p>
 
-<img src="assets/showcase.svg" width="100%" alt="Zenith screens: home, lyrics, explore, queue and plugins">
-
-Desktop player for YouTube Music. Tauri 2 (Rust) with a React UI. Synced lyrics, gapless albums,
-crossfade, a 15-band EQ, offline downloads, a phone remote and a pile of plugins. No ads, no telemetry.
-
-> [!NOTE]
-> Zenith is an independent, unofficial app. It isn't affiliated with, endorsed by, sponsored by or
-> connected to Google or YouTube in any way, it's just a player that talks to YouTube Music. Your
-> account and YouTube's terms still apply. YouTube, YouTube Music and Google are trademarks of Google LLC.
+<a href="https://github.com/tonieninja/zenith-player/releases/latest"><img src="assets/showcase.svg" width="100%" alt="Zenith screens: home, lyrics, explore, queue and plugins"></a>
 
 ## Download
 
-<a href="https://github.com/tonieninja/zenith-player/releases/latest"><img src="assets/dl-windows.svg" width="33.33%" alt="Download for Windows 10 and 11, 64 or 32 bit"></a><a href="https://github.com/tonieninja/zenith-player/releases/latest"><img src="assets/dl-linux.svg" width="33.33%" alt="Download for Linux: deb, rpm or AppImage"></a><a href="https://github.com/tonieninja/zenith-player/releases/latest"><img src="assets/dl-macos.svg" width="33.33%" alt="Download for macOS 11 or newer, universal"></a>
+<a href="https://github.com/tonieninja/zenith-player/releases/latest"><img src="assets/dl-windows-wide.svg" width="100%" alt="Download for Windows 10 and 11: installer or portable, 64 or 32 bit"></a><a href="https://github.com/tonieninja/zenith-player/releases/latest"><img src="assets/dl-linux.svg" width="50%" alt="Download for Linux: deb, rpm or AppImage"></a><a href="https://github.com/tonieninja/zenith-player/releases/latest"><img src="assets/dl-macos.svg" width="50%" alt="Download for macOS 11 or newer, universal"></a>
 
-Windows builds aren't signed, so SmartScreen will complain. More info → Run anyway.
-On macOS right click → Open the first time (or System Settings → Privacy & Security → Open Anyway). `SHA256SUMS` is attached to every release.
-
-With [Scoop](https://scoop.sh) on Windows:
-
-```pwsh
-scoop bucket add zenith https://github.com/tonieninja/scoop-zenith
-scoop install zenith/zenith
-```
+With [Scoop](https://scoop.sh): `scoop bucket add zenith https://github.com/tonieninja/scoop-zenith`, then `scoop install zenith/zenith`.
 
 <details>
 <summary>Which file do I need?</summary>
+<br>
 
 | System               | File                                                                             |
 | -------------------- | -------------------------------------------------------------------------------- |
@@ -49,47 +34,45 @@ scoop install zenith/zenith
 | Any Linux            | `Zenith_4.2.1_amd64.AppImage`                                                    |
 | macOS 11+            | `Zenith_4.2.1_universal.dmg` (built by CI, I don't have a Mac to test it)        |
 
+Windows builds aren't signed, so SmartScreen will complain. More info → Run anyway.
+On macOS right click → Open the first time (or System Settings → Privacy & Security → Open Anyway). `SHA256SUMS` is attached to every release.
+
 </details>
 
 ## What it does
 
-<img src="assets/card-lyrics.svg" width="50%" alt="Lyrics from five places: LRCLib, Musixmatch, Genius, lyrics.ovh and YouTube. Synced, with karaoke fill, an overlay and a window for your second screen"><img src="assets/card-eq.svg" width="50%" alt="A 15-band EQ in a small Rust audio engine, with loudness normalization next to it"><img src="assets/card-crossfade.svg" width="50%" alt="Crossfade and gapless: 2 to 12 second crossfades, and albums that play through without a gap"><img src="assets/card-remote.svg" width="50%" alt="Your phone is the remote: scan the code on the same Wi-Fi, PIN if you want one, nothing leaves the LAN"><img src="assets/card-plugins.svg" width="50%" alt="35 plugins: hotkeys, an A-B loop, Discord, Last.fm, a mini player. Turn on what you want"><img src="assets/card-offline.svg" width="50%" alt="Offline, no ads, no telemetry: save tracks and play them without internet, settings stay on your computer">
+<img src="assets/card-lyrics-wide.svg" width="100%" alt="Lyrics from 11 sources: LRCLib, Musixmatch, YouTube Music, LyricsPlus, Boidu, Unison, NetEase, QQ Music, Kugou, Genius and lyrics.ovh. Synced, with karaoke fill, an overlay and a window for your second screen"><img src="assets/card-eq.svg" width="50%" alt="A 15-band EQ in a small Rust audio engine, with loudness normalization next to it"><img src="assets/card-crossfade.svg" width="50%" alt="Crossfade and gapless: 2 to 12 second crossfades, and albums that play through without a gap"><img src="assets/card-remote-wide.svg" width="100%" alt="Your phone is the remote: scan the code on the same Wi-Fi, then skip, like and change the volume from the phone. Queue, live lyrics and search are there too"><img src="assets/card-plugins.svg" width="50%" alt="36 plugins: hotkeys, an A-B loop, Discord, ListenBrainz, a mini player. Turn on what you want"><img src="assets/card-offline.svg" width="50%" alt="Offline, no ads, no telemetry: save tracks and play them without internet, settings stay on your computer">
 
 And the rest:
 
-- Home, Explore, Search, Library, queue with drag and drop, shuffle, loop, radio after the queue ends
-- Crossfade (2 to 12 s), gapless albums, A-B loop, speed with pitch kept, sleep timer
-- Audio runs in a small Rust engine (symphonia + cpal), EQ and loudness normalization included.
-  If it can't start, the app falls back to the old HTML audio
-- Lyrics from LRCLib, Musixmatch, LyricsPlus, Boidu, Unison, NetEase, QQ Music, Kugou, Genius,
-  lyrics.ovh and YouTube captions, karaoke fill, always-on-top overlay and a second screen window
-- Offline downloads, Last.fm and ListenBrainz scrobbling, Discord presence, DualSense, global
-  hotkeys you can rebind
-- Playlists go to Spotify and come back from it, matched track by track
-- Phone remote over your Wi-Fi (QR code, optional PIN, nothing leaves the LAN)
+- Home, Explore with charts, moods and genres, Search, and a Library with podcasts and history
+- Playlists you can edit, merge and reorder, synced back to YouTube Music, plus local folders for the sidebar
+- Queue with drag and drop, shuffle, loop, and a radio that keeps going after the last track
+- Speed with the pitch kept, A-B loop, sleep timer, bass boost and a limiter so loud presets don't clip
+- Last.fm and ListenBrainz scrobbling, Discord presence, DualSense, global hotkeys you can rebind
+- Playlists go to Spotify and come back from it, matched track by track, or out to CSV and JSON
+- Listening Room for friends on the same network, a now playing card and a webhook for Stream Deck
+  or Home Assistant
 - Optional Google sign-in for your library, the session stays on your machine
 - English and Polish
 
 Full plugin list: [docs/PLUGINS.md](docs/PLUGINS.md).
 
 <details>
-<summary>All screenshots</summary>
+<summary>Screenshots</summary>
+<br>
 
-|                                               |                                             |
-| --------------------------------------------- | ------------------------------------------- |
-| ![Home](docs/screenshots/01-home.png)         | ![Explore](docs/screenshots/02-explore.png) |
-| ![Lyrics](docs/screenshots/03-lyrics.png)     | ![Search](docs/screenshots/04-search.png)   |
-| ![Queue](docs/screenshots/05-queue.png)       | ![Plugins](docs/screenshots/06-plugins.png) |
-| ![Settings](docs/screenshots/07-settings.png) |                                             |
+<img src="docs/screenshots/01-home.webp" width="50%" alt="Home"><img src="docs/screenshots/02-explore.webp" width="50%" alt="Explore"><img src="docs/screenshots/03-lyrics.webp" width="50%" alt="Lyrics"><img src="docs/screenshots/04-search.webp" width="50%" alt="Search"><img src="docs/screenshots/05-queue.webp" width="50%" alt="Queue"><img src="docs/screenshots/06-plugins.webp" width="50%" alt="Plugins">
 
 </details>
 
 ## Phone remote
 
-Turn on _Plugins → Utility → Phone remote_. You get an address like
-`http://192.168.x.x:8765/` and a QR code, open it on your phone on the same network.
-Only local addresses get an answer. On Windows allow it on **private** networks when the firewall
-asks, on Linux open the port (`sudo ufw allow 8765/tcp`). With the plugin off there's no server at all.
+Turn on _Plugins → Control and remote → Phone remote_. You get an address like
+`http://192.168.x.x:8765/` (or `http://zenith.local:8765/`) and a QR code, open it on your phone on the
+same network. Only local addresses get an answer. On Windows tick the firewall option at the end of the
+installer or use the button in the plugin, on Linux open the port (`sudo ufw allow 8765/tcp`).
+With the plugin off there's no server at all.
 
 ## Problems
 
@@ -101,8 +84,8 @@ asks, on Linux open the port (`sudo ufw allow 8765/tcp`). With the plugin off th
 - Every track fails at school or work: if the network really blocks YouTube there's not
   much to do. The error tells you why after three tracks.
 - High CPU in lyrics: without a GPU the karaoke fill is expensive, turn on _Settings → Light lyrics mode_.
-- Reset: delete `%LOCALAPPDATA%\com.zenithplayer.desktop` on Windows or
-  `~/.local/share/com.zenithplayer.desktop` on Linux.
+- Reset: delete both `%LOCALAPPDATA%\com.zenithplayer.desktop` and `%APPDATA%\com.zenithplayer.desktop`
+  on Windows, or `~/.local/share/com.zenithplayer.desktop` on Linux.
 
 ## Support
 
@@ -111,8 +94,7 @@ Zenith is free and stays free. If it saves you a Premium subscription and you wa
 
 ## Building
 
-Node 20+, pnpm 10, Rust stable. On Linux also
-`libwebkit2gtk-4.1-dev libasound2-dev libayatana-appindicator3-dev librsvg2-dev`.
+Node 20+, pnpm 10, Rust stable.
 
 ```bash
 pnpm install
@@ -121,7 +103,23 @@ pnpm test && pnpm typecheck && pnpm lint
 pnpm tauri build
 ```
 
-CI in `.github/workflows/build.yml` builds Windows x64/x86, Linux deb/rpm/AppImage and the mac dmg.
+<details>
+<summary>Linux packages</summary>
+<br>
+
+```bash
+sudo apt install build-essential cmake pkg-config libwebkit2gtk-4.1-dev libgtk-3-dev \
+  libayatana-appindicator3-dev librsvg2-dev libssl-dev patchelf libudev-dev libunwind-dev \
+  libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev gstreamer1.0-plugins-base \
+  gstreamer1.0-plugins-good gstreamer1.0-libav libasound2-dev
+```
+
+Add `rpm` and `libfuse2` if you want the rpm and the AppImage.
+
+</details>
+
+CI in `.github/workflows/build.yml` runs the tests, lint, clippy and Playwright, then builds Windows
+x64/x86 (setup, msi and portable), Linux deb/rpm/AppImage and the mac dmg.
 
 Yes, I know `App.tsx` is around 6000 lines. It's a crime and someone should probably shoot me for it,
 but that's life. I hack on this on my knees and it's just easier for me with everything in one place.
@@ -133,15 +131,24 @@ the tray drops the UI completely, so the player alone uses a lot less.
 
 This program will not transfer any information to other networked systems unless specifically
 requested by the user or the person installing or operating it. Playing music talks to YouTube
-Music, lyrics come from lyrics sites, and Discord, Last.fm, ListenBrainz, Spotify and the phone remote only
-connect once you turn them on. The update check asks GitHub for the latest release, you can turn it
-off in Settings. Your Google cookies stay on your computer and only go to Google.
+Music, lyrics come from lyrics sites, and Discord, Last.fm, ListenBrainz, Spotify, the webhook and the
+phone remote only connect once you turn them on. On start Zenith asks GitHub if there's a newer release.
+Your Google cookies stay on your computer and only go to Google.
 
 The microphone is only used by the Voice ducking plugin to lower the music while you talk,
 and only while that plugin is on. Nothing gets recorded or sent anywhere, settings, history and
 your session stay on your computer.
 
-## License
+<br>
 
-MIT, see [LICENSE](LICENSE). Bundled third-party code is listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). YouTube and Google names and logos belong to Google, the music and
-lyrics belong to whoever owns them.
+<p align="center">
+  <img src="src-tauri/icons/128x128.png" width="56" alt="">
+</p>
+
+<p align="center">
+  <sub>
+    MIT, see <a href="LICENSE">LICENSE</a>. Bundled third-party code is listed in <a href="THIRD_PARTY_NOTICES.md">THIRD_PARTY_NOTICES.md</a>.<br>
+    Zenith is an independent project, not affiliated with, endorsed by or sponsored by Google or YouTube.<br>
+    YouTube, YouTube Music and Google are trademarks of Google LLC. The music and lyrics belong to whoever owns them.
+  </sub>
+</p>
