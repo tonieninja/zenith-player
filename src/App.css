@@ -4397,8 +4397,7 @@ html.has-cover-theme .main-play-pause-circle {
 }
 
 .onboarding-btn.is-placeholder {
-  visibility: hidden;
-  pointer-events: none;
+  display: none;
 }
 
 .onboarding-card {
