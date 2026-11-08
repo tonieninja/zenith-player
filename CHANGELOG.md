@@ -1,5 +1,15 @@
 # Changelog
 
+## 4.2.1
+
+- "Open Zenith" at the end of the installer actually opens Zenith now
+- the Windows installer has a dark look that matches the app, with a dark title bar
+- fewer steps: no license page and no Start menu folder page, installing a newer version just updates in place
+- a running Zenith gets closed by the installer itself, no white popup asking first
+- the firewall question for the phone remote is an option on the last page instead of a popup in the middle
+- picking Uninstall on the "already installed" page closes the installer when it's done
+- the Next button in the welcome tour sits in the middle until there's a Back button next to it
+
 ## 4.2.0
 
 - six more places to get lyrics from: LyricsPlus, Boidu (Apple Music timing), Unison, NetEase, QQ Music and Kugou
