@@ -78,13 +78,11 @@ With the plugin off there's no server at all.
 
 - Window doesn't open on Windows: it needs the WebView2 Runtime. The installer sets it up,
   the portable exe installs it on first start.
-- Home stays empty / can't connect: Zenith talks to `music.youtube.com` directly and trusts
-  the Windows certificate store, so a proxy with its own root cert is fine. If it still fails,
-  run it with `ZENITH_DEBUG=1` and open an issue with the log (no cookies in it).
-- Every track fails at school or work: if the network really blocks YouTube there's not
-  much to do. The error tells you why after three tracks.
-- High CPU in lyrics: without a GPU the karaoke fill is expensive, turn on _Settings → Light lyrics mode_.
-- Reset: delete both `%LOCALAPPDATA%\com.zenithplayer.desktop` and `%APPDATA%\com.zenithplayer.desktop`
+- Home stays empty: run Zenith with `ZENITH_DEBUG=1` and open an issue with the log, there are
+  no cookies in it. Proxies with their own root cert are fine.
+- Every track fails at school or work: the network blocks YouTube. The error says so after three tracks.
+- High CPU in lyrics: turn on _Settings → Light lyrics mode_.
+- Reset: delete `%LOCALAPPDATA%\com.zenithplayer.desktop` and `%APPDATA%\com.zenithplayer.desktop`
   on Windows, or `~/.local/share/com.zenithplayer.desktop` on Linux.
 
 ## Support
@@ -130,14 +128,13 @@ the tray drops the UI completely, so the player alone uses a lot less.
 ## Privacy
 
 This program will not transfer any information to other networked systems unless specifically
-requested by the user or the person installing or operating it. Playing music talks to YouTube
-Music, lyrics come from lyrics sites, and Discord, Last.fm, ListenBrainz, Spotify, the webhook and the
-phone remote only connect once you turn them on. On start Zenith asks GitHub if there's a newer release.
-Your Google cookies stay on your computer and only go to Google.
+requested by the user or the person installing or operating it.
 
-The microphone is only used by the Voice ducking plugin to lower the music while you talk,
-and only while that plugin is on. Nothing gets recorded or sent anywhere, settings, history and
-your session stay on your computer.
+Music comes from YouTube Music and lyrics from lyrics sites. Discord, Last.fm, ListenBrainz, Spotify,
+the webhook and the phone remote connect only after you turn them on. On start Zenith asks GitHub if
+there's a newer release. Settings, history and your Google cookies stay on your computer, and the
+cookies only ever go to Google. The microphone is used only by the Voice ducking plugin while it's on,
+and nothing is recorded.
 
 <br>
 
