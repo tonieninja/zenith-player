@@ -1,39 +1,20 @@
-import { useSyncExternalStore } from 'react';
+import { storedFlag } from './flag';
 
 export const LIGHT_LYRICS_KEY = 'zenith_light_lyrics';
 
-const listeners = new Set<() => void>();
+const reduceMotion = () => window.matchMedia?.('(prefers-reduced-motion: reduce)');
 
-function read(): boolean {
-  return localStorage.getItem(LIGHT_LYRICS_KEY) === '1';
-}
+// przy systemowym „ogranicz ruch” lekki tekst jest domyślnie włączony, dopóki ktoś go nie przełączy
+const flag = storedFlag(
+  LIGHT_LYRICS_KEY,
+  () => reduceMotion()?.matches ?? false,
+  (cb) => {
+    const mq = reduceMotion();
+    mq?.addEventListener('change', cb);
+    return () => mq?.removeEventListener('change', cb);
+  }
+);
 
-let current = read();
-
-export function isLightLyrics(): boolean {
-  return current;
-}
-
-export function setLightLyrics(on: boolean) {
-  current = on;
-  localStorage.setItem(LIGHT_LYRICS_KEY, on ? '1' : '0');
-  for (const l of listeners) l();
-}
-
-function subscribe(cb: () => void) {
-  listeners.add(cb);
-  const onStorage = (e: StorageEvent) => {
-    if (e.key !== LIGHT_LYRICS_KEY) return;
-    current = read();
-    cb();
-  };
-  window.addEventListener('storage', onStorage);
-  return () => {
-    listeners.delete(cb);
-    window.removeEventListener('storage', onStorage);
-  };
-}
-
-export function useLightLyrics(): boolean {
-  return useSyncExternalStore(subscribe, isLightLyrics, () => false);
-}
+export const isLightLyrics = flag.get;
+export const setLightLyrics = flag.set;
+export const useLightLyrics = flag.useValue;
