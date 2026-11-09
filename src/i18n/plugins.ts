@@ -37,8 +37,14 @@ const CATALOG: Record<string, Record<Language, PluginText>> = {
     pl: { name: 'Tekst na drugim ekranie', desc: 'Duże okno z tekstem na drugi monitor.' },
   },
   'mini-player': {
-    en: { name: 'Mini player', desc: 'A small window with playback controls that stays on top.' },
-    pl: { name: 'Miniodtwarzacz', desc: 'Małe okienko ze sterowaniem, zawsze na wierzchu.' },
+    en: {
+      name: 'Mini player',
+      desc: 'A small always-on-top window with controls, a draggable timeline, a like button and optional synced lyrics. Hide any button you do not need.',
+    },
+    pl: {
+      name: 'Miniodtwarzacz',
+      desc: 'Małe okienko zawsze na wierzchu: sterowanie, przeciągany pasek czasu, „Lubię to” i opcjonalnie tekst z karaoke. Każdy przycisk możesz ukryć.',
+    },
   },
   'preload-next': {
     en: { name: 'Preload next', desc: 'Loads the next tracks in your queue ahead of time.' },
@@ -65,7 +71,7 @@ const CATALOG: Record<string, Record<Language, PluginText>> = {
     },
     pl: {
       name: 'Korektor (EQ)',
-      desc: '15-pasmowy korektor graficzny (25 Hz do 16 kHz) z gotowymi ustawieniami, w tym Bass Boost.',
+      desc: '15-pasmowy korektor graficzny (25 Hz do 16 kHz) z gotowymi ustawieniami, takimi jak wzmocnienie basu.',
     },
   },
   'lastfm-scrobbler': {
@@ -103,6 +109,16 @@ const CATALOG: Record<string, Record<Language, PluginText>> = {
   'ab-loop': {
     en: { name: 'A-B loop', desc: 'Loops any part of a track.' },
     pl: { name: 'Pętla A-B', desc: 'Zapętla wybrany fragment utworu.' },
+  },
+  sponsorblock: {
+    en: {
+      name: 'SponsorBlock',
+      desc: 'Skips talking, skits and sponsor breaks in music videos, as marked by the SponsorBlock community.',
+    },
+    pl: {
+      name: 'SponsorBlock',
+      desc: 'Pomija gadanie, scenki i wstawki sponsorskie w teledyskach, oznaczone przez społeczność SponsorBlock.',
+    },
   },
   'share-card': {
     en: { name: 'Share card', desc: 'Copies a nice-looking card of the current track.' },
@@ -154,11 +170,11 @@ const CATALOG: Record<string, Record<Language, PluginText>> = {
   'offline-downloads': {
     en: {
       name: 'Offline downloads',
-      desc: 'Save tracks to your drive and play them without internet. Manage or delete them here.',
+      desc: 'Save tracks to your drive and play them without internet. Right-click a cover or a track to download, even hours-long mixes. Manage or delete them here.',
     },
     pl: {
       name: 'Pobrane offline',
-      desc: 'Zapisuje utwory na dysku, żeby grały bez internetu. Tutaj nimi zarządzasz i je usuwasz.',
+      desc: 'Zapisuje utwory na dysku, żeby grały bez internetu. Pobierasz prawym przyciskiem na okładce albo utworze, nawet wielogodzinne miksy. Tutaj nimi zarządzasz i je usuwasz.',
     },
   },
   'global-hotkeys': {
