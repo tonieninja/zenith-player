@@ -6,6 +6,8 @@ const host = process.env.TAURI_DEV_HOST;
 
 export default defineConfig(async () => ({
   plugins: [react()],
+  // worker romanizacji dociąga słowniki dynamicznym importem, a format iife nie dzieli kodu
+  worker: { format: 'es' as const },
   build: {
     rollupOptions: {
       input: {
