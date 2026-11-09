@@ -1,0 +1,54 @@
+name: Something's broken
+description: Zenith crashes, won't play, or does something it shouldn't
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what you got instead.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Zenith version
+      description: Settings → About shows it.
+      placeholder: '4.2.1'
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: System
+      options:
+        - Windows 11
+        - Windows 10
+        - Linux (deb)
+        - Linux (rpm)
+        - Linux (AppImage)
+        - macOS
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: How you installed it
+      options:
+        - Installer from Releases
+        - Portable exe
+        - Scoop
+        - Built it myself
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Log
+      description: Start Zenith with `ZENITH_DEBUG=1` and paste what it prints. There are no cookies in it.
+      render: text
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else
+      description: Screenshots, plugins you have on, a track where it happens.
