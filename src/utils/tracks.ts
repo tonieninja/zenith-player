@@ -1,4 +1,5 @@
 import { toPlainPlaylistId, type Track } from '../api/youtube';
+import { isPlaceholderCover } from './covers';
 
 export function isVideoTrackId(id: string | undefined): boolean {
   return !!id && /^[\w-]{11}$/.test(id);
@@ -94,4 +95,29 @@ export function itemClickPlan(track: Pick<Track, 'id' | 'type'>): { kind: ItemCl
   }
   if (track.type === 'track' || /^[\w-]{11}$/.test(track.id)) return { kind: 'play-track' };
   return { kind: 'play-collection' };
+}
+
+// strona albumu nie podaje wykonawcy ani okładek przy utworach, więc bierzemy je z wyniku, który kliknięto
+export function withCollectionMeta(
+  collection: Track,
+  items: Track[],
+  variousArtists: string
+): Track[] {
+  const album = collection.type === 'album';
+  const albumArtist = album
+    ? ((collection.artist || '')
+        .split(' • ')
+        .map((x) => x.trim())
+        .find((x) => x && !/^\d{4}$/.test(x) && !/^(album|single|singiel|ep)$/i.test(x)) ?? '')
+    : '';
+  // w albumie miniatura wideo to ta sama okładka w kadrze 4:3 z pasami, kwadrat z wyniku wygląda lepiej
+  const swap = (url: string | undefined) =>
+    !url || isPlaceholderCover(url) || (album && url.includes('i.ytimg.com/vi/'));
+  return items.map((i) => ({
+    ...i,
+    artist: albumArtist && i.artist === variousArtists ? albumArtist : i.artist,
+    cover: swap(i.cover) && collection.cover ? collection.cover : i.cover,
+    coverSmall: swap(i.coverSmall) && collection.coverSmall ? collection.coverSmall : i.coverSmall,
+    coverLarge: swap(i.coverLarge) && collection.coverLarge ? collection.coverLarge : i.coverLarge,
+  }));
 }

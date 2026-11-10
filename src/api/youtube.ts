@@ -4,10 +4,12 @@ import { Language, translations } from '../i18n';
 import { resolveFeedItem, bylineFromRuns } from '../utils/feed';
 import { isPlaceholderCover, isYouTubeVideoId, letterCover, localCover } from '../utils/covers';
 import {
+  captionsMatchLyrics,
   isAcceptableLyricsMatch,
   pickBestSyncedLyrics,
   scoreLyricsMatch,
   shouldShowEarlyPlain,
+  syncedDurationFits,
 } from '../lyrics/match';
 import { GENIUS_BROWSER_HEADERS, geniusHttpError, LYRICS_BROWSER_UA } from '../lyrics/providers';
 import { normalizeSynced, parseLrc, type LyricsLine } from '../lyrics/parse';
@@ -580,6 +582,10 @@ export function clearCaches() {
   searchCache.clear();
   lyricsCache.clear();
   browseEpoch += 1;
+  // po wylogowaniu kolejne konto nie może dostać biblioteki ani playlist poprzedniego
+  invalidateLibraryCache();
+  deletedPlaylists.clear();
+  renamedPlaylists.clear();
 }
 
 export function clearHomeBrowseCache() {
@@ -606,6 +612,8 @@ export function invalidateLibraryCache() {
     }
   }
   librarySectionCache.clear();
+  // stary token kontynuacji dokleiłby strony z poprzedniej wersji listy
+  libraryContinuations.clear();
 }
 
 const PLAYLIST_OVERRIDE_MS = 10 * 60 * 1000;
@@ -878,14 +886,7 @@ async function fetchBrowseUncached(
 
   const parsePayload = (data: unknown): Section[] => {
     if (!data || typeof data !== 'object') return [];
-    const o = data as Record<string, unknown>;
-    if (Array.isArray(o.zenithSections)) {
-      const sections = (o.zenithSections as Section[]).filter(
-        (s) => s?.title && Array.isArray(s.items) && s.items.length > 0
-      );
-      if (sections.length) return dedupeSections(sections);
-    }
-    if (o.error) return [];
+    if ((data as Record<string, unknown>).error) return [];
     let result = parseShelves(data, t);
     if (!result.length && browseId === 'FEmusic_home') {
       result = parseRichHome(data, t);
@@ -930,17 +931,48 @@ async function fetchBrowseUncached(
       },
       8000
     );
+    if (isLibrary) libraryFailures.set(browseId, response.ok ? null : response.status);
     if (response.ok) {
       const json = JSON.parse(await response.text());
-      if (isLibrary) libraryContinuations.set(cacheKey, findContinuationToken(json));
+      if (isLibrary) {
+        libraryContinuations.delete(`${browseId}:${lang}:pending`);
+        libraryContinuations.set(cacheKey, findContinuationToken(json));
+      }
       const result = parsePayload(json);
       if (result.length) return store(result);
     }
   } catch {
+    if (isLibrary) libraryFailures.set(browseId, 0);
     return [];
   }
 
   return [];
+}
+
+const SONGS_PARAMS = 'EgWKAQIIAWoKEAMQBBAJEAoQBQ==';
+
+async function searchRequest(q: string, lang: Language, params?: string): Promise<Section[]> {
+  const body: Record<string, unknown> = { ...buildClientContext(lang), query: q };
+  if (params) body.params = params;
+  const response = await fetchWithTimeout(
+    ytmUrl('search'),
+    {
+      method: 'POST',
+      headers: await buildAuthHeaders(lang),
+      body: JSON.stringify(body),
+    },
+    10000
+  );
+  if (!response.ok) throw new Error(`search HTTP ${response.status}`);
+  const data = JSON.parse(await response.text());
+  if (data?.error) throw new Error(`search: ${data.error.message || 'api error'}`);
+  return parseShelves(data, translations[lang]);
+}
+
+// import listy: 429 albo strona weryfikacji ma zatrzymać import, a nie liczyć się jako brak dopasowania
+export async function searchSongsStrict(query: string, lang: Language): Promise<Track[]> {
+  const sections = await searchRequest(query.trim(), lang, SONGS_PARAMS);
+  return sections.flatMap((s) => s.items).filter((i) => i.type === 'track');
 }
 
 export async function searchMusic(query: string, lang: Language): Promise<Section[]> {
@@ -951,24 +983,7 @@ export async function searchMusic(query: string, lang: Language): Promise<Sectio
   if (cached && Date.now() - cached.ts < 60000) return cached.data;
 
   const t = translations[lang];
-  const SONGS_PARAMS = 'EgWKAQIIAWoKEAMQBBAJEAoQBQ==';
-
-  const run = async (params?: string): Promise<Section[]> => {
-    const body: Record<string, unknown> = { ...buildClientContext(lang), query: q };
-    if (params) body.params = params;
-    const response = await fetchWithTimeout(
-      ytmUrl('search'),
-      {
-        method: 'POST',
-        headers: await buildAuthHeaders(lang),
-        body: JSON.stringify(body),
-      },
-      10000
-    );
-    if (!response.ok) return [];
-    const data = JSON.parse(await response.text());
-    return parseShelves(data, t);
-  };
+  const run = (params?: string) => searchRequest(q, lang, params).catch(() => [] as Section[]);
 
   try {
     const [mixed, songs] = await Promise.all([run(), run(SONGS_PARAMS)]);
@@ -1216,12 +1231,17 @@ export async function loadPlaylistItems(
         }
         const tracks: Track[] = [];
         const seen = new Set<string>();
+        const various = translations[lang].variousArtists;
+        // utwory albumu nie mają wykonawcy, a karta z artysty bywa samym „Album • 2019”; nagłówek go zna
+        const albumArtist = id.startsWith('MPRE')
+          ? runsText(findRenderer(data, 'musicResponsiveHeaderRenderer')?.straplineTextOne)
+          : '';
         const addFrom = (payload: unknown) => {
           let added = 0;
           for (const t of extractAllTracks(payload, translations[lang])) {
             if (!seen.has(t.id)) {
               seen.add(t.id);
-              tracks.push(t);
+              tracks.push(albumArtist && t.artist === various ? { ...t, artist: albumArtist } : t);
               added += 1;
             }
           }
@@ -1280,6 +1300,8 @@ export const LIBRARY_BROWSE_IDS: Record<LibraryCategory, string> = {
 };
 
 const libraryContinuations = new Map<string, string | null>();
+// status ostatniego pobrania biblioteki: pusta lista po błędzie sieci to nie pusta biblioteka
+const libraryFailures = new Map<string, number | null>();
 const LIBRARY_INITIAL_PAGE_LIMIT = 1;
 const LIBRARY_BACKGROUND_PAGE_LIMIT = 40;
 
@@ -1334,7 +1356,9 @@ export async function extendLibrarySections(
   const cloned = sections.map((s) => ({ ...s, items: s.items.slice() }));
   await appendLibraryPages(id, lang, cloned, maxPages);
   const cacheKey = libraryCacheKey(category, lang);
-  librarySectionCache.set(cacheKey, { at: Date.now(), sections: cloned });
+  // doczytanie stron nie odświeża danych, więc nie może przesuwać ich wygaśnięcia
+  const at = librarySectionCache.get(cacheKey)?.at ?? Date.now();
+  librarySectionCache.set(cacheKey, { at, sections: cloned });
   return cloned;
 }
 
@@ -1366,7 +1390,7 @@ export function prefetchLibrary(lang: Language, except?: LibraryCategory) {
 export async function getLibrary(
   category: LibraryCategory,
   lang: Language,
-  opts: { maxPages?: number; bypassCache?: boolean } = {}
+  opts: { maxPages?: number; bypassCache?: boolean; strict?: boolean } = {}
 ): Promise<Section[]> {
   if (!(await isLoggedIn())) return [];
   const cacheKey = libraryCacheKey(category, lang);
@@ -1381,9 +1405,14 @@ export async function getLibrary(
     const maxPages = opts.maxPages ?? LIBRARY_INITIAL_PAGE_LIMIT;
     const sections = await appendLibraryPages(id, lang, await fetchBrowse(id, lang), maxPages);
     const mapped = sections.map((sec) => ({ ...sec, items: applyPlaylistOverrides(sec.items) }));
-    librarySectionCache.set(cacheKey, { at: Date.now(), sections: mapped });
+    if (mapped.length) librarySectionCache.set(cacheKey, { at: Date.now(), sections: mapped });
+    const failed = libraryFailures.get(id);
+    if (opts.strict && !mapped.length && failed != null) {
+      throw failed === 401 ? new SessionExpiredError() : new Error(`library ${failed}`);
+    }
     return mapped;
-  } catch {
+  } catch (e) {
+    if (opts.strict) throw e;
     return [];
   }
 }
@@ -1649,7 +1678,8 @@ export async function addToPlaylist(
     if (current.items.some((t) => t.id === videoId)) throw new AlreadyInPlaylistError();
   }
   const action: Record<string, unknown> = { action: 'ACTION_ADD_VIDEO', addedVideoId: videoId };
-  if (!opts.allowDuplicate) action.dedupeOption = 'DEDUPE_OPTION_SKIP';
+  // SKIP znaczy: pomiń sprawdzanie duplikatów, czyli dodaj mimo to
+  if (opts.allowDuplicate) action.dedupeOption = 'DEDUPE_OPTION_SKIP';
   await ytmAction(
     'browse/edit_playlist',
     { playlistId: toPlainPlaylistId(playlistId), actions: [action] },
@@ -1781,7 +1811,7 @@ function extractAboutText(data: any): string | null {
 export async function getWatchRelated(videoId: string, lang: Language): Promise<RelatedResult> {
   try {
     const headers = await buildAuthHeaders(lang);
-    const nextRes = await fetch(ytmUrl('next'), {
+    const nextRes = await fetchWithTimeout(ytmUrl('next'), {
       method: 'POST',
       headers,
       body: JSON.stringify({ ...buildClientContext(lang), videoId }),
@@ -1790,7 +1820,7 @@ export async function getWatchRelated(videoId: string, lang: Language): Promise<
     const nextData = JSON.parse(await nextRes.text());
     const browseId = findRelatedBrowseId(nextData);
     if (!browseId) return { sections: [], about: null };
-    const relRes = await fetch(ytmUrl('browse'), {
+    const relRes = await fetchWithTimeout(ytmUrl('browse'), {
       method: 'POST',
       headers,
       body: JSON.stringify({ ...buildClientContext(lang), browseId }),
@@ -1910,7 +1940,12 @@ export async function getLyrics(
   if (cached && Date.now() - cached.ts < (cached.ok ? LYRICS_OK_TTL : LYRICS_FAIL_TTL)) {
     return cached.data;
   }
-  const result = await getLyricsUncached(track, lang, preferred, onPlain);
+  let done = false;
+  // zwykły tekst, który dotrze już po wyniku z czasami, nie może go podmienić
+  const result = await getLyricsUncached(track, lang, preferred, (plain) => {
+    if (!done) onPlain?.(plain);
+  });
+  done = true;
   if (result) {
     const ok = Boolean(result.synced?.length || result.text);
     lyricsCache.set(cacheKey, { data: result, ts: Date.now(), ok });
@@ -1926,12 +1961,11 @@ async function getLyricsUncached(
   onPlain?: (plain: LyricsResult) => void
 ): Promise<LyricsResult | null> {
   const explicit = Boolean(preferred && preferred !== 'Auto');
-  let allowPlain = explicit;
-  let plainShown = false;
+  let shownPlain: LyricsResult | null = null;
+  // zweryfikowany zwykły tekst od razu na ekran, także w Auto; wynik z czasami podmienia go później
   const maybePlain = (res: LyricsResult) => {
-    if (!allowPlain || plainShown) return;
-    if (!shouldShowEarlyPlain(res)) return;
-    plainShown = true;
+    if (shownPlain || !shouldShowEarlyPlain(res)) return;
+    shownPlain = res;
     onPlain?.(res);
   };
   const attempt = async (
@@ -1967,8 +2001,8 @@ async function getLyricsUncached(
   const failures: LyricsFailure[] = [];
   let plainFallback: LyricsResult | null = null;
 
-  const fallbackOrder: LyricsProvider[] = ['YouTube Music', 'LyricsGenius'];
-  const fallbacks = fallbackOrder.map((p) => attempt(p));
+  // YouTube Music od razu, bo zwykły tekst daje w sekundę; Genius po pudle, przy przewijaniu kończył się na 429
+  const fallbacks = [attempt('YouTube Music')];
   const raced = await settleWithGrace(
     [attempt('LRCLib'), attempt('Musixmatch'), attempt('LyricsPlus'), attempt('Boidu')],
     (x) => Boolean(x.res?.synced?.length),
@@ -1981,6 +2015,7 @@ async function getLyricsUncached(
   if (syncedHits.length) {
     return pickBestSyncedLyrics(syncedHits);
   }
+  fallbacks.push(attempt('LyricsGenius'));
 
   // druga fala rusza dopiero po pudle, żeby przy każdej piosence nie pytać ośmiu serwisów
   const second = await settleWithGrace(
@@ -1999,20 +2034,15 @@ async function getLyricsUncached(
     if (x.res?.text && !plainFallback) plainFallback = x.res;
   }
 
-  allowPlain = true;
-  if (plainFallback) maybePlain(plainFallback);
-
   for (const pending of fallbacks) {
     const { res, failure } = await pending;
     if (failure) failures.push(failure);
     if (res?.synced?.length) return res;
-    if (res?.text && !plainFallback) {
-      plainFallback = res;
-      maybePlain(res);
-    }
+    if (res?.text && !plainFallback) plainFallback = res;
   }
 
-  if (plainFallback) return plainFallback;
+  const plain = shownPlain ?? plainFallback;
+  if (plain) return plain;
   return { provider: 'Auto', text: null, failures };
 }
 
@@ -2175,7 +2205,16 @@ export function captionTrackUrlsFromPlayer(data: unknown): string[] {
 
 async function fetchTimedtextVtt(url: string, videoId: string): Promise<LyricsLine[] | null> {
   const headers = youtubeTimedtextHeaders(videoId);
-  const cookie = await getYtmCookie();
+  // adres napisów pochodzi z odpowiedzi, więc ciasteczko sesji idzie tylko do youtube.com
+  const host = (() => {
+    try {
+      return new URL(url).hostname;
+    } catch {
+      return '';
+    }
+  })();
+  const cookie =
+    host === 'youtube.com' || host.endsWith('.youtube.com') ? await getYtmCookie() : null;
   if (cookie) headers.Cookie = cookie;
   let raw: string;
   try {
@@ -2193,55 +2232,62 @@ async function fetchTimedtextVtt(url: string, videoId: string): Promise<LyricsLi
 async function getYoutubeTimedtext(videoId: string, lang: Language): Promise<LyricsLine[] | null> {
   if (!/^[A-Za-z0-9_-]{11}$/.test(videoId)) return null;
   const langs = lang === 'pl' ? ['pl', 'en', 'en-US', 'en-GB'] : ['en', 'en-US', 'en-GB', 'pl'];
-  const kinds = ['', '&kind=asr'];
+  // bez napisów ASR: rozpoznana mowa to nie tekst piosenki
   for (const trackLang of langs) {
-    for (const kind of kinds) {
-      const url = `https://www.youtube.com/api/timedtext?v=${encodeURIComponent(videoId)}&fmt=vtt&lang=${trackLang}${kind}`;
-      const synced = await fetchTimedtextVtt(url, videoId);
-      if (synced) return synced;
-    }
+    const url = `https://www.youtube.com/api/timedtext?v=${encodeURIComponent(videoId)}&fmt=vtt&lang=${trackLang}`;
+    const synced = await fetchTimedtextVtt(url, videoId);
+    if (synced) return synced;
   }
   return null;
 }
 
 async function getYouTubeMusicLyrics(track: Track, lang: Language): Promise<LyricsResult | null> {
-  const timed = await getYoutubeTimedtext(track.id, lang);
-  if (timed?.length) return { provider: 'YouTube Music', text: null, synced: timed, matchScore: 3 };
-
-  const headers = await buildAuthHeaders(lang);
-  const response = await fetch(ytmUrl('next'), {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({ ...buildClientContext(lang), videoId: track.id }),
-  });
-  if (!response.ok) throw new Error(`YouTube Music HTTP ${response.status}`);
-  const data = JSON.parse(await response.text());
-  for (const captionUrl of captionTrackUrlsFromPlayer(data)) {
-    const fromPlayer = await fetchTimedtextVtt(captionUrl, track.id);
-    if (fromPlayer?.length) {
-      return { provider: 'YouTube Music', text: null, synced: fromPlayer, matchScore: 3 };
-    }
-  }
-  const browseId = findLyricsBrowseId(data, lang);
-  if (!browseId) throw new Error('This video has no Lyrics tab on YouTube Music');
-  const browseLyrics = async () => {
-    const lyricsResponse = await fetch(ytmUrl('browse'), {
+  let lyricsText: string | null = null;
+  let captionUrls: string[] = [];
+  let tabError: unknown = null;
+  try {
+    const headers = await buildAuthHeaders(lang);
+    const response = await fetch(ytmUrl('next'), {
       method: 'POST',
       headers,
-      body: JSON.stringify({ ...buildClientContext(lang), browseId }),
+      body: JSON.stringify({ ...buildClientContext(lang), videoId: track.id }),
     });
-    if (!lyricsResponse.ok) throw new Error(`YouTube Music lyrics HTTP ${lyricsResponse.status}`);
-    const lyricsData = JSON.parse(await lyricsResponse.text());
-    return extractLyricsText(lyricsData);
-  };
-  let lyricsText = await browseLyrics();
-  if (!lyricsText) {
-    await new Promise((r) => setTimeout(r, 450));
+    if (!response.ok) throw new Error(`YouTube Music HTTP ${response.status}`);
+    const data = JSON.parse(await response.text());
+    captionUrls = captionTrackUrlsFromPlayer(data).filter((u) => !/[?&]kind=asr\b/.test(u));
+    const browseId = findLyricsBrowseId(data, lang);
+    if (!browseId) throw new Error('This video has no Lyrics tab on YouTube Music');
+    const browseLyrics = async () => {
+      const lyricsResponse = await fetch(ytmUrl('browse'), {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ ...buildClientContext(lang), browseId }),
+      });
+      if (!lyricsResponse.ok) throw new Error(`YouTube Music lyrics HTTP ${lyricsResponse.status}`);
+      const lyricsData = JSON.parse(await lyricsResponse.text());
+      return extractLyricsText(lyricsData);
+    };
     lyricsText = await browseLyrics();
+    if (!lyricsText) {
+      await new Promise((r) => setTimeout(r, 450));
+      lyricsText = await browseLyrics();
+    }
+    if (!lyricsText)
+      throw new Error('Lyrics tab exists but returned no text (possibly region-restricted)');
+  } catch (e) {
+    tabError = e;
   }
-  if (!lyricsText)
-    throw new Error('Lyrics tab exists but returned no text (possibly region-restricted)');
-  return { provider: 'YouTube Music', text: lyricsText };
+  // napisy filmu bywają tłumaczeniem: przy karcie Tekst bierzemy tylko te, które się z nią zgadzają
+  const usable = (synced: LyricsLine[] | null): synced is LyricsLine[] =>
+    Boolean(synced?.length) && (!lyricsText || captionsMatchLyrics(synced!, lyricsText));
+  for (const captionUrl of captionUrls) {
+    const synced = await fetchTimedtextVtt(captionUrl, track.id);
+    if (usable(synced)) return { provider: 'YouTube Music', text: null, synced, matchScore: 3 };
+  }
+  const timed = await getYoutubeTimedtext(track.id, lang);
+  if (usable(timed)) return { provider: 'YouTube Music', text: null, synced: timed, matchScore: 3 };
+  if (lyricsText) return { provider: 'YouTube Music', text: lyricsText };
+  throw tabError;
 }
 
 function pickLrclibHit(
@@ -2262,7 +2308,7 @@ function pickLrclibHit(
     if (!acceptMatch(title, artist, candTitle, candArtist, score, duration, durationSec)) {
       continue;
     }
-    if (item?.syncedLyrics) {
+    if (item?.syncedLyrics && syncedDurationFits(duration, durationSec)) {
       const synced = parseLrc(String(item.syncedLyrics));
       if (
         synced.length >= 2 &&
@@ -2319,10 +2365,9 @@ async function getLrclibLyrics(track: Track): Promise<LyricsResult | null> {
 
   if (duration != null) {
     for (const data of fetched) {
-      const hit = pickLrclibHit(data, title, artist, undefined);
-      if (hit?.synced?.length) {
-        return { provider: 'LRCLib', text: null, synced: hit.synced, matchScore: hit.score };
-      }
+      // bez sprawdzania długości tylko zwykły tekst: czasy z innego cięcia rozjeżdżają się przez cały utwór
+      const plainOnly = data.map((item) => ({ ...item, syncedLyrics: null }));
+      const hit = pickLrclibHit(plainOnly, title, artist, undefined);
       if (hit?.plain) return hit.plain;
     }
   }
@@ -2536,10 +2581,9 @@ function cleanQueryTitle(title: string, artist?: string): string {
     t = t.replace(new RegExp(`^${escaped}\\s*[-–\u2014|:]+\\s+`, 'iu'), '');
   }
   t = t
-    .replace(
-      /\(*(official|lyric|lyrics|video|audio|hd|4k|mv|m\/v|visualiser|visualizer)[^)]*\)*/gi,
-      ''
-    )
+    // tylko w nawiasie albo po myślniku na końcu, inaczej „Birthday” traciło „hday”
+    .replace(/\s*\(\s*(official|lyrics?|video|audio|hd|4k|mv|m\/v|visuali[sz]er)\b[^)]*\)/gi, '')
+    .replace(/\s+[-–—|]\s*(official|lyrics?|music video|audio|visuali[sz]er)\b.*$/i, '')
     .replace(/\[[^\]]*\]/g, '')
     .replace(/\s{2,}/g, ' ')
     .trim();
@@ -2812,6 +2856,13 @@ function extractAllTracks(data: any, t: TranslationBundle): Track[] {
       return;
     }
     if (typeof obj !== 'object') return;
+
+    // para utwór/teledysk: drugi ma inne videoId, więc radio zagrałoby tę samą piosenkę dwa razy
+    const wrapped = obj.playlistPanelVideoWrapperRenderer;
+    if (wrapped) {
+      walk(wrapped.primaryRenderer);
+      return;
+    }
 
     const panel = obj.playlistPanelVideoRenderer;
     if (panel) {

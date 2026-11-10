@@ -17,14 +17,17 @@ import {
   addToPlaylist,
   AlreadyInPlaylistError,
   applyPlaylistOverrides,
+  getRadioTracks,
   isGeneratedMixId,
   loadPlaylistItems,
   playlistBrowseCandidates,
   playlistContentRoot,
   rememberPlaylistDeleted,
   rememberPlaylistRenamed,
+  searchSongsStrict,
   toPlaylistBrowseId,
 } from '../api/youtube';
+import { addMissingTracks } from '../api/playlistManager';
 import { loadPersistedQueue, savePersistedQueue } from '../plugins/queuePersist';
 
 const item = (videoId: string, title: string) => ({
@@ -108,6 +111,47 @@ describe('playlist content', () => {
     fetchMock.mockReset();
     fetchMock.mockResolvedValue({ ok: false, status: 500, text: async () => '' });
     expect((await loadPlaylistItems('VLPLx', 'en')).status).toBe('failed');
+  });
+
+  it('takes the album artist from the album header when tracks have none', async () => {
+    fetchMock.mockReset();
+    const noArtist = {
+      musicResponsiveListItemRenderer: {
+        playlistItemData: { videoId: 'aaaaaaaaaaa' },
+        flexColumns: [
+          { musicResponsiveListItemFlexColumnRenderer: { text: { runs: [{ text: 'Usseewa' }] } } },
+        ],
+      },
+    };
+    const header = { straplineTextOne: { runs: [{ text: 'Ado' }] } };
+    fetchMock.mockResolvedValue(
+      jsonResponse({
+        contents: {
+          twoColumnBrowseResultsRenderer: {
+            tabs: [
+              {
+                tabRenderer: {
+                  content: {
+                    sectionListRenderer: {
+                      contents: [{ musicResponsiveHeaderRenderer: header }],
+                    },
+                  },
+                },
+              },
+            ],
+            secondaryContents: {
+              sectionListRenderer: {
+                contents: [
+                  { musicShelfRenderer: { contents: [noArtist, item('bbbbbbbbbbb', 'B')] } },
+                ],
+              },
+            },
+          },
+        },
+      })
+    );
+    const res = await loadPlaylistItems('MPREb_album', 'en');
+    expect(res.items.map((t) => t.artist)).toEqual(['Ado', 'Artist']);
   });
 
   it('browses generated mix / supermix ids as VLRD..., never the bare RD id', () => {
@@ -281,7 +325,34 @@ describe('add to playlist', () => {
     await addToPlaylist('PLxyz', 'aaaaaaaaaaa', 'en', { allowDuplicate: true });
     const edits = fetchMock.mock.calls.filter((c) => String(c[0]).includes('edit_playlist'));
     expect(edits).toHaveLength(2);
-    expect(String(edits[1][1].body)).not.toContain('DEDUPE_OPTION_SKIP');
+    expect(String(edits[0][1].body)).not.toContain('DEDUPE_OPTION_SKIP');
+    expect(String(edits[1][1].body)).toContain('DEDUPE_OPTION_SKIP');
+  });
+
+  it('sends only tracks the target does not have yet', async () => {
+    fetchMock.mockImplementation(async (url: string) =>
+      String(url).includes('edit_playlist')
+        ? jsonResponse({ status: 'STATUS_SUCCEEDED' })
+        : jsonResponse(playlistPage([item('aaaaaaaaaaa', 'Mine')]))
+    );
+    expect(
+      await addMissingTracks('PLxyz', ['aaaaaaaaaaa', 'bbbbbbbbbbb', 'bbbbbbbbbbb'], 'en')
+    ).toBe(1);
+    expect(await addMissingTracks('PLxyz', ['aaaaaaaaaaa'], 'en')).toBe(0);
+    const edits = fetchMock.mock.calls.filter((c) => String(c[0]).includes('edit_playlist'));
+    expect(edits).toHaveLength(1);
+    const body = String(edits[0][1].body);
+    expect(body).not.toContain('aaaaaaaaaaa');
+    expect(body.match(/bbbbbbbbbbb/g)).toHaveLength(1);
+  });
+});
+
+describe('import search', () => {
+  it('fails loudly on a rate limit instead of returning no songs', async () => {
+    fetchMock.mockReset();
+    fetchMock.mockResolvedValue({ ok: false, status: 429, text: async () => '' });
+    await expect(searchSongsStrict('Hello Adele', 'en')).rejects.toThrow(/429/);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -314,5 +385,30 @@ describe('queue persistence', () => {
       'PLmine'
     );
     expect(loadPersistedQueue()?.playingFromId).toBe('PLmine');
+  });
+});
+
+describe('radio', () => {
+  beforeEach(() => fetchMock.mockReset());
+
+  it('keeps the song and skips its music video twin', async () => {
+    const panel = (videoId: string, title: string) => ({
+      playlistPanelVideoRenderer: { videoId, title: { runs: [{ text: title }] } },
+    });
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        contents: [
+          {
+            playlistPanelVideoWrapperRenderer: {
+              primaryRenderer: panel('aaaaaaaaaaa', 'Song'),
+              counterpart: [{ counterpartRenderer: panel('bbbbbbbbbbb', 'Song (Video)') }],
+            },
+          },
+          panel('ccccccccccc', 'Other'),
+        ],
+      })
+    );
+    const tracks = await getRadioTracks('zzzzzzzzzzz', 'en');
+    expect(tracks.map((t) => t.id)).toEqual(['aaaaaaaaaaa', 'ccccccccccc']);
   });
 });
