@@ -51,11 +51,16 @@
   cursor: default;
   transform: translate3d(0, 6px, 0) scale(0.96);
   transform-origin: left center;
-  will-change: transform, opacity;
-  backface-visibility: hidden;
   transition:
     opacity var(--slide-ms, 520ms) var(--slide-ease),
     transform var(--slide-ms, 520ms) var(--slide-ease);
+}
+
+/* warstwa GPU tylko dla przesuwanych wierszy; reszta tekstu to dziesiątki zbędnych warstw */
+.synced-lyrics-rail .lyric-row:is(.is-active, .is-next),
+.synced-lyrics-rail .lyric-row:has(+ .is-active) {
+  will-change: transform, opacity;
+  backface-visibility: hidden;
 }
 
 .synced-lyrics-rail button.lyric-row {
@@ -147,4 +152,32 @@
 .synced-lyrics-rail.synced-lyrics-rail--light .lyric-row-text::before,
 .synced-lyrics-rail.synced-lyrics-rail--light .lyric-row-text::after {
   transition: none;
+}
+
+.synced-lyrics-rail .lyric-row-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1em;
+  width: 100%;
+  min-width: 0;
+}
+
+.synced-lyrics-rail .lyric-row-sub {
+  display: block;
+  font-size: 0.72em;
+  font-weight: 640;
+  letter-spacing: -0.005em;
+}
+
+/* Outfit nie ma kroju italic, a rząd wyłącza syntezę, więc bez tego kursywa by zniknęła */
+.synced-lyrics-rail .lyric-row-roman {
+  font-style: italic;
+  font-synthesis: style;
+}
+
+/* tłumaczenie bez karaoke i przygaszone, żeby nie konkurowało z oryginałem */
+.synced-lyrics-rail .lyric-row-trans {
+  opacity: 0.58;
+  font-weight: 520;
+  overflow-wrap: anywhere;
 }

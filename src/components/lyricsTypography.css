@@ -31,6 +31,28 @@
   text-rendering: optimizeLegibility;
 }
 
+.plain-lyrics-line {
+  margin-bottom: 0.35em;
+}
+
+.plain-lyrics-sub {
+  display: block;
+  font-size: 0.72em;
+  font-weight: 600;
+}
+
+/* Outfit nie ma kroju italic, więc kursywę trzeba dopuścić z syntezy */
+.plain-lyrics-roman {
+  font-style: italic;
+  font-synthesis: style;
+  opacity: 0.85;
+}
+
+.plain-lyrics-trans {
+  opacity: 0.58;
+  font-weight: 520;
+}
+
 .lyric-karaoke {
   position: relative;
   display: block;
