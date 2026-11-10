@@ -78,7 +78,13 @@ const BYLINE_TYPE_WORDS = new Set([
   'Song',
   'Album',
   'Single',
+  'Singiel',
+  'EP',
   'Playlist',
+  'Playlista',
+  'Podcast',
+  'Episode',
+  'Odcinek',
 ]);
 
 export function bylineFromRuns(runs: { text?: unknown }[]): string {

@@ -133,6 +133,10 @@ describe('artist bylines from YouTube Music', () => {
   it('joins artist runs into one credit instead of one entry per separator', () => {
     expect(bylineFromRuns(runs)).toBe('Daft Punk, Pharrell Williams & Nile Rodgers');
     expect(bylineFromRuns([{ text: 'A' }, { text: ' / ' }, { text: 'B' }])).toBe('A / B');
+    expect(
+      bylineFromRuns([{ text: 'Singiel' }, { text: ' • ' }, { text: 'X' }, { text: ' • 2023' }])
+    ).toBe('X • 2023');
+    expect(bylineFromRuns([{ text: 'Odcinek' }, { text: ' • ' }, { text: 'Pod' }])).toBe('Pod');
     expect(bylineFromRuns([{ text: 'AC/DC' }])).toBe('AC/DC');
     expect(bylineFromRuns([])).toBe('');
   });
