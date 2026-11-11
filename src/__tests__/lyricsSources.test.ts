@@ -16,6 +16,8 @@ import {
   ttmlTime,
   type SourceQuery,
 } from '../lyrics/sources';
+import { parseLrc, parseRichsync } from '../lyrics/parse';
+import { lyricLineEnd } from '../lyrics/active';
 
 const json = (body: unknown, status = 200) => ({
   ok: status >= 200 && status < 300,
@@ -27,6 +29,55 @@ const q: SourceQuery = { title: 'Blinding Lights', artist: 'The Weeknd', duratio
 
 beforeEach(() => {
   httpFetch.mockReset();
+});
+
+describe('lrc', () => {
+  it('turns a blank stamp before a long solo into a break and keeps short pauses', () => {
+    const lrc =
+      '[00:10.00]before the solo\n[00:13.00]\n[00:45.00]after\n[00:47.00] \n[00:49.00]next';
+    expect(parseLrc(lrc)).toEqual([
+      { time: 10, text: 'before the solo' },
+      { time: 13, text: '♪' },
+      { time: 45, text: 'after' },
+      { time: 49, text: 'next' },
+    ]);
+    expect(parseLrc('[00:01.00]one\n[00:02.00]two\n[00:04.00]♪')).toEqual([
+      { time: 1, text: 'one' },
+      { time: 2, text: 'two' },
+      { time: 4, text: '♪' },
+    ]);
+  });
+
+  it('joins duet lines that share a stamp and applies the offset tag', () => {
+    expect(parseLrc('[offset:+500]\n[00:05.00]me\n[00:05.00]you\n[00:07.00]us')).toEqual([
+      { time: 4.5, text: 'me / you' },
+      { time: 6.5, text: 'us' },
+    ]);
+  });
+
+  it('reads the richsync line end as the start of a break', () => {
+    const body = JSON.stringify([
+      { ts: 1, te: 3, x: 'first' },
+      { ts: 20, te: 22, x: 'second' },
+    ]);
+    expect(parseRichsync(body)).toEqual([
+      { time: 1, text: 'first' },
+      { time: 3, text: '♪' },
+      { time: 20, text: 'second' },
+      { time: 22, text: '♪' },
+    ]);
+  });
+
+  it('ends the karaoke fill when the line is sung, not at the next line after a solo', () => {
+    const lines = [
+      { time: 10, text: 'short' },
+      { time: 12, text: 'a line right before a thirty second guitar solo' },
+      { time: 45, text: 'back' },
+    ];
+    expect(lyricLineEnd(lines, 0)).toBe(12);
+    expect(lyricLineEnd(lines, 1)).toBeCloseTo(12 + 47 * 0.25);
+    expect(lyricLineEnd(lines, 2)).toBe(49);
+  });
 });
 
 describe('ttml', () => {
@@ -46,6 +97,17 @@ describe('ttml', () => {
     expect(parseTtml(xml)).toEqual([
       { time: 27.395, text: 'I been' },
       { time: 30.1, text: 'enough & more' },
+    ]);
+  });
+
+  it('marks the gap after a line end as an instrumental break', () => {
+    const xml =
+      '<tt><body><p begin="10" end="12">verse</p><p begin="40" end="42">chorus</p></body></tt>';
+    expect(parseTtml(xml)).toEqual([
+      { time: 10, text: 'verse' },
+      { time: 12, text: '♪' },
+      { time: 40, text: 'chorus' },
+      { time: 42, text: '♪' },
     ]);
   });
 });
@@ -129,6 +191,11 @@ describe('Boidu', () => {
     httpFetch.mockResolvedValue(json({ error: 'not cached' }, 401));
     expect(await getBoidu(q)).toBeNull();
   });
+
+  it('rejects lyrics that run past the end of the track', async () => {
+    httpFetch.mockResolvedValue(json({ lrc: '[00:10.00]one\n[04:20.00]two' }));
+    expect(await getBoidu(q)).toBeNull();
+  });
 });
 
 describe('Unison', () => {
@@ -150,6 +217,15 @@ describe('Unison', () => {
   it('keeps plain lyrics plain', async () => {
     httpFetch.mockResolvedValue(json({ data: { format: 'plain', lyrics: 'just words' } }));
     expect(await getUnison(q)).toEqual({ text: 'just words' });
+  });
+
+  it('checks the song a name search returns, but trusts lyrics filed under the video', async () => {
+    const other = { song: 'Save Your Tears', artist: 'The Weeknd', format: 'plain', lyrics: 'x' };
+    httpFetch.mockResolvedValue(json({ data: other }));
+    expect(await getUnison(q)).toBeNull();
+    expect(await getUnison({ ...q, videoId: 'abcdefghijk' })).toEqual({ text: 'x' });
+    httpFetch.mockResolvedValue(json({ data: { ...other, song: 'Blinding Lights' } }));
+    expect((await getUnison(q))?.score).toBeGreaterThan(0);
   });
 });
 
@@ -190,6 +266,20 @@ describe('Netease', () => {
       { time: 30.18, text: 'On my own' },
     ]);
     expect(httpFetch.mock.calls.some((c) => String(c[0]).includes('id=3'))).toBe(false);
+  });
+
+  it('does not take synced lyrics from a cut of another length', async () => {
+    httpFetch.mockResolvedValue(
+      json({
+        result: {
+          songs: [
+            { id: 7, name: 'Blinding Lights', artists: [{ name: 'The Weeknd' }], dt: 262000 },
+          ],
+        },
+      })
+    );
+    expect(await getNetease(q)).toBeNull();
+    expect(httpFetch).toHaveBeenCalledTimes(1);
   });
 });
 

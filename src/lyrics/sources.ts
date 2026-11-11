@@ -1,5 +1,5 @@
 import { fetch } from '@tauri-apps/plugin-http';
-import { isAcceptableLyricsMatch, scoreLyricsMatch } from './match';
+import { isAcceptableLyricsMatch, scoreLyricsMatch, syncedDurationFits } from './match';
 import { normalizeSynced, parseLrc, type LyricsLine } from './parse';
 
 export interface SourceQuery {
@@ -52,7 +52,7 @@ export function qs(params: Record<string, string | number | undefined>): string 
     .join('&');
 }
 
-// kandydaci, którzy przechodzą te same progi co reszta źródeł, od najlepszego
+// kandydaci, którzy przechodzą te same progi co reszta źródeł, od najlepszego; te źródła dają tekst z czasami
 export function rankCandidates<T>(
   q: SourceQuery,
   items: T[],
@@ -62,6 +62,7 @@ export function rankCandidates<T>(
   const out: { item: T; score: number }[] = [];
   for (const item of items) {
     const c = read(item);
+    if (!syncedDurationFits(q.durationSec, c.durationSec)) continue;
     const cand = { title: c.title, artist: c.artist, durationSec: c.durationSec };
     const score = scoreLyricsMatch(query, cand);
     if (isAcceptableLyricsMatch(query, cand, score)) out.push({ item, score });
@@ -130,7 +131,11 @@ export function parseTtml(xml: string): LyricsLine[] {
       }
     }
     text = decodeEntities(text).replace(/\s+/g, ' ').trim();
-    if (text) lines.push({ time: begin, text });
+    if (!text) continue;
+    lines.push({ time: begin, text });
+    // pusty wpis na końcu linii pozwala normalizeSynced wykryć przerwę instrumentalną
+    const end = ttmlTime(/\bend="([^"]+)"/.exec(m[1])?.[1]);
+    if (end != null && end > begin) lines.push({ time: end, text: '' });
   }
   return normalizeSynced(lines);
 }
@@ -195,7 +200,7 @@ export async function getLyricsPlus(q: SourceQuery): Promise<SourceHit | null> {
     const text = lines.map((l) => l.text).join('\n');
     return text ? { text, score } : null;
   }
-  return lines.length >= 2 ? { synced: lines, score } : null;
+  return lines.length >= 2 && fitsTrack(lines, q) ? { synced: lines, score } : null;
 }
 
 // Boidu trzyma teksty pod tytułem, wykonawcą i długością, bez długości nie ma czego pytać
@@ -221,24 +226,40 @@ export async function getBoidu(q: SourceQuery): Promise<SourceHit | null> {
   ) as string | undefined;
   if (!raw) return null;
   const synced = raw.includes('<tt') ? parseTtml(raw) : parseLrc(raw);
-  return synced.length >= 2 ? { synced } : null;
+  return synced.length >= 2 && fitsTrack(synced, q) ? { synced } : null;
 }
 
-function unisonHit(data: any): SourceHit | null {
-  const lyrics = data?.data?.lyrics;
+// część źródeł sama wybiera utwór: tekst trwający dłużej niż piosenka jest z innej
+function fitsTrack(synced: LyricsLine[], q: SourceQuery): boolean {
+  return !q.durationSec || (synced.at(-1)?.time ?? 0) <= q.durationSec + 10;
+}
+
+function unisonHit(data: any, q: SourceQuery, byName: boolean): SourceHit | null {
+  const entry = data?.data;
+  const lyrics = entry?.lyrics;
   if (typeof lyrics !== 'string' || !lyrics.trim()) return null;
-  const format = String(data?.data?.format || '').toLowerCase();
-  if (format === 'plain') return { text: lyrics.trim() };
+  let score: number | undefined;
+  // po nazwie serwer zwraca najbliższy wpis, a ten bywa inną piosenką
+  if (byName && entry.song) {
+    const hit = pickCandidate(q, [entry], (e) => ({
+      title: String(e.song),
+      artist: String(e.artist || q.artist),
+    }));
+    if (!hit) return null;
+    score = hit.score;
+  }
+  const format = String(entry.format || '').toLowerCase();
+  if (format === 'plain') return { text: lyrics.trim(), score };
   const synced = lyrics.includes('<tt') ? parseTtml(lyrics) : parseLrc(lyrics);
-  if (synced.length >= 2) return { synced };
-  return { text: lyrics.trim() };
+  if (synced.length >= 2) return fitsTrack(synced, q) ? { synced, score } : null;
+  return { text: lyrics.trim(), score };
 }
 
 // najpierw po id filmu, bo społeczność wrzuca teksty pod konkretne nagranie
 export async function getUnison(q: SourceQuery): Promise<SourceHit | null> {
   const base = 'https://unison.betterlyrics.org/lyrics';
   if (q.videoId) {
-    const hit = unisonHit(await getJson(`${base}?${qs({ v: q.videoId })}`, 'Unison'));
+    const hit = unisonHit(await getJson(`${base}?${qs({ v: q.videoId })}`, 'Unison'), q, false);
     if (hit) return hit;
   }
   const url = `${base}?${qs({
@@ -246,7 +267,7 @@ export async function getUnison(q: SourceQuery): Promise<SourceHit | null> {
     artist: q.artist,
     duration: q.durationSec ? Math.round(q.durationSec) : undefined,
   })}`;
-  return unisonHit(await getJson(url, 'Unison'));
+  return unisonHit(await getJson(url, 'Unison'), q, true);
 }
 
 const NETEASE_HEADERS = { Referer: 'https://music.163.com/' };

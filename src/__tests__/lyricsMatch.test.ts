@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
+  captionsMatchLyrics,
   isAcceptableLyricsMatch,
   pickBestSyncedLyrics,
   scoreLyricsMatch,
   shouldShowEarlyPlain,
+  syncedDurationFits,
 } from '../lyrics/match';
 import {
   collectMusixmatchBundleUrls,
@@ -43,6 +45,33 @@ describe('lyrics title/artist/duration matching', () => {
         artist: 'Daft Punk',
       })
     ).toBe(true);
+  });
+
+  it('matches titles and artists outside the Latin alphabet', () => {
+    const yoru = { title: '夜に駆ける', artist: 'YOASOBI', durationSec: 261 };
+    expect(isAcceptableLyricsMatch(yoru, { ...yoru, durationSec: 262 })).toBe(true);
+    expect(
+      isAcceptableLyricsMatch(yoru, { title: '群青', artist: 'YOASOBI', durationSec: 248 })
+    ).toBe(false);
+    const kukla = { title: 'Кукла колдуна', artist: 'Король и Шут' };
+    expect(isAcceptableLyricsMatch(kukla, kukla)).toBe(true);
+  });
+
+  it('keeps synced lyrics to the same cut', () => {
+    expect(syncedDurationFits(199, 362)).toBe(false);
+    expect(syncedDurationFits(128, 170)).toBe(false);
+    expect(syncedDurationFits(200, 208)).toBe(true);
+    expect(syncedDurationFits(600, 614)).toBe(true);
+    expect(syncedDurationFits(undefined, 300)).toBe(true);
+  });
+
+  it('takes video captions as lyrics only when they agree with the lyrics tab', () => {
+    const tab = '밤양갱\n달디달고 달디달고 달디단 밤양갱\n내가 먹고 싶었던 건';
+    const own = [{ text: '달디달고 달디달고' }, { text: '달디단 밤양갱' }, { text: '(oh)' }];
+    const english = [{ text: 'Sweet, so sweet' }, { text: 'Sweet chestnut jelly' }];
+    expect(captionsMatchLyrics(own, tab)).toBe(true);
+    expect(captionsMatchLyrics(english, tab)).toBe(false);
+    expect(captionsMatchLyrics([], tab)).toBe(false);
   });
 
   it('uses duration to accept an exact title when the artist string is missing', () => {

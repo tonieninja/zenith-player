@@ -11,15 +11,18 @@ export type LyricsMatchCandidate = {
 };
 
 export function normalizeLyricsText(input: string): string {
-  return input
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[łŁ]/g, 'l')
-    .replace(/\([^)]*\)/g, '')
-    .replace(/\[[^\]]*\]/g, '')
-    .replace(/[^a-z0-9]+/g, ' ')
-    .trim();
+  return (
+    input
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/\p{M}/gu, '')
+      .replace(/[łŁ]/g, 'l')
+      .replace(/\([^)]*\)/g, '')
+      .replace(/\[[^\]]*\]/g, '')
+      // litery każdego pisma: tytuł po japońsku czy cyrylicą nie może znormalizować się do pustego
+      .replace(/[^\p{L}\p{N}]+/gu, ' ')
+      .trim()
+  );
 }
 
 export function tokenOverlap(a: string, b: string): number {
@@ -113,6 +116,24 @@ export function syncLengthFits(syncLength?: number | null, durationSec?: number 
   if (!Number.isFinite(syncLength) || syncLength <= 0) return true;
   if (!Number.isFinite(durationSec) || durationSec <= 0) return true;
   return Math.abs(syncLength - durationSec) <= Math.max(4, durationSec * 0.025);
+}
+
+// czasy z innego cięcia (radio edit, wersja rozszerzona) rozjeżdżają się przez cały utwór, sam tekst nie
+export function syncedDurationFits(query?: number | null, cand?: number | null): boolean {
+  const d = durationDeltaSec(query, cand);
+  return d == null || d <= 10 || syncLengthFits(cand, query);
+}
+
+// napisy filmu bywają tłumaczeniem: to tekst piosenki, gdy większość linijek jest w karcie Tekst
+export function captionsMatchLyrics(
+  lines: ReadonlyArray<{ text: string }>,
+  lyrics: string
+): boolean {
+  const flat = (s: string) => normalizeLyricsText(s).replace(/ /g, '');
+  const all = flat(lyrics);
+  const caps = lines.map((l) => flat(l.text)).filter(Boolean);
+  if (!all || !caps.length) return false;
+  return caps.filter((c) => all.includes(c)).length / caps.length >= 0.5;
 }
 
 export function minAcceptScore(title: string): number {
