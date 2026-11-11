@@ -186,6 +186,7 @@ pub fn refresh_innertube(app: &AppHandle) -> InnertubeRefresh {
     hydrate_innertube(app);
     let before = current_innertube();
     let fetched = (|| -> Option<InnertubeConfig> {
+        crate::win_proxy::wait();
         let client = reqwest::blocking::Client::builder()
             .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
             .timeout(Duration::from_secs(18))
@@ -560,273 +561,6 @@ fn collect_cookies_sync(app: &AppHandle) -> String {
         .unwrap_or_default()
 }
 
-fn runs_text(node: &Value) -> String {
-    if let Some(runs) = node.get("runs").and_then(|r| r.as_array()) {
-        return runs
-            .iter()
-            .filter_map(|r| r.get("text").and_then(|t| t.as_str()))
-            .collect::<String>();
-    }
-    node.get("simpleText")
-        .and_then(|t| t.as_str())
-        .unwrap_or("")
-        .to_string()
-}
-
-fn parse_clock_duration(text: &str) -> Option<f64> {
-    let raw = text.trim();
-    let parts: Vec<&str> = raw.split(':').collect();
-    if parts.len() != 2 && parts.len() != 3 {
-        return None;
-    }
-    if !raw.chars().all(|c| c.is_ascii_digit() || c == ':') {
-        return None;
-    }
-    if parts[0].is_empty() || parts.iter().skip(1).any(|p| p.len() != 2) {
-        return None;
-    }
-    let nums: Option<Vec<f64>> = parts.iter().map(|p| p.parse::<f64>().ok()).collect();
-    let nums = nums?;
-    if nums.iter().any(|n| !n.is_finite()) {
-        return None;
-    }
-    let sec = if nums.len() == 2 {
-        nums[0] * 60.0 + nums[1]
-    } else {
-        nums[0] * 3600.0 + nums[1] * 60.0 + nums[2]
-    };
-    if sec > 0.0 {
-        Some(sec)
-    } else {
-        None
-    }
-}
-
-fn first_text(node: &Value) -> Option<String> {
-    let text = runs_text(node);
-    if text.is_empty() {
-        None
-    } else {
-        Some(text)
-    }
-}
-
-fn extract_duration_sec(r: &Value) -> Option<f64> {
-    let paths = [
-        "/lengthText",
-        "/fixedColumns/0/musicResponsiveListItemFixedColumnRenderer/text",
-        "/fixedColumns/1/musicResponsiveListItemFixedColumnRenderer/text",
-        "/thumbnailOverlays/0/thumbnailOverlayTimeStatusRenderer/text",
-        "/thumbnailOverlays/1/thumbnailOverlayTimeStatusRenderer/text",
-    ];
-    for path in paths {
-        if let Some(text) = r.pointer(path).and_then(first_text) {
-            if let Some(sec) = parse_clock_duration(&text) {
-                return Some(sec);
-            }
-        }
-    }
-    None
-}
-
-fn with_duration(mut item: Value, r: &Value) -> Value {
-    if let Some(sec) = extract_duration_sec(r) {
-        item["durationSec"] = json!(sec);
-    }
-    item
-}
-
-fn best_thumb(thumbs: &Value) -> String {
-    let Some(arr) = thumbs.as_array() else {
-        return String::new();
-    };
-    arr.iter()
-        .rev()
-        .find_map(|t| t.get("url").and_then(|u| u.as_str()).map(|s| s.to_string()))
-        .unwrap_or_default()
-}
-
-fn item_from_two_row(r: &Value) -> Option<Value> {
-    let video_id = r
-        .pointer("/playlistItemData/videoId")
-        .or_else(|| r.pointer("/navigationEndpoint/watchEndpoint/videoId"))
-        .and_then(|v| v.as_str());
-    let browse_id = r
-        .pointer("/navigationEndpoint/browseEndpoint/browseId")
-        .and_then(|v| v.as_str());
-    let id = video_id.or(browse_id)?;
-    let title = runs_text(r.get("title").unwrap_or(&Value::Null));
-    if title.is_empty() {
-        return None;
-    }
-    let artist = runs_text(r.get("subtitle").unwrap_or(&Value::Null));
-    let cover = best_thumb(
-        r.pointer("/thumbnailRenderer/musicThumbnailRenderer/thumbnail/thumbnails")
-            .unwrap_or(&Value::Null),
-    );
-    let kind = if video_id.is_some() {
-        "track"
-    } else if id.starts_with("VL") || id.starts_with("PL") || id.starts_with("MPSP") {
-        "playlist"
-    } else if id.starts_with("UC") {
-        "artist"
-    } else {
-        "album"
-    };
-    Some(with_duration(
-        json!({
-            "id": id,
-            "type": kind,
-            "title": title,
-            "artist": if artist.is_empty() { "Various" } else { artist.as_str() },
-            "cover": cover,
-            "coverSmall": cover,
-            "coverLarge": cover,
-        }),
-        r,
-    ))
-}
-
-fn item_from_responsive(r: &Value) -> Option<Value> {
-    let video_id = r
-        .pointer("/playlistItemData/videoId")
-        .or_else(|| r.pointer("/flexColumns/0/musicResponsiveListItemFlexColumnRenderer/text/runs/0/navigationEndpoint/watchEndpoint/videoId"))
-        .or_else(|| r.pointer("/navigationEndpoint/watchEndpoint/videoId"))
-        .and_then(|v| v.as_str());
-    let browse_id = r
-        .pointer("/navigationEndpoint/browseEndpoint/browseId")
-        .or_else(|| r.pointer("/flexColumns/0/musicResponsiveListItemFlexColumnRenderer/text/runs/0/navigationEndpoint/browseEndpoint/browseId"))
-        .and_then(|v| v.as_str());
-    let id = video_id.or(browse_id)?;
-    let title = r
-        .pointer("/flexColumns/0/musicResponsiveListItemFlexColumnRenderer/text")
-        .map(runs_text)
-        .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| runs_text(r.get("title").unwrap_or(&Value::Null)));
-    if title.is_empty() {
-        return None;
-    }
-    let artist = r
-        .pointer("/flexColumns/1/musicResponsiveListItemFlexColumnRenderer/text")
-        .map(runs_text)
-        .unwrap_or_default();
-    let cover = best_thumb(
-        r.pointer("/thumbnail/musicThumbnailRenderer/thumbnail/thumbnails")
-            .or_else(|| r.pointer("/thumbnailRenderer/musicThumbnailRenderer/thumbnail/thumbnails"))
-            .unwrap_or(&Value::Null),
-    );
-    let kind = if video_id.is_some() {
-        "track"
-    } else if id.starts_with("VL") || id.starts_with("PL") || id.starts_with("MPSP") {
-        "playlist"
-    } else if id.starts_with("UC") {
-        "artist"
-    } else {
-        "album"
-    };
-    Some(with_duration(
-        json!({
-            "id": id,
-            "type": kind,
-            "title": title,
-            "artist": if artist.is_empty() { "Various" } else { artist.as_str() },
-            "cover": cover,
-            "coverSmall": cover,
-            "coverLarge": cover,
-        }),
-        r,
-    ))
-}
-
-fn push_shelf(title: String, contents: &Value, out: &mut Vec<Value>) {
-    let Some(arr) = contents.as_array() else {
-        return;
-    };
-    let mut items = Vec::new();
-    for c in arr {
-        if let Some(r) = c.get("musicTwoRowItemRenderer") {
-            if let Some(item) = item_from_two_row(r) {
-                items.push(item);
-            }
-        } else if let Some(r) = c.get("musicResponsiveListItemRenderer") {
-            if let Some(item) = item_from_responsive(r).or_else(|| item_from_two_row(r)) {
-                items.push(item);
-            }
-        } else if let Some(r) = c.get("richItemRenderer") {
-            let inner = r.get("content").unwrap_or(r);
-            if let Some(two) = inner.get("musicTwoRowItemRenderer") {
-                if let Some(item) = item_from_two_row(two) {
-                    items.push(item);
-                }
-            } else if let Some(resp) = inner.get("musicResponsiveListItemRenderer") {
-                if let Some(item) = item_from_responsive(resp).or_else(|| item_from_two_row(resp)) {
-                    items.push(item);
-                }
-            }
-        }
-    }
-    if !items.is_empty() {
-        out.push(json!({ "title": title, "items": items }));
-    }
-}
-
-fn walk_carousels(node: &Value, out: &mut Vec<Value>) {
-    match node {
-        Value::Array(arr) => {
-            for v in arr {
-                walk_carousels(v, out);
-            }
-        }
-        Value::Object(map) => {
-            if let Some(carousel) = map.get("musicCarouselShelfRenderer") {
-                let title = carousel
-                    .pointer("/header/musicCarouselShelfBasicHeaderRenderer/title")
-                    .map(runs_text)
-                    .filter(|s| !s.is_empty())
-                    .or_else(|| carousel.get("title").map(runs_text))
-                    .unwrap_or_else(|| "Section".into());
-                push_shelf(title, carousel.get("contents").unwrap_or(&Value::Null), out);
-            }
-            if let Some(shelf) = map.get("musicShelfRenderer") {
-                let title = shelf
-                    .get("title")
-                    .map(runs_text)
-                    .filter(|s| !s.is_empty())
-                    .unwrap_or_else(|| "Section".into());
-                push_shelf(title, shelf.get("contents").unwrap_or(&Value::Null), out);
-            }
-            if let Some(shelf) = map.get("musicPlaylistShelfRenderer") {
-                let title = shelf
-                    .get("title")
-                    .map(runs_text)
-                    .filter(|s| !s.is_empty())
-                    .unwrap_or_else(|| "Playlists".into());
-                push_shelf(title, shelf.get("contents").unwrap_or(&Value::Null), out);
-            }
-            if let Some(grid) = map.get("musicGridRenderer") {
-                let title = grid
-                    .pointer("/header/musicHeaderRenderer/title")
-                    .map(runs_text)
-                    .filter(|s| !s.is_empty())
-                    .unwrap_or_else(|| "Section".into());
-                push_shelf(title, grid.get("contents").unwrap_or(&Value::Null), out);
-            }
-            if let Some(grid) = map.get("gridRenderer") {
-                let title = grid
-                    .pointer("/header/gridHeaderRenderer/title")
-                    .map(runs_text)
-                    .filter(|s| !s.is_empty())
-                    .unwrap_or_else(|| "Section".into());
-                push_shelf(title, grid.get("items").unwrap_or(&Value::Null), out);
-            }
-            for v in map.values() {
-                walk_carousels(v, out);
-            }
-        }
-        _ => {}
-    }
-}
-
 pub fn resolve_cookies_public(app: &AppHandle) -> String {
     resolve_cookies(app)
 }
@@ -863,10 +597,7 @@ pub async fn ytm_browse(
         body["params"] = json!(params);
     }
 
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(12))
-        .build()
-        .map_err(|e| e.to_string())?;
+    let client = crate::player::client("", 12, true).ok_or("http client")?;
 
     let url = format!("{YTM_BROWSE}?prettyPrint=false&key={}", innertube_api_key());
     let mut req = client
@@ -925,12 +656,7 @@ pub async fn ytm_browse(
             data.get("error").unwrap_or(&Value::Null)
         ));
     }
-    let mut sections = Vec::new();
-    walk_carousels(&data, &mut sections);
-    if !sections.is_empty() {
-        return Ok(json!({ "zenithSections": sections }).to_string());
-    }
-
+    // surową odpowiedź parsuje JS: uproszczona kopia parsera gubiła karty radia, odcinki i typy
     Ok(text)
 }
 
@@ -976,27 +702,5 @@ mod tests {
         let auth = sapisid_authorization(cookie, MUSIC_ORIGIN, 1_700_000_000);
         assert!(auth.starts_with("SAPISIDHASH 1700000000_7761b97c35f7260402cc05c3109e7bd1aa1ebeca"));
         assert!(auth.contains("SAPISID3PHASH 1700000000_7761b97c35f7260402cc05c3109e7bd1aa1ebeca"));
-    }
-
-    #[test]
-    fn clock_duration_parses_mmss_and_hhmmss() {
-        assert_eq!(parse_clock_duration("3:21"), Some(201.0));
-        assert_eq!(parse_clock_duration("1:02:03"), Some(3723.0));
-        assert_eq!(parse_clock_duration("0:00"), None);
-        assert_eq!(parse_clock_duration("2013"), None);
-    }
-
-    #[test]
-    fn two_row_item_keeps_length_text() {
-        let r = json!({
-            "playlistItemData": { "videoId": "ZP69PLBqFUo" },
-            "title": { "runs": [{ "text": "Get Lucky" }] },
-            "subtitle": { "runs": [{ "text": "Daft Punk" }] },
-            "lengthText": { "runs": [{ "text": "4:08" }] },
-            "thumbnailRenderer": { "musicThumbnailRenderer": { "thumbnail": { "thumbnails": [] } } },
-        });
-        let item = item_from_two_row(&r).unwrap();
-        assert_eq!(item["durationSec"], json!(248.0));
-        assert_eq!(item["title"], json!("Get Lucky"));
     }
 }
