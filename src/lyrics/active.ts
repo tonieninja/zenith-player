@@ -38,14 +38,42 @@ export function secondsUntilLyricChange(
   return Math.max(0, synced[j].time - t);
 }
 
+// koniec wypełnienia karaoke; bez znacznika przerwy linia przed solówką wypełniałaby się do następnej
+export function lyricLineEnd(
+  synced: ReadonlyArray<{ time: number; text: string }>,
+  i: number
+): number {
+  const line = synced[i];
+  if (!line) return 0;
+  const next = synced[i + 1]?.time ?? line.time + 4;
+  return Math.min(next, line.time + Math.max(5, [...line.text].length * 0.25));
+}
+
 let current = -1;
+let shown = -1;
 const listeners = new Set<() => void>();
+
+const notify = () => {
+  if (shown === current) return;
+  shown = current;
+  for (const l of listeners) l();
+};
 
 export function setActiveLyricLine(idx: number) {
   if (idx === current) return;
   current = idx;
-  for (const l of listeners) l();
+  // ukryte okno nie przerysowuje tekstu przy każdej linii; po pokazaniu od razu dostaje bieżącą
+  if (typeof document !== 'undefined' && document.hidden) return;
+  notify();
 }
+
+if (typeof document !== 'undefined') {
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) notify();
+  });
+}
+
+const getShown = () => shown;
 
 export function getActiveLyricLine() {
   return current;
@@ -59,5 +87,5 @@ function subscribe(fn: () => void) {
 }
 
 export function useActiveLyricLine() {
-  return useSyncExternalStore(subscribe, getActiveLyricLine, getActiveLyricLine);
+  return useSyncExternalStore(subscribe, getShown, getShown);
 }
