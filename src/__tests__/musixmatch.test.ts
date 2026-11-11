@@ -453,7 +453,7 @@ describe('Musixmatch signed web api', () => {
     expect(jsFetches).toHaveLength(0);
   });
 
-  it('reports both sides once, then leaves the dead web api alone', async () => {
+  it('reports both sides, then leaves the web api alone after two failures in a row', async () => {
     httpFetch.mockImplementation(async (raw: string) => {
       const u = new URL(String(raw));
       if (u.hostname.startsWith('apic')) return reply(tokenZero);
@@ -461,6 +461,9 @@ describe('Musixmatch signed web api', () => {
     });
     await expect(getMusixmatchLyrics(radioEdit)).rejects.toThrow(
       /^app API: .*restricted token.*; web API: Musixmatch site HTTP 503$/
+    );
+    await expect(getMusixmatchLyrics(radioEdit)).rejects.toThrow(
+      /; web API: Musixmatch site HTTP 503$/
     );
     httpFetch.mockClear();
     await expect(getMusixmatchLyrics(radioEdit)).rejects.toThrow(/^token\.get failed/);

@@ -476,6 +476,7 @@ async function lookupWith(client: Client, q: MxmQuery, retried = false): Promise
 type SecretEntry = { secret: string; build: string; chunk: string; at: number };
 let secretMemo: SecretEntry | null = null;
 let webDownUntil = 0;
+let webFails = 0;
 
 function webIsDown(): boolean {
   if (!webDownUntil) webDownUntil = Number(readJson<number>(WEB_DOWN_KEY, 0)) || 0;
@@ -483,7 +484,11 @@ function webIsDown(): boolean {
   return webDownUntil > Date.now();
 }
 
-function markWebDown() {
+// jeden timeout to jeszcze nie awaria: półgodzinna przerwa dopiero po dwóch błędach z rzędu
+function noteWebFailure() {
+  webFails += 1;
+  if (webFails < 2) return;
+  webFails = 0;
   webDownUntil = Date.now() + WEB_DOWN_MS;
   writeJson(WEB_DOWN_KEY, webDownUntil);
 }
@@ -686,10 +691,15 @@ async function lookup(q: MxmQuery): Promise<MxmLyrics> {
   const appError = errors[0] || 'no client';
   if (webIsDown()) throw new Error(appError);
   try {
-    return await lookupWeb(q);
+    const res = await lookupWeb(q);
+    webFails = 0;
+    return res;
   } catch (e) {
-    if (e instanceof MxmMiss) throw e;
-    markWebDown();
+    if (e instanceof MxmMiss) {
+      webFails = 0;
+      throw e;
+    }
+    noteWebFailure();
     throw new Error(`app API: ${appError}; web API: ${message(e)}`, { cause: e });
   }
 }
@@ -700,6 +710,7 @@ export function resetMusixmatchState() {
   recent.clear();
   secretMemo = null;
   webDownUntil = 0;
+  webFails = 0;
   staleKeysDropped = false;
   for (const k of [TOKENS_KEY, LAST_CLIENT_KEY, SECRET_KEY, WEB_DOWN_KEY])
     localStorage.removeItem(k);
