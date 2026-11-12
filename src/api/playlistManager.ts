@@ -259,6 +259,14 @@ export async function addTracks(id: string, videoIds: string[], lang: Language) 
   );
 }
 
+// jeden utwór, który już jest na liście docelowej, sprawia, że YouTube odrzuca całą paczkę
+export async function addMissingTracks(id: string, videoIds: string[], lang: Language) {
+  const have = new Set((await loadPlaylistDetails(id, lang)).entries.map((e) => e.videoId));
+  const missing = [...new Set(videoIds)].filter((v) => !have.has(v));
+  await addTracks(id, missing, lang);
+  return missing.length;
+}
+
 export async function removeEntries(id: string, entries: PlaylistEntry[], lang: Language) {
   const actions = entries
     .filter((e) => e.setVideoId)

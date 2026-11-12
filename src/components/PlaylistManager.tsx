@@ -17,18 +17,20 @@ import {
   Trash2,
   X,
 } from 'lucide-react';
-import { type Language, translations } from '../i18n';
+import { errorText, type Language, translations } from '../i18n';
+import { isTypingEvent } from '../utils/dom';
 import { ModalOverlay } from './ui/ModalOverlay';
 import {
   createPlaylist,
   deletePlaylist,
-  searchMusic,
+  invalidateLibraryCache,
+  searchSongsStrict,
   SessionExpiredError,
   type PlaylistPrivacy,
   type Track,
 } from '../api/youtube';
 import {
-  addTracks,
+  addMissingTracks,
   createWithTracks,
   samePlaylist,
   markOwned,
@@ -63,7 +65,6 @@ import {
   type ExportResult,
   type ImportResult,
   type SpotifyPlaylist,
-  type YtmCandidate,
 } from '../api/spotify';
 import { Select } from './ui/Select';
 import { PopoverMenu } from './ui/PopoverMenu';
@@ -168,6 +169,9 @@ export function PlaylistManager({
   const [activeId, setActiveId] = useState<string | null>(null);
   const [details, setDetails] = useState<PlaylistDetails | null>(null);
   const [detailState, setDetailState] = useState<'idle' | 'loading' | 'failed'>('idle');
+  // pierwsze strony są już widoczne, reszta się dociąga; kopia czy eksport wzięłyby tylko ten kawałek
+  const [partial, setPartial] = useState(false);
+  const moveChain = useRef<Promise<unknown>>(Promise.resolve());
   const [form, setForm] = useState({
     title: '',
     description: '',
@@ -186,16 +190,17 @@ export function PlaylistManager({
     try {
       const fresh = await listAllPlaylists(lang, ownerName);
       setLists((prev) => preserveOwned(fresh, prev));
+      // trzy naraz: setka zapisanych list wysłana jednocześnie to proszenie się o limit zapytań
+      const todo = fresh.filter((p) => p.kind === 'saved' && /^(VL)?PL/.test(p.id));
+      const mine: string[] = [];
       void Promise.all(
-        fresh
-          .filter((p) => p.kind === 'saved' && /^(VL)?PL/.test(p.id))
-          .map((p) =>
-            loadPlaylistDetails(p.id, lang, 0)
-              .then((d) => (d.owned ? p.id : null))
-              .catch(() => null)
-          )
-      ).then((ids) => {
-        const mine = ids.filter((x): x is string => Boolean(x));
+        Array.from({ length: 3 }, async () => {
+          for (let p = todo.shift(); p; p = todo.shift()) {
+            const d = await loadPlaylistDetails(p.id, lang, 0).catch(() => null);
+            if (d?.owned) mine.push(p.id);
+          }
+        })
+      ).then(() => {
         if (mine.length)
           setLists((prev) => (prev ? mine.reduce((acc, id) => markOwned(acc, id), prev) : prev));
       });
@@ -210,7 +215,8 @@ export function PlaylistManager({
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !confirmDelete && !spotifyOpen && !importOpen) onClose();
+      if (e.key !== 'Escape' || e.defaultPrevented || isTypingEvent(e)) return;
+      if (!confirmDelete && !spotifyOpen && !importOpen) onClose();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -220,6 +226,14 @@ export function PlaylistManager({
     () => (activeId && lists?.find((p) => samePlaylist(p.id, activeId))) || null,
     [lists, activeId]
   );
+  // te same warunki co w saveDetails; przy niezapisanych zmianach klik obok okna go nie zamyka
+  const dirty =
+    !!active &&
+    !!details &&
+    !partial &&
+    (form.title.trim() !== (details.title || active.title) ||
+      form.description !== details.description ||
+      (!!details.privacy && form.privacy !== details.privacy));
   const shown = useMemo(
     () => filterAndSort(lists ?? [], query, sort, kind === 'all' ? undefined : [kind]),
     [lists, query, sort, kind]
@@ -237,13 +251,15 @@ export function PlaylistManager({
       setConfirmDelete(false);
       setDetails(null);
       setDetailState('loading');
+      setPartial(true);
       try {
-        const d = await loadPlaylistDetails(id, lang, 60, (partial) => {
+        const d = await loadPlaylistDetails(id, lang, 60, (part) => {
           if (req !== reqRef.current) return;
-          setDetails(partial);
+          setDetails(part);
           setDetailState('idle');
         });
         if (req !== reqRef.current) return;
+        setPartial(false);
         setDetails(d);
         if (d.owned) setLists((prev) => (prev ? markOwned(prev, id) : prev));
         const summary = lists?.find((p) => samePlaylist(p.id, id));
@@ -254,7 +270,10 @@ export function PlaylistManager({
         });
         setDetailState('idle');
       } catch {
-        if (req === reqRef.current) setDetailState('failed');
+        if (req === reqRef.current) {
+          setPartial(false);
+          setDetailState('failed');
+        }
       }
     },
     [lang, lists]
@@ -321,6 +340,8 @@ export function PlaylistManager({
       pushToast(fill(t.pmCreated, { name: t.pmNewDefaultName }), 'success', 1800);
       onChanged?.();
       for (let i = 0; i < 4; i += 1) {
+        // YouTube pokazuje nową listę z opóźnieniem; ponowienie z pamięci podręcznej nigdy by jej nie zobaczyło
+        invalidateLibraryCache();
         const fresh = await listAllPlaylists(lang, ownerName).catch(() => null);
         if (fresh?.some((p) => samePlaylist(p.id, id))) {
           setLists((prev) => preserveOwned(fresh, prev, [id]));
@@ -345,7 +366,7 @@ export function PlaylistManager({
 
   const duplicate = () =>
     run(async () => {
-      if (!active) return;
+      if (!active || partial) return;
       const name = fill(t.pmCopyOf, { name: active.title });
       await createWithTracks(
         name,
@@ -361,7 +382,7 @@ export function PlaylistManager({
 
   const mergeWith = (other: PlaylistSummary) =>
     run(async () => {
-      if (!active) return;
+      if (!active || partial) return;
       const theirs = await loadPlaylistDetails(other.id, lang);
       const name = fill(t.pmMergedName, { a: active.title, b: other.title }).slice(0, 150);
       await createWithTracks(
@@ -401,13 +422,15 @@ export function PlaylistManager({
 
   const addSelectedTo = (target: PlaylistSummary) =>
     run(async () => {
+      if (partial && !selectedEntries.length) return;
       const ids = (selectedEntries.length ? selectedEntries : entries).map((e) => e.videoId);
       if (!ids.length) return;
-      await addTracks(target.id, ids, lang);
-      pushToast(
-        fill(t.pmAdded, { count: tracksLabel(ids.length, t), name: target.title }),
-        'success'
-      );
+      const added = await addMissingTracks(target.id, ids, lang);
+      if (!added) {
+        pushToast(fill(t.alreadyInPlaylist, { name: target.title }), 'info');
+        return;
+      }
+      pushToast(fill(t.pmAdded, { count: tracksLabel(added, t), name: target.title }), 'success');
       onChanged?.();
     });
 
@@ -417,16 +440,20 @@ export function PlaylistManager({
     setDragOver(null);
     if (from === null || from === to || !active?.editable || !details) return;
     const before = entries;
+    const id = active.id;
     setDetails({ ...details, entries: reorder(entries, from, to) });
-    moveEntry(active.id, before, from, to, lang).catch(() => {
-      setDetails((d) => (d ? { ...d, entries: before } : d));
-      pushToast(t.pmMoveFailed, 'error');
-    });
+    // przesunięcia po kolei: równoległe liczyły pozycje z różnych wersji listy
+    moveChain.current = moveChain.current
+      .then(() => moveEntry(id, before, from, to, lang))
+      .catch(() => {
+        pushToast(t.pmMoveFailed, 'error');
+        void openPlaylist(id);
+      });
   };
 
   const saveExport = (ext: 'csv' | 'json') =>
     run(async () => {
-      if (!active) return;
+      if (!active || partial) return;
       const contents = ext === 'csv' ? toCsv(active.title, entries) : toJson(active.title, entries);
       const path = await invoke<string>('save_playlist_export', {
         name: active.title,
@@ -445,16 +472,19 @@ export function PlaylistManager({
   ];
 
   return (
-    <ModalOverlay onClick={onClose} testId="playlist-manager-overlay">
-      <div
-        className="glass-modal-container pm-modal"
-        onClick={(e) => e.stopPropagation()}
-        role="dialog"
-        aria-label={t.pmTitle}
-      >
+    <ModalOverlay onClick={() => !dirty && onClose()} testId="playlist-manager-overlay">
+      <div className="glass-modal-container pm-modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <h2>{t.pmTitle}</h2>
-          <X size={26} className="modal-close-icon" onClick={onClose} aria-label={t.pmCancel} />
+          <button
+            type="button"
+            className="modal-close-icon"
+            aria-label={t.winClose}
+            title={t.winClose}
+            onClick={onClose}
+          >
+            <X size={26} />
+          </button>
         </div>
         <div className={`pm-body ${active ? 'has-active' : ''}`}>
           <aside className="pm-side">
@@ -625,7 +655,11 @@ export function PlaylistManager({
                   >
                     <Play size={15} /> {t.pmPlay}
                   </button>
-                  <button className="pm-btn" disabled={busy || !entries.length} onClick={duplicate}>
+                  <button
+                    className="pm-btn"
+                    disabled={busy || partial || !entries.length}
+                    onClick={duplicate}
+                  >
                     <Copy size={15} /> {t.pmDuplicate}
                   </button>
                   <PopoverMenu
@@ -641,6 +675,7 @@ export function PlaylistManager({
                       .map((p) => ({
                         key: p.id,
                         label: p.title,
+                        disabled: partial,
                         onSelect: () => void mergeWith(p),
                       }))}
                   />
@@ -656,19 +691,19 @@ export function PlaylistManager({
                       {
                         key: 'csv',
                         label: t.pmExportCsv,
-                        disabled: !entries.length,
+                        disabled: partial || !entries.length,
                         onSelect: () => void saveExport('csv'),
                       },
                       {
                         key: 'json',
                         label: t.pmExportJson,
-                        disabled: !entries.length,
+                        disabled: partial || !entries.length,
                         onSelect: () => void saveExport('json'),
                       },
                       {
                         key: 'spotify',
                         label: t.pmSpotify,
-                        disabled: !entries.length,
+                        disabled: partial || !entries.length,
                         onSelect: () => setSpotifyOpen(true),
                       },
                     ]}
@@ -884,7 +919,7 @@ function SpotifyExport({
       setResult(r);
       setPhase('done');
     } catch (e) {
-      setError(fill(t.pmSpotifyFailed, { err: String((e as Error).message || e) }));
+      setError(fill(t.pmSpotifyFailed, { err: errorText(t, e) }));
       setPhase('idle');
       if (String((e as Error).message).includes('not connected')) setConnected(false);
     }
@@ -993,7 +1028,7 @@ function SpotifyConnect({
       await connectSpotify();
       onConnected();
     } catch (e) {
-      setError(fill(failText, { err: String((e as Error).message || e) }));
+      setError(fill(failText, { err: errorText(t, e) }));
     } finally {
       setWaiting(false);
     }
@@ -1022,11 +1057,6 @@ function SpotifyConnect({
     </>
   );
 }
-
-const ytmSongs = (q: string, lang: Language): Promise<YtmCandidate[]> =>
-  searchMusic(q, lang).then((secs) =>
-    secs.flatMap((s) => s.items).filter((i) => i.type === 'track')
-  );
 
 function SpotifyImport({
   lang,
@@ -1057,11 +1087,11 @@ function SpotifyImport({
         setPick(l[0]?.id ?? '');
       },
       (e) => {
-        setError(fill(failText, { err: String((e as Error).message || e) }));
+        setError(fill(failText, { err: errorText(t, e) }));
         if (String((e as Error).message).includes('not connected')) setConnected(false);
       }
     );
-  }, [connected, failText]);
+  }, [connected, failText, t]);
 
   const start = async () => {
     const pl = lists?.find((p) => p.id === pick);
@@ -1073,7 +1103,7 @@ function SpotifyImport({
       setProgress({ done: 0, total: tracks.length });
       const r = await matchOnYoutube(
         tracks,
-        (q) => ytmSongs(q, lang),
+        (q) => searchSongsStrict(q, lang),
         (done, total) => setProgress({ done, total })
       );
       const name = (pl.name || 'Spotify').slice(0, 150);
@@ -1084,7 +1114,7 @@ function SpotifyImport({
       setResult({ ...r, total: tracks.length });
       setPhase('done');
     } catch (e) {
-      setError(fill(failText, { err: String((e as Error).message || e) }));
+      setError(fill(failText, { err: errorText(t, e) }));
       setPhase('idle');
     }
   };
