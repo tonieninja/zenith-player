@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { Track } from '../../api/youtube';
-import type { translations } from '../../i18n';
+import { errorText, type translations } from '../../i18n';
+import { formatTime } from '../../utils/playback';
 import {
   clearDownloads,
   deleteDownload,
@@ -31,6 +32,16 @@ export function DownloadsSettings({
   useEffect(() => {
     void listDownloads().then(setItems);
     return onDownloadProgress((p) => {
+      // pobranie z menu okładki też kończy się tutaj, więc lista odświeża się sama
+      if (p.finished) {
+        setBusy((b) => {
+          const n = { ...b };
+          delete n[p.id];
+          return n;
+        });
+        void listDownloads().then(setItems);
+        return;
+      }
       setBusy((b) => ({ ...b, [p.id]: p.total > 0 ? p.done / p.total : 0 }));
     });
   }, []);
@@ -45,10 +56,10 @@ export function DownloadsSettings({
     setErr('');
     setBusy((b) => ({ ...b, [cur.id]: 0 }));
     try {
-      await downloadTrack(cur);
+      await downloadTrack(cur, cur.durationSec ?? 0);
       setItems(await listDownloads());
     } catch (e) {
-      setErr(t.dlFailed.replace('{err}', String(e)));
+      setErr(t.dlFailed.replace('{err}', errorText(t, e)));
     } finally {
       setBusy((b) => {
         const n = { ...b };
@@ -142,6 +153,5 @@ export function DownloadsSettings({
 }
 
 function fmtDur(secs: number): string {
-  const s = Math.round(secs);
-  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+  return formatTime(Math.round(secs));
 }

@@ -45,15 +45,39 @@ fn active() -> &'static Mutex<std::collections::HashSet<String>> {
     ACTIVE.get_or_init(|| Mutex::new(Default::default()))
 }
 
+// usunięte w trakcie pobierania: kończące się pobranie nie może wrócić na listę
+fn dropped() -> &'static Mutex<std::collections::HashSet<String>> {
+    static DROPPED: OnceLock<Mutex<std::collections::HashSet<String>>> = OnceLock::new();
+    DROPPED.get_or_init(|| Mutex::new(Default::default()))
+}
+
 pub fn init(app: &AppHandle) {
-    let Ok(base) = app.path().app_data_dir() else {
+    let Ok(local) = app.path().app_local_data_dir() else {
         return;
     };
-    init_dir(base.join("downloads"));
+    let dir = local.join("downloads");
+    // gigabajty audio w profilu Roaming spowalniają logowanie w firmach; stary katalog przenosimy raz
+    if let Ok(old) = app.path().app_data_dir().map(|b| b.join("downloads")) {
+        if old != dir && old.is_dir() && !dir.exists() {
+            let _ = std::fs::create_dir_all(&local);
+            if std::fs::rename(&old, &dir).is_err() {
+                return init_dir(old);
+            }
+        }
+    }
+    init_dir(dir);
 }
 
 pub fn init_dir(dir: PathBuf) {
     let _ = std::fs::create_dir_all(&dir);
+    // przerwane pobrania nie wznawiają się po restarcie, a mogą ważyć setki MB
+    if let Ok(rd) = std::fs::read_dir(&dir) {
+        for e in rd.flatten() {
+            if e.path().extension().is_some_and(|x| x == "part") {
+                let _ = std::fs::remove_file(e.path());
+            }
+        }
+    }
     let map = load_index(&dir);
     if let Ok(mut idx) = index().lock() {
         *idx = map;
@@ -64,18 +88,54 @@ pub fn init_dir(dir: PathBuf) {
 fn load_index(dir: &std::path::Path) -> BTreeMap<String, DownloadMeta> {
     let raw = std::fs::read_to_string(dir.join("index.json")).unwrap_or_default();
     let list: Vec<DownloadMeta> = serde_json::from_str(&raw).unwrap_or_default();
-    list.into_iter()
+    let mut map: BTreeMap<String, DownloadMeta> = list
+        .into_iter()
         .filter(|m| valid_id(&m.id) && dir.join(format!("{}.audio", m.id)).is_file())
         .map(|m| (m.id.clone(), m))
+        .collect();
+    // plik spoza indeksu (zepsuty JSON, zamknięcie przed zapisem) musi dać się usunąć z aplikacji
+    for m in rebuild_index(dir) {
+        map.entry(m.id.clone()).or_insert(m);
+    }
+    map
+}
+
+fn rebuild_index(dir: &std::path::Path) -> Vec<DownloadMeta> {
+    let Ok(rd) = std::fs::read_dir(dir) else {
+        return Vec::new();
+    };
+    rd.flatten()
+        .filter_map(|e| {
+            let p = e.path();
+            let id = p.file_stem()?.to_str()?.to_string();
+            if p.extension()? != "audio" || !valid_id(&id) {
+                return None;
+            }
+            let md = e.metadata().ok()?;
+            let saved_at = md
+                .modified()
+                .ok()
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                .map_or(0, |d| d.as_secs());
+            Some(DownloadMeta {
+                title: id.clone(),
+                id,
+                artist: String::new(),
+                album: String::new(),
+                cover: String::new(),
+                duration: 0.0,
+                size: md.len(),
+                saved_at,
+            })
+        })
         .collect()
 }
 
 fn save_index() {
     let Some(dir) = DIR.get() else { return };
-    let list: Vec<DownloadMeta> = match index().lock() {
-        Ok(m) => m.values().cloned().collect(),
-        Err(_) => return,
-    };
+    // zapis pod blokadą: dwa pobrania kończące się naraz nie nadpiszą indeksu starszym stanem
+    let Ok(m) = index().lock() else { return };
+    let list: Vec<&DownloadMeta> = m.values().collect();
     let tmp = dir.join("index.json.tmp");
     if let Ok(s) = serde_json::to_string(&list) {
         if std::fs::write(&tmp, s).is_ok() {
@@ -111,6 +171,11 @@ pub fn downloads_delete(id: String) -> Result<(), String> {
     if !valid_id(&id) {
         return Err("bad id".into());
     }
+    if active().lock().is_ok_and(|a| a.contains(&id)) {
+        if let Ok(mut d) = dropped().lock() {
+            d.insert(id.clone());
+        }
+    }
     if let Some(p) = file_for(&id) {
         std::fs::remove_file(p).map_err(|e| e.to_string())?;
     }
@@ -123,6 +188,9 @@ pub fn downloads_delete(id: String) -> Result<(), String> {
 
 #[tauri::command]
 pub fn downloads_clear() -> Result<usize, String> {
+    if let (Ok(a), Ok(mut d)) = (active().lock(), dropped().lock()) {
+        d.extend(a.iter().cloned());
+    }
     let ids: Vec<String> = downloads_list().into_iter().map(|m| m.id).collect();
     for id in &ids {
         downloads_delete(id.clone())?;
@@ -149,12 +217,129 @@ pub async fn downloads_add(app: AppHandle, meta: DownloadMeta) -> Result<Downloa
             return Err("already downloading".into());
         }
     }
+    if let Ok(mut d) = dropped().lock() {
+        d.remove(&meta.id);
+    }
     let id = meta.id.clone();
     let r = fetch_to_disk(&app, &dir, meta).await;
     if let Ok(mut a) = active().lock() {
         a.remove(&id);
     }
+    if r.is_err() {
+        // bez końcowego zdarzenia panel pobrań zostaje na ostatnim procencie z zablokowanym przyciskiem
+        let _ = app.emit(
+            "download-progress",
+            serde_json::json!({ "id": id, "done": 0, "total": 0, "finished": true }),
+        );
+    }
     r
+}
+
+// po tylu nieudanych próbach z rzędu (backoff do 32 s) uznajemy, że sieci nie ma
+const MAX_FAILS: u32 = 8;
+const PROGRESS_STEP: u64 = 1024 * 1024;
+
+pub(crate) async fn fetch_part(
+    url: &str,
+    part: &std::path::Path,
+    mut on_progress: impl FnMut(u64, u64),
+) -> Result<u64, String> {
+    use reqwest::header::{CONTENT_RANGE, RANGE};
+    use tokio::io::{AsyncSeekExt, AsyncWriteExt};
+    // bez całkowitego limitu czasu: 9 h audio to kilkaset MB, a ten limit liczy też czytanie body
+    let client = reqwest::Client::builder()
+        .no_proxy()
+        .connect_timeout(std::time::Duration::from_secs(10))
+        .read_timeout(std::time::Duration::from_secs(90))
+        .build()
+        .map_err(|e| e.to_string())?;
+    let mut file = tokio::fs::File::create(part)
+        .await
+        .map_err(|e| e.to_string())?;
+    let (mut done, mut total, mut fails) = (0u64, 0u64, 0u32);
+    let mut why = String::from("download failed");
+    while total == 0 || done < total {
+        if fails > MAX_FAILS {
+            return Err(why);
+        }
+        if fails > 0 {
+            tokio::time::sleep(std::time::Duration::from_secs(1 << fails.min(5))).await;
+        }
+        let res = match client
+            .get(url)
+            .header(RANGE, format!("bytes={done}-"))
+            .send()
+            .await
+        {
+            Ok(r) if r.status().is_success() => r,
+            Ok(r) => {
+                why = format!("http {}", r.status().as_u16());
+                fails += 1;
+                continue;
+            }
+            Err(e) => {
+                why = e.to_string();
+                fails += 1;
+                continue;
+            }
+        };
+        let ranged = res.status() == reqwest::StatusCode::PARTIAL_CONTENT;
+        let (start, size) = match res
+            .headers()
+            .get(CONTENT_RANGE)
+            .and_then(|v| v.to_str().ok())
+            .and_then(crate::stream_proxy::parse_content_range)
+        {
+            Some((a, _, t)) if ranged => (a, t),
+            _ => (0, res.content_length().unwrap_or(0)),
+        };
+        // po odświeżeniu linku może przyjść inny format; sklejenie dwóch plików zepsułoby nagranie
+        if start != done || (total > 0 && size != total) {
+            file.set_len(0).await.map_err(|e| e.to_string())?;
+            file.seek(std::io::SeekFrom::Start(0))
+                .await
+                .map_err(|e| e.to_string())?;
+            done = 0;
+            if start != 0 {
+                why = "server returned the wrong range".into();
+                fails += 1;
+                continue;
+            }
+        }
+        total = size;
+        let before = done;
+        let mut cut = false;
+        let mut body = res.bytes_stream();
+        while let Some(chunk) = body.next().await {
+            match chunk {
+                Ok(c) => {
+                    file.write_all(&c).await.map_err(|e| e.to_string())?;
+                    done += c.len() as u64;
+                    on_progress(done, total);
+                }
+                Err(e) => {
+                    why = e.to_string();
+                    cut = true;
+                    break;
+                }
+            }
+        }
+        if done > before {
+            fails = 0;
+        }
+        if cut || done == before {
+            fails += 1;
+            continue;
+        }
+        if total == 0 {
+            break;
+        }
+    }
+    file.flush().await.map_err(|e| e.to_string())?;
+    if done == 0 {
+        return Err("empty download".into());
+    }
+    Ok(done)
 }
 
 async fn fetch_to_disk(
@@ -168,60 +353,45 @@ async fn fetch_to_disk(
     if url.contains("/offline/") {
         return Err("already offline".into());
     }
-    let client = reqwest::Client::builder()
-        .no_proxy()
-        .build()
-        .map_err(|e| e.to_string())?;
     if meta.duration.is_nan() || meta.duration <= 0.0 {
-        meta.duration = duration_from_url(&url).unwrap_or(0.0);
+        // adres proxy nie ma dur=, ma go dopiero link z googlevideo pod spodem
+        meta.duration = crate::stream_proxy::current_upstream(&meta.id)
+            .and_then(|u| duration_from_url(&u.url))
+            .unwrap_or(0.0);
     }
-    let res = client.get(&url).send().await.map_err(|e| e.to_string())?;
-    if !res.status().is_success() {
-        return Err(format!("http {}", res.status().as_u16()));
-    }
-    let total = res.content_length().unwrap_or(0);
     let part = dir.join(format!("{}.part", meta.id));
-    let mut file = tokio::fs::File::create(&part)
-        .await
-        .map_err(|e| e.to_string())?;
-    let mut done: u64 = 0;
     let mut last_emit = 0u64;
-    let mut body = res.bytes_stream();
-    use tokio::io::AsyncWriteExt;
-    while let Some(chunk) = body.next().await {
-        let chunk = match chunk {
-            Ok(c) => c,
-            Err(e) => {
-                drop(file);
-                let _ = tokio::fs::remove_file(&part).await;
-                return Err(e.to_string());
-            }
-        };
-        file.write_all(&chunk).await.map_err(|e| e.to_string())?;
-        done += chunk.len() as u64;
-        if done - last_emit > 256 * 1024 {
+    let fetched = fetch_part(&url, &part, |done, total| {
+        if done.saturating_sub(last_emit) >= PROGRESS_STEP || done < last_emit {
             last_emit = done;
             let _ = app.emit(
                 "download-progress",
                 serde_json::json!({ "id": meta.id, "done": done, "total": total }),
             );
         }
-    }
-    file.flush().await.map_err(|e| e.to_string())?;
-    drop(file);
-    if done == 0 || (total > 0 && done < total) {
+    })
+    .await;
+    let done = match fetched {
+        Ok(n) => n,
+        Err(e) => {
+            let _ = tokio::fs::remove_file(&part).await;
+            return Err(e);
+        }
+    };
+    if let Err(e) = tokio::fs::rename(&part, dir.join(format!("{}.audio", meta.id))).await {
         let _ = tokio::fs::remove_file(&part).await;
-        return Err("download cut short".into());
+        return Err(e.to_string());
     }
-    tokio::fs::rename(&part, dir.join(format!("{}.audio", meta.id)))
-        .await
-        .map_err(|e| e.to_string())?;
     meta.size = done;
     meta.saved_at = crate::now_secs();
+    if dropped().lock().is_ok_and(|mut d| d.remove(&meta.id)) {
+        let _ = tokio::fs::remove_file(dir.join(format!("{}.audio", meta.id))).await;
+        return Err("cancelled".into());
+    }
     if let Ok(mut m) = index().lock() {
         m.insert(meta.id.clone(), meta.clone());
     }
-    save_index();
+    let _ = tokio::task::spawn_blocking(save_index).await;
     let _ = app.emit(
         "download-progress",
         serde_json::json!({ "id": meta.id, "done": done, "total": done, "finished": true }),
@@ -266,6 +436,8 @@ pub fn parse_range(h: Option<&str>, len: u64) -> Option<(u64, u64)> {
     (start <= end && start < len).then_some((start, end))
 }
 
+const SLICE_MAX: u64 = 8 * 1024 * 1024;
+
 pub type Slice = (u16, Vec<u8>, u64, u64, u64, &'static str);
 
 pub fn read_slice(id: &str, range: Option<&str>) -> Option<Slice> {
@@ -275,8 +447,11 @@ pub fn read_slice(id: &str, range: Option<&str>) -> Option<Slice> {
     let mut head = [0u8; 12];
     let n = f.read(&mut head).ok()?;
     let mime = sniff_mime(&head[..n]);
+    // bez Range też najwyżej 8 MiB, bo 9 h nagranie w całości to setki MB w pamięci
+    let cap = |s: u64, e: u64| e.min(s + SLICE_MAX - 1);
     let (status, start, end) = match parse_range(range, len) {
-        Some((s, e)) => (206u16, s, e.min(s + 8 * 1024 * 1024 - 1)),
+        Some((s, e)) => (206u16, s, cap(s, e)),
+        None if len > SLICE_MAX => (206u16, 0, cap(0, len - 1)),
         None => (200u16, 0, len.saturating_sub(1)),
     };
     f.seek(SeekFrom::Start(start)).ok()?;
@@ -296,6 +471,74 @@ fn duration_from_url(url: &str) -> Option<f64> {
 
 #[cfg(test)]
 mod tests {
+    // serwer z Range: odpowiedź n-ta (od 0) dostaje bodies[n], a cut[n] zrywa ją po tylu bajtach
+    fn flaky_server(bodies: Vec<Vec<u8>>, cut: Vec<Option<usize>>) -> String {
+        use std::io::{BufRead, BufReader, Write};
+        let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = l.local_addr().unwrap().port();
+        std::thread::spawn(move || {
+            for (n, c) in l.incoming().flatten().enumerate() {
+                let body = bodies[n.min(bodies.len() - 1)].clone();
+                let cut = cut.get(n).copied().flatten();
+                let mut r = BufReader::new(c.try_clone().unwrap());
+                let mut from = 0usize;
+                loop {
+                    let mut line = String::new();
+                    if r.read_line(&mut line).unwrap_or(0) == 0 || line == "\r\n" {
+                        break;
+                    }
+                    if let Some(v) = line.to_ascii_lowercase().strip_prefix("range: bytes=") {
+                        from = v.trim().trim_end_matches('-').parse().unwrap_or(0);
+                    }
+                }
+                let len = body.len();
+                let from = from.min(len);
+                let mut c = c;
+                let head = format!(
+                    "HTTP/1.1 206 Partial Content\r\nContent-Length: {}\r\nContent-Range: bytes {from}-{}/{len}\r\nConnection: close\r\n\r\n",
+                    len - from,
+                    len - 1
+                );
+                let _ = c.write_all(head.as_bytes());
+                let end = cut.map(|k| (from + k).min(len)).unwrap_or(len);
+                let _ = c.write_all(&body[from..end]);
+                let _ = c.flush();
+            }
+        });
+        format!("http://127.0.0.1:{port}/a")
+    }
+
+    fn tmp_part(tag: &str) -> std::path::PathBuf {
+        std::env::temp_dir().join(format!("zenith-part-{tag}-{}.part", std::process::id()))
+    }
+
+    #[tokio::test]
+    async fn resumes_from_the_byte_where_the_connection_dropped() {
+        let body: Vec<u8> = (0..300_000u32).map(|i| (i % 251) as u8).collect();
+        let url = flaky_server(vec![body.clone()], vec![Some(120_000), None]);
+        let part = tmp_part("resume");
+        let mut seen = 0u64;
+        let n = super::fetch_part(&url, &part, |d, _| seen = d)
+            .await
+            .unwrap();
+        assert_eq!(n, body.len() as u64);
+        assert_eq!(seen, n);
+        assert_eq!(std::fs::read(&part).unwrap(), body);
+        let _ = std::fs::remove_file(&part);
+    }
+
+    #[tokio::test]
+    async fn restarts_when_the_file_changes_under_a_new_link() {
+        let first: Vec<u8> = vec![1; 200_000];
+        let second: Vec<u8> = vec![2; 150_000];
+        let url = flaky_server(vec![first, second.clone()], vec![Some(50_000), None, None]);
+        let part = tmp_part("swap");
+        let n = super::fetch_part(&url, &part, |_, _| {}).await.unwrap();
+        assert_eq!(n, second.len() as u64);
+        assert_eq!(std::fs::read(&part).unwrap(), second);
+        let _ = std::fs::remove_file(&part);
+    }
+
     #[test]
     fn duration_from_stream_url() {
         assert_eq!(
@@ -334,6 +577,35 @@ mod tests {
         assert!(valid_id("dQw4w9WgXcQ"));
         assert!(!valid_id("../etc/pass"));
         assert!(!valid_id("short"));
+    }
+
+    #[test]
+    fn audio_missing_from_a_valid_index_comes_back() {
+        let dir = std::env::temp_dir().join(format!("zenith-dl-orphan-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("aaaaaaaaaaa.audio"), b"OggS").unwrap();
+        std::fs::write(dir.join("bbbbbbbbbbb.audio"), b"OggS0123").unwrap();
+        let known = DownloadMeta {
+            id: "aaaaaaaaaaa".into(),
+            title: "known".into(),
+            artist: String::new(),
+            album: String::new(),
+            cover: String::new(),
+            duration: 1.0,
+            size: 4,
+            saved_at: 1,
+        };
+        std::fs::write(
+            dir.join("index.json"),
+            serde_json::to_string(&vec![known.clone()]).unwrap(),
+        )
+        .unwrap();
+        let map = load_index(&dir);
+        assert_eq!(map.get("aaaaaaaaaaa"), Some(&known));
+        let orphan = map.get("bbbbbbbbbbb").unwrap();
+        assert_eq!((orphan.title.as_str(), orphan.size), ("bbbbbbbbbbb", 8));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
