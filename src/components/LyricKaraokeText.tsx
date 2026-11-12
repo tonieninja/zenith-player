@@ -2,6 +2,10 @@ import { useEffect, useRef, useState } from 'react';
 import { useLightLyrics } from '../lyrics/light';
 
 const COLUMN_PX = 24;
+// wymazywanie skacze 30 razy na sekundę: przy miękkiej krawędzi wygląda płynnie, a WebView2 nie rysuje 60 klatek
+const WIPE_FRAME_MS = 1000 / 30;
+const wipeEasing = (ms: number) =>
+  `steps(${Math.max(1, Math.round(ms / WIPE_FRAME_MS))}, jump-end)`;
 
 type Row = { x: number; w: number; y0: number; y1: number; t0: number; t1: number };
 
@@ -66,7 +70,9 @@ function watchLayout(fill: HTMLElement, rebuild: () => void): () => void {
       : null;
   ro?.observe(fill);
   let alive = true;
-  void document.fonts?.ready.then(() => alive && rebuild());
+  if (document.fonts && document.fonts.status !== 'loaded') {
+    void document.fonts.ready.then(() => alive && rebuild());
+  }
   return () => {
     alive = false;
     ro?.disconnect();
@@ -119,7 +125,7 @@ function runColumnWipe(
           {
             delay: row.t0 * durMs + ((x0 - left) / (right - left)) * rowMs,
             duration: Math.max(1, (cw / (right - left)) * rowMs),
-            easing: 'linear',
+            easing: wipeEasing((cw / (right - left)) * rowMs),
             fill: 'both',
           }
         );
@@ -150,6 +156,9 @@ function runColumnWipe(
   };
 }
 
+// tempo z poprzedniej linii: nowa nie startuje w 1x, więc nie odskakuje przez pierwsze pół sekundy
+let knownRate = 1;
+
 function driveWipe(
   getAnims: () => Animation[],
   span: number,
@@ -164,6 +173,9 @@ function driveWipe(
     setPlaying(p);
   };
   let last = pos();
+  let lastAt = performance.now();
+  let seenRate = knownRate;
+  if (knownRate !== 1) getAnims().forEach((a) => a.updatePlaybackRate(knownRate));
   setP(last >= 0 && last < span);
   setAll(clamp(last));
   if (!playing) getAnims().forEach((a) => a.pause());
@@ -171,8 +183,12 @@ function driveWipe(
   let heldAt = Number.NaN;
   const sync = () => {
     const now = pos();
+    const at = performance.now();
+    // tempo odtwarzania z dwóch odczytów zegara, zaokrąglone do 0,05, żeby szum go nie przestawiał
+    const rate = Math.round(((now - last) / Math.max(1, at - lastAt)) * 20000) / 20;
+    lastAt = at;
     stalls = now === last ? stalls + 1 : 0;
-    const advancing = stalls < 2;
+    const advancing = stalls < 1;
     last = now;
     const want = clamp(now);
     if (!getAnims().length) return;
@@ -194,14 +210,21 @@ function driveWipe(
     } else {
       const all = getAnims();
       const ref = all[all.length - 1];
+      // dwa zgodne odczyty, bo pojedynczy skok (przewinięcie) wyglądałby jak tempo 3x
+      if (rate === seenRate && rate >= 0.25 && rate <= 4 && ref.playbackRate !== rate) {
+        knownRate = rate;
+        all.forEach((a) => a.updatePlaybackRate(rate));
+      }
       if (ref.playState !== 'paused' && Math.abs(Number(ref.currentTime ?? 0) - want) > 60) {
         setAll(want);
       }
     }
+    seenRate = rate;
   };
   let iv = 0;
   const start = () => {
-    if (!iv) iv = window.setInterval(sync, 50);
+    // animacja sama trzyma czas, a zegary okien są ekstrapolowane: 4 sprawdzenia na sekundę łapią pauzę i dryf
+    if (!iv) iv = window.setInterval(sync, 250);
   };
   const stop = () => {
     window.clearInterval(iv);
@@ -253,16 +276,17 @@ function runTransformWipe(
       const clipper = document.createElement('span');
       clipper.className = 'lyric-karaoke-clip';
       clipper.setAttribute('aria-hidden', 'true');
-      clipper.style.cssText = `inset:auto;left:${left}px;top:${row.y0}px;width:${full}px;height:${row.y1 - row.y0}px;`;
+      // stan bazowy to pusta linia: klatka bez animacji nie może błysnąć całym tekstem
+      clipper.style.cssText = `inset:auto;left:${left}px;top:${row.y0}px;width:${full}px;height:${row.y1 - row.y0}px;transform:translate3d(${-full}px,0,0);`;
       const copy = fill.cloneNode(true) as HTMLElement;
       copy.classList.add('lyric-karaoke-fill-moving');
-      copy.style.cssText = `inset:auto;position:absolute;left:${-left}px;top:${-row.y0}px;width:${W}px;height:${H}px;`;
+      copy.style.cssText = `inset:auto;position:absolute;left:${-left}px;top:${-row.y0}px;width:${W}px;height:${H}px;transform:translate3d(${full}px,0,0);`;
       clipper.appendChild(copy);
       wrap.appendChild(clipper);
       const timing: KeyframeAnimationOptions = {
         delay: row.t0 * durMs,
         duration: Math.max(1, (row.t1 - row.t0) * durMs),
-        easing: 'linear',
+        easing: wipeEasing((row.t1 - row.t0) * durMs),
         fill: 'both',
       };
       anims.push(
@@ -305,6 +329,9 @@ const useColumns =
   /Linux/.test(navigator.userAgent) &&
   !/Android/.test(navigator.userAgent);
 
+// pierwsza litera hebrajska lub arabska: wypełnienie idzie od lewej, więc taka linia zostaje bez niego
+const RTL_FIRST = /^\P{L}*[\p{Script=Hebrew}\p{Script=Arabic}\p{Script=Syriac}\p{Script=Thaana}]/u;
+
 type Props = {
   text: string;
   active: boolean;
@@ -331,7 +358,7 @@ export function LyricKaraokeText({ text, active: activeProp, start, end, getProg
       setOnScreen(true);
     };
   }, [activeProp, light]);
-  const active = activeProp && !light;
+  const active = activeProp && !light && !RTL_FIRST.test(text);
   const animate = active && onScreen;
 
   useEffect(() => {
@@ -360,14 +387,14 @@ export function LyricKaraokeText({ text, active: activeProp, start, end, getProg
 
   if (!active) {
     return (
-      <span className="lyric-row-text" data-text={text}>
+      <span className="lyric-row-text" data-text={text} dir="auto">
         {text}
       </span>
     );
   }
 
   return (
-    <span className="lyric-row-text lyric-karaoke" data-text={text} ref={wrapRef}>
+    <span className="lyric-row-text lyric-karaoke" data-text={text} ref={wrapRef} dir="auto">
       <span className="lyric-karaoke-base">{text}</span>
       <span className="lyric-karaoke-fill" aria-hidden="true">
         {text}

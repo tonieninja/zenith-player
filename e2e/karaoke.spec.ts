@@ -130,7 +130,8 @@ test('karaoke stops polling while the window is hidden', async ({ browser }) => 
   };
   const visible = await reads(false);
   const hidden = await reads(true);
-  expect(visible).toBeGreaterThan(20);
+  // wypełnienie to animacja, a zegar jest sprawdzany co 250 ms: przez 2 s to około 8 odczytów
+  expect(visible).toBeGreaterThan(4);
   expect(hidden).toBeLessThanOrEqual(1);
   await ctx.close();
 });
