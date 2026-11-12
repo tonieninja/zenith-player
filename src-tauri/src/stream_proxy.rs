@@ -26,11 +26,14 @@ static PROXY_PORT: OnceLock<u16> = OnceLock::new();
 static PROXY_TOKEN: OnceLock<String> = OnceLock::new();
 static HTTP: OnceLock<Client> = OnceLock::new();
 
+// limit dotyczy przerwy w danych, nie całego kawałka: na wolnym łączu 10 MiB nie mieściło się w 45 s
 fn http_client() -> &'static Client {
     HTTP.get_or_init(|| {
+        crate::win_proxy::wait();
         Client::builder()
             .pool_max_idle_per_host(8)
-            .timeout(Duration::from_secs(45))
+            .connect_timeout(Duration::from_secs(15))
+            .read_timeout(Duration::from_secs(30))
             .build()
             .unwrap_or_else(|_| Client::new())
     })
@@ -43,7 +46,8 @@ fn direct_client() -> &'static Client {
     HTTP_DIRECT.get_or_init(|| {
         Client::builder()
             .pool_max_idle_per_host(8)
-            .timeout(Duration::from_secs(45))
+            .connect_timeout(Duration::from_secs(15))
+            .read_timeout(Duration::from_secs(30))
             .no_proxy()
             .build()
             .unwrap_or_else(|_| Client::new())
@@ -60,9 +64,11 @@ fn hedge_client(direct: bool) -> &'static Client {
         &HTTP_HEDGE
     };
     cell.get_or_init(|| {
+        crate::win_proxy::wait();
         let mut b = Client::builder()
             .pool_max_idle_per_host(2)
-            .timeout(Duration::from_secs(45));
+            .connect_timeout(Duration::from_secs(15))
+            .read_timeout(Duration::from_secs(30));
         if direct {
             b = b.no_proxy();
         }
@@ -356,6 +362,10 @@ async fn proxy_stream(
     {
         return Err(StatusCode::BAD_REQUEST);
     }
+    // adres /zenith/ z prefetchu żyje dłużej niż moment pobrania utworu; bez sieci musi grać z dysku
+    if crate::downloads::is_downloaded(&id) {
+        return serve_offline(Path((token, id)), headers).await;
+    }
 
     let known = url_map()
         .lock()
@@ -446,8 +456,10 @@ async fn proxy_stream(
             let range = format!("bytes={next}-{}", chunk_last(next, Some(last)));
             let res = fetch_upstream(&id, &mut upstream, &mut attempt, Some(&range)).await;
             let piece = res.ok().and_then(|r| {
-                let (a, b, _) = content_range(&r)?;
-                (r.status() == StatusCode::PARTIAL_CONTENT && a == next).then_some((r, b))
+                let (a, b, t) = content_range(&r)?;
+                // odświeżony link może wskazać inny format; inny rozmiar to błąd, nie cichy zlepek
+                (r.status() == StatusCode::PARTIAL_CONTENT && a == next && t == total)
+                    .then_some((r, b))
             });
             match piece {
                 Some((r, b)) => {
@@ -494,7 +506,7 @@ fn content_range(r: &reqwest::Response) -> Option<(u64, u64, u64)> {
     parse_content_range(r.headers().get(header::CONTENT_RANGE)?.to_str().ok()?)
 }
 
-fn parse_content_range(v: &str) -> Option<(u64, u64, u64)> {
+pub(crate) fn parse_content_range(v: &str) -> Option<(u64, u64, u64)> {
     let (span, total) = v.trim().strip_prefix("bytes ")?.split_once('/')?;
     let (a, b) = span.split_once('-')?;
     Some((a.parse().ok()?, b.parse().ok()?, total.parse().ok()?))
@@ -506,11 +518,11 @@ async fn fetch_upstream(
     attempt: &mut usize,
     range: Option<&str>,
 ) -> Result<reqwest::Response, StatusCode> {
-    // wygasły link z googlevideo (403/410/429) odświeżamy i ponawiamy zamiast przerywać odtwarzanie
+    // wygasły link (403/410) odświeżamy; 429 oddajemy od razu, bo kolejne rozwiązania tylko pogłębiają limit IP
     loop {
         let res = send_upstream(&upstream.url, &upstream.user_agent, range).await;
         let refused = match &res {
-            Ok(r) => matches!(r.status().as_u16(), 403 | 410 | 429),
+            Ok(r) => matches!(r.status().as_u16(), 403 | 410),
             Err(_) => true,
         };
         if !refused {

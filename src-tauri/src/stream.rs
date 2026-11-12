@@ -41,10 +41,22 @@ fn get_cache() -> &'static StreamCache {
     })
 }
 
+// wołane pod blokadą cache, więc numer zapisu rośnie w kolejności zmian; starszy stan nie nadpisze nowszego
 fn save_cache(map: &CacheMap) {
-    if let (Some(p), Ok(body)) = (cache_file(), serde_json::to_vec(map)) {
-        let _ = std::fs::write(p, body);
-    }
+    static SEQ: AtomicU64 = AtomicU64::new(0);
+    static WRITTEN: Mutex<u64> = Mutex::new(0);
+    let (Some(p), Ok(body)) = (cache_file(), serde_json::to_vec(map)) else {
+        return;
+    };
+    let n = SEQ.fetch_add(1, Ordering::SeqCst) + 1;
+    // wolny dysk albo antywirus nie może trzymać blokady, na którą czeka każde rozwiązywanie adresu
+    tauri::async_runtime::spawn_blocking(move || {
+        let Ok(mut last) = WRITTEN.lock() else { return };
+        if n > *last {
+            *last = n;
+            let _ = std::fs::write(p, body);
+        }
+    });
 }
 
 fn url_expiry(url: &str) -> Option<u64> {
@@ -171,11 +183,7 @@ async fn warm_data_sync_id(a: &Auth) -> Option<String> {
     if let Some(id) = a.data_sync_id.clone() {
         return Some(id);
     }
-    let http = reqwest::Client::builder()
-        .timeout(Duration::from_secs(10))
-        .user_agent(crate::login_nav::user_agent())
-        .build()
-        .ok()?;
+    let http = crate::player::client(crate::login_nav::user_agent(), 10, true)?;
     let page = http
         .get("https://music.youtube.com/")
         .header("Cookie", a.cookie.as_str())
@@ -224,7 +232,10 @@ pub async fn recover_upstream(
             return Some(cur);
         }
     }
-    crate::potoken::want();
+    // ukryte okno youtube.com to setki MB; otwiera je dopiero klient, który naprawdę potrzebuje tokenu
+    if clients.iter().any(|c| crate::player::spec(*c).needs_pot) {
+        crate::potoken::want();
+    }
     let signed = attempt + 1 == resolve_plan::RECOVERY.len();
     let a = if signed { auth() } else { None };
     if signed && a.is_none() {
@@ -375,7 +386,8 @@ pub async fn get_stream_url(
     fresh: Option<bool>,
 ) -> Result<Option<String>, String> {
     validate_video_id(&video_id)?;
-    if !fresh.unwrap_or(false) && crate::downloads::is_downloaded(&video_id) {
+    // także przy fresh: ścieżki błędów odtwarzania wołają fresh, a bez sieci pobrany plik to jedyne źródło
+    if crate::downloads::is_downloaded(&video_id) {
         crate::stream_proxy::ensure_ready().await?;
         if let Some(u) = crate::stream_proxy::offline_url(&video_id) {
             return Ok(Some(u));
@@ -632,11 +644,7 @@ pub fn parse_search(data: &Value) -> Vec<Found> {
 
 pub async fn yt_search(query: &str, limit: usize) -> Result<Vec<Found>, String> {
     let spec = player::spec(Client::Web);
-    let http = reqwest::Client::builder()
-        .timeout(Duration::from_secs(12))
-        .user_agent(spec.user_agent)
-        .build()
-        .map_err(|e| e.to_string())?;
+    let http = player::client(spec.user_agent, 12, true).ok_or("http client")?;
     let body = json!({
         "context": { "client": { "clientName": spec.name, "clientVersion": spec.version, "hl": "en", "gl": "US" } },
         "query": query,
@@ -725,10 +733,10 @@ pub async fn resolve_alternate_stream(
     let picks = pick_alternates(&video_id, duration, found);
     for alt in picks.into_iter().take(2) {
         if let Ok(Some(_)) = get_stream_url(app.clone(), alt.clone(), None).await {
-            if let Some(up) = stream_proxy::current_upstream(&alt) {
-                stream_proxy::store_upstream(&video_id, up);
+            // adres pod id zastępczego nagrania: po wygaśnięciu linku proxy odświeża ten film, nie oryginał
+            if stream_proxy::current_upstream(&alt).is_some() {
                 eprintln!("[Zenith] playing alternate upload {} for {}", alt, video_id);
-                return Ok(stream_proxy::proxy_url(&video_id));
+                return Ok(stream_proxy::proxy_url(&alt));
             }
         }
     }
