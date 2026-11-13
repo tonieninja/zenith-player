@@ -20,7 +20,7 @@ export function setSpotifyClientId(id: string) {
   const v = id.trim();
   if (v) localStorage.setItem(CLIENT_KEY, v);
   else localStorage.removeItem(CLIENT_KEY);
-  localStorage.removeItem(TOKEN_KEY);
+  storeToken(null);
 }
 
 const b64url = (bytes: Uint8Array) =>
@@ -60,13 +60,36 @@ interface StoredToken {
   scope?: string;
 }
 
-function loadToken(): StoredToken | null {
+let memo: StoredToken | null = null;
+
+function parseToken(raw: string | null): StoredToken | null {
   try {
-    const t = JSON.parse(localStorage.getItem(TOKEN_KEY) || 'null');
+    const t = JSON.parse(raw || 'null');
     return t?.access ? t : null;
   } catch {
     return null;
   }
+}
+
+function storeToken(t: StoredToken | null) {
+  memo = t;
+  void invoke('spotify_token_save', { body: t ? JSON.stringify(t) : null }).catch(() => {});
+}
+
+// tokeny siedzą w pliku szyfrowanym DPAPI; localStorage trafia do zwykłych plików profilu WebView2
+export async function initSpotifyToken(): Promise<void> {
+  const raw = await invoke<string | null>('spotify_token_load').catch(() => null);
+  if (!memo) memo = parseToken(raw);
+}
+
+function loadToken(): StoredToken | null {
+  const legacy = localStorage.getItem(TOKEN_KEY);
+  if (legacy !== null) {
+    localStorage.removeItem(TOKEN_KEY);
+    const t = parseToken(legacy);
+    if (t) storeToken(t);
+  }
+  return memo;
 }
 
 async function tokenRequest(body: Record<string, string>): Promise<StoredToken> {
@@ -85,7 +108,7 @@ async function tokenRequest(body: Record<string, string>): Promise<StoredToken> 
     expires: Date.now() + (Number(data.expires_in) || 3600) * 1000 - 60000,
     scope: typeof data.scope === 'string' ? data.scope : prev?.scope,
   };
-  localStorage.setItem(TOKEN_KEY, JSON.stringify(token));
+  storeToken(token);
   return token;
 }
 
@@ -100,6 +123,7 @@ export function canReadSpotifyPlaylists(): boolean {
 
 export function disconnectSpotify() {
   localStorage.removeItem(TOKEN_KEY);
+  storeToken(null);
 }
 
 export async function connectSpotify(): Promise<void> {
@@ -149,7 +173,7 @@ async function api(path: string, init: RequestInit = {}, attempt = 0): Promise<a
   }
   if (res.status === 401 && attempt === 0) {
     const t = loadToken();
-    if (t) localStorage.setItem(TOKEN_KEY, JSON.stringify({ ...t, expires: 0 }));
+    if (t) storeToken({ ...t, expires: 0 });
     return api(path, init, 1);
   }
   const text = await res.text();
@@ -392,24 +416,22 @@ export async function matchOnYoutube(
   const videoIds: string[] = [];
   const unmatched: SpotifyTrack[] = [];
   for (let i = 0; i < tracks.length; i += 1) {
+    // setki wyszukiwań bez przerwy kończą się limitem 429; błąd wyszukiwania przerywa import
+    if (i) await new Promise((r) => setTimeout(r, 300));
     const t = tracks[i];
     const artist = splitArtists(t.artist)[0] || '';
-    try {
-      const found = await search(`${t.title} ${artist}`.trim());
-      const best = pickBest(
-        t,
-        found.map((c) => ({
-          uri: c.id,
-          name: c.title,
-          artists: splitArtists(c.artist),
-          durationMs: (c.durationSec ?? 0) * 1000,
-        }))
-      );
-      if (best) videoIds.push(best.c.uri);
-      else unmatched.push(t);
-    } catch {
-      unmatched.push(t);
-    }
+    const found = await search(`${t.title} ${artist}`.trim());
+    const best = pickBest(
+      t,
+      found.map((c) => ({
+        uri: c.id,
+        name: c.title,
+        artists: splitArtists(c.artist),
+        durationMs: (c.durationSec ?? 0) * 1000,
+      }))
+    );
+    if (best) videoIds.push(best.c.uri);
+    else unmatched.push(t);
     onProgress?.(i + 1, tracks.length);
   }
   return { videoIds, unmatched };

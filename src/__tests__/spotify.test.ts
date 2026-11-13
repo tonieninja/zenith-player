@@ -215,4 +215,20 @@ describe('spotify import', () => {
     expect(r.videoIds).toEqual(['YQHsXMglC9A']);
     expect(r.unmatched.map((t) => t.title)).toEqual(['Nothing Here']);
   });
+
+  it('stops on a failed search instead of counting the rest as unmatched', async () => {
+    const search = vi.fn(async () => {
+      throw new Error('search HTTP 429');
+    });
+    await expect(
+      matchOnYoutube(
+        [
+          { title: 'A', artist: 'X', durationSec: 100 },
+          { title: 'B', artist: 'Y', durationSec: 100 },
+        ],
+        search
+      )
+    ).rejects.toThrow(/429/);
+    expect(search).toHaveBeenCalledTimes(1);
+  });
 });
