@@ -192,6 +192,8 @@ pub struct Limiter {
     sr: u32,
     delay: Vec<[f32; 2]>,
     need: Vec<f32>,
+    // ile wpisów w oknie wymaga ścięcia; przy zerze minimum to 1.0 bez skanowania 240 wartości
+    below: usize,
     held: Vec<f32>,
     sum: f64,
     i: usize,
@@ -207,6 +209,7 @@ impl Limiter {
             sr,
             delay: vec![[0.0; 2]; n - 1],
             need: vec![1.0; n],
+            below: 0,
             held: vec![1.0; n],
             sum: n as f64,
             i: 0,
@@ -224,13 +227,18 @@ impl Limiter {
         let n = self.need.len();
         for fr in stereo.as_chunks_mut::<2>().0 {
             let peak = fr[0].abs().max(fr[1].abs());
-            self.need[self.i] = if peak > LIMIT_CEIL {
+            let want = if peak > LIMIT_CEIL {
                 LIMIT_CEIL / peak
             } else {
                 1.0
             };
-            // liniowe minimum z 240 wartości na ramkę wystarcza; kolejka monotoniczna, jeśli wyjdzie w profilerze
-            let h = self.need.iter().copied().fold(1.0f32, f32::min);
+            let old = std::mem::replace(&mut self.need[self.i], want);
+            self.below = self.below + usize::from(want < 1.0) - usize::from(old < 1.0);
+            let h = if self.below == 0 {
+                1.0
+            } else {
+                self.need.iter().copied().fold(1.0f32, f32::min)
+            };
             self.sum += h as f64 - self.held[self.i] as f64;
             self.held[self.i] = h;
             self.i = (self.i + 1) % n;

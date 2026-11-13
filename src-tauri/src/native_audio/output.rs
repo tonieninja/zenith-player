@@ -38,6 +38,8 @@ pub struct DeckOut {
     pos: AtomicU64,
     pub starved: AtomicBool,
     pub drained: AtomicBool,
+    // album bez przerw: mikser sam włącza deck w próbce, w której drugi się skończył
+    pub armed: AtomicBool,
 }
 
 impl DeckOut {
@@ -61,6 +63,7 @@ impl DeckOut {
 pub struct Mixer {
     decks: [Arc<DeckOut>; 2],
     cur: [f32; 2],
+    tail: [usize; 2],
     eq: Eq,
     eq_ver: u64,
     lim: Limiter,
@@ -83,6 +86,7 @@ impl Mixer {
         Mixer {
             decks,
             cur: [0.0; 2],
+            tail: [0; 2],
             eq: Eq::new(&[], sr as f64),
             eq_ver: 0,
             lim: Limiter::new(sr),
@@ -107,44 +111,59 @@ impl Mixer {
         let frames = out.len() / 2;
         let k = 1.0 - (-1.0 / (0.006 * self.sr as f32)).exp();
         let mut any = false;
+        let mut ends = [None; 2];
         for (i, d) in self.decks.iter().enumerate() {
             if !d.playing.load(Ordering::Relaxed) {
-                self.cur[i] = 0.0;
+                // pauza wygasza kilkadziesiąt ms zamiast uciąć falę w pół (trzask); kolejki nie zjadamy,
+                // więc po wznowieniu te próbki zagrają jeszcze raz
+                let mut g = self.cur[i];
+                let mut n = 0;
+                if g > 1e-3 {
+                    let q = d.queue();
+                    let mut skip = self.tail[i];
+                    for c in q.chunks.iter() {
+                        let len = c.data.len() / 2;
+                        let mut off = c.off + skip.min(len - c.off.min(len));
+                        skip -= off - c.off;
+                        while off < len && n < frames {
+                            g -= g * k;
+                            out[n * 2] += c.data[off * 2] * g;
+                            out[n * 2 + 1] += c.data[off * 2 + 1] * g;
+                            off += 1;
+                            n += 1;
+                        }
+                        if n >= frames {
+                            break;
+                        }
+                    }
+                }
+                any |= n > 0;
+                self.tail[i] += n;
+                self.cur[i] = if n > 0 { g } else { 0.0 };
                 continue;
             }
+            self.tail[i] = 0;
             any = true;
-            let target = d.gain();
-            let mut g = self.cur[i];
-            let mut q = d.queue();
-            let mut n = 0;
-            while n < frames {
-                let Some(c) = q.chunks.front_mut() else { break };
-                let avail = c.data.len() / 2 - c.off;
-                let take = avail.min(frames - n);
-                for f in 0..take {
-                    g += (target - g) * k;
-                    let s = (c.off + f) * 2;
-                    out[(n + f) * 2] += c.data[s] * g;
-                    out[(n + f) * 2 + 1] += c.data[s + 1] * g;
-                }
-                c.off += take;
-                n += take;
-                d.set_pos(c.t0 + c.off as f64 * c.step);
-                if c.off * 2 >= c.data.len() {
-                    q.chunks.pop_front();
-                }
+            ends[i] = fill(d, &mut self.cur[i], out, k);
+        }
+        for i in 0..2 {
+            let d = &self.decks[i];
+            if d.playing.load(Ordering::Relaxed) || !d.armed.load(Ordering::Relaxed) {
+                continue;
             }
-            q.frames = q.frames.saturating_sub(n);
-            if n < frames {
-                if q.eof {
-                    d.drained.store(true, Ordering::Relaxed);
-                } else {
-                    d.starved.store(true, Ordering::Relaxed);
-                }
-            } else {
-                d.starved.store(false, Ordering::Relaxed);
+            let at = match ends[1 - i] {
+                Some(n) => n,
+                None if !self.decks[1 - i].playing.load(Ordering::Relaxed) => 0,
+                None => continue,
+            };
+            if d.armed.swap(false, Ordering::SeqCst) {
+                d.playing.store(true, Ordering::SeqCst);
+                // pełna głośność od pierwszej próbki; narastanie dałoby dziurę na styku utworów
+                self.cur[i] = d.gain();
+                self.tail[i] = 0;
+                any = true;
+                fill(d, &mut self.cur[i], &mut out[at * 2..], k);
             }
-            self.cur[i] = if n > 0 { g } else { self.cur[i] };
         }
         if any {
             self.eq.process(out);
@@ -158,6 +177,46 @@ impl Mixer {
         }
         any
     }
+}
+
+// zwraca ramkę, na której deck doszedł do końca pliku w tym buforze
+fn fill(d: &DeckOut, cur: &mut f32, out: &mut [f32], k: f32) -> Option<usize> {
+    let frames = out.len() / 2;
+    let target = d.gain();
+    let mut g = *cur;
+    let mut q = d.queue();
+    let mut n = 0;
+    while n < frames {
+        let Some(c) = q.chunks.front_mut() else { break };
+        let avail = c.data.len() / 2 - c.off;
+        let take = avail.min(frames - n);
+        for f in 0..take {
+            g += (target - g) * k;
+            let s = (c.off + f) * 2;
+            out[(n + f) * 2] += c.data[s] * g;
+            out[(n + f) * 2 + 1] += c.data[s + 1] * g;
+        }
+        c.off += take;
+        n += take;
+        d.set_pos(c.t0 + c.off as f64 * c.step);
+        if c.off * 2 >= c.data.len() {
+            q.chunks.pop_front();
+        }
+    }
+    q.frames = q.frames.saturating_sub(n);
+    if n > 0 {
+        *cur = g;
+    }
+    if n == frames {
+        d.starved.store(false, Ordering::Relaxed);
+        return None;
+    }
+    if q.eof {
+        d.drained.store(true, Ordering::Relaxed);
+        return Some(n);
+    }
+    d.starved.store(true, Ordering::Relaxed);
+    None
 }
 
 enum Msg {
@@ -224,7 +283,7 @@ pub fn start() -> bool {
                 let playing = any_playing(&decks);
                 if playing {
                     idle_since = None;
-                    if dev.as_ref().is_some_and(|d| d.broken()) {
+                    if dev.as_ref().is_some_and(|d| d.broken() || d.moved()) {
                         dev = None;
                     }
                     if dev.is_none() {
@@ -284,6 +343,19 @@ impl Drop for Device {
 struct Opened {
     dev: Device,
     sr: u32,
+    name: Option<String>,
+}
+
+impl Opened {
+    // strumień cpal zostaje przy urządzeniu, na którym go otwarto; słuchawki BT inaczej grałyby dopiero po pauzie
+    fn moved(&self) -> bool {
+        use cpal::traits::{DeviceTrait, HostTrait};
+        self.name.is_some()
+            && cpal::default_host()
+                .default_output_device()
+                .and_then(|d| d.name().ok())
+                .is_some_and(|n| Some(n) != self.name)
+    }
 }
 
 impl std::ops::Deref for Opened {
@@ -325,6 +397,7 @@ impl Device {
             return Some(Opened {
                 dev: Device::Fake { stop },
                 sr: 48000,
+                name: None,
             });
         }
         open_cpal(decks)
@@ -335,6 +408,7 @@ fn open_cpal(decks: &[Arc<DeckOut>; 2]) -> Option<Opened> {
     use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
     let host = cpal::default_host();
     let dev = host.default_output_device()?;
+    let name = dev.name().ok();
     let sup = dev.default_output_config().ok()?;
     let sr = sup.sample_rate().0;
     let ch = sup.channels() as usize;
@@ -366,6 +440,7 @@ fn open_cpal(decks: &[Arc<DeckOut>; 2]) -> Option<Opened> {
             broken,
         },
         sr,
+        name,
     })
 }
 
@@ -474,5 +549,54 @@ mod tests {
         assert!(!m.render(&mut out));
         assert!(out.iter().all(|s| *s == 0.0));
         assert_eq!(a.queue().frames, 1000);
+    }
+
+    #[test]
+    fn armed_deck_starts_on_the_sample_the_other_ends() {
+        let a = deck_with(100, 0.2);
+        a.queue().eof = true;
+        a.set_gain(1.0);
+        a.playing.store(true, Ordering::Relaxed);
+        let b = deck_with(1000, 0.7);
+        b.set_gain(1.0);
+        b.armed.store(true, Ordering::Relaxed);
+        let mut m = Mixer::new([a.clone(), b.clone()], 48000);
+        m.cur[0] = 1.0;
+        let mut out = vec![0f32; 960 * 2];
+        m.render(&mut out);
+        assert!(b.playing.load(Ordering::Relaxed) && !b.armed.load(Ordering::Relaxed));
+        assert!(a.drained.load(Ordering::Relaxed));
+        assert_eq!(b.queue().frames, 1000 - 860);
+        // 239 ramek to linia opóźnienia limitera; potem 100 ramek starego utworu i od razu nowy, bez ciszy
+        let left: Vec<f32> = out.iter().step_by(2).copied().collect();
+        assert!(left[239..339].iter().all(|v| (v - 0.2).abs() < 0.01));
+        assert!(left[339..].iter().all(|v| (v - 0.7).abs() < 0.01));
+    }
+
+    #[test]
+    fn pause_fades_out_without_eating_queue() {
+        let a = deck_with(48000, 0.5);
+        a.set_gain(1.0);
+        a.playing.store(true, Ordering::Relaxed);
+        let mut m = Mixer::new([a.clone(), Arc::new(DeckOut::default())], 48000);
+        let mut out = vec![0f32; 4800 * 2];
+        m.render(&mut out);
+        let left = a.queue().frames;
+        a.playing.store(false, Ordering::Relaxed);
+        // limiter oddaje najpierw 5 ms ze swojej linii opóźnienia, dalej ma być już tylko opadanie
+        let mut all = Vec::new();
+        let mut buf = vec![0f32; 128 * 2];
+        while m.render(&mut buf) {
+            all.extend(buf.iter().step_by(2).copied());
+            assert!(all.len() < 48000, "tail ends");
+        }
+        assert!(all[0] > 0.45);
+        assert!(
+            all.windows(2).all(|w| w[1] <= w[0] + 1e-6),
+            "no jump back up"
+        );
+        assert!(*all.last().unwrap() < 0.01);
+        assert!(m.tail[0] > 0);
+        assert_eq!(a.queue().frames, left);
     }
 }
