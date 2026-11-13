@@ -47,6 +47,38 @@ fn positions_file(app: &AppHandle) -> Option<std::path::PathBuf> {
     Some(dir.join("aux_windows.json"))
 }
 
+fn aux_closed_file(app: &AppHandle) -> Option<std::path::PathBuf> {
+    let dir = app.path().app_config_dir().ok()?;
+    let _ = std::fs::create_dir_all(&dir);
+    Some(dir.join("aux_closed.txt"))
+}
+
+/// Okno wtyczki zamknięte, gdy nie ma okna głównego; zapis na dysku przetrwa też wyjście z zasobnika.
+pub fn note_aux_closed(app: &AppHandle, label: &str) {
+    let Some(path) = aux_closed_file(app) else {
+        return;
+    };
+    let mut list = std::fs::read_to_string(&path).unwrap_or_default();
+    if !list.lines().any(|l| l == label) {
+        list.push_str(label);
+        list.push('\n');
+        let _ = std::fs::write(path, list);
+    }
+}
+
+#[tauri::command]
+pub fn aux_closed_take(app: AppHandle) -> Vec<String> {
+    let Some(path) = aux_closed_file(&app) else {
+        return Vec::new();
+    };
+    let list = std::fs::read_to_string(&path).unwrap_or_default();
+    let _ = std::fs::remove_file(&path);
+    list.lines()
+        .filter(|l| REMEMBERED_LABELS.contains(l))
+        .map(String::from)
+        .collect()
+}
+
 fn with_positions<T>(app: &AppHandle, f: impl FnOnce(&mut HashMap<String, SavedPos>) -> T) -> T {
     let mut guard = POSITIONS.lock().unwrap_or_else(|e| e.into_inner());
     if guard.is_none() {
@@ -63,13 +95,26 @@ pub fn remember_position(app: &AppHandle, label: &str, pos: PhysicalPosition<i32
     if !REMEMBERED_LABELS.contains(&label) {
         return;
     }
-    let snapshot = with_positions(app, |map| {
+    with_positions(app, |map| {
         map.insert(label.to_string(), SavedPos { x: pos.x, y: pos.y });
-        map.clone()
     });
-    if let (Some(path), Ok(json)) = (positions_file(app), serde_json::to_string(&snapshot)) {
-        let _ = std::fs::write(path, json);
+    // przeciąganie to dziesiątki zdarzeń na sekundę; na dysk idzie stan po chwili ciszy
+    static PENDING: AtomicBool = AtomicBool::new(false);
+    if PENDING.swap(true, Ordering::SeqCst) {
+        return;
     }
+    let app = app.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(500));
+        PENDING.store(false, Ordering::SeqCst);
+        let snapshot = with_positions(&app, |map| map.clone());
+        if let (Some(path), Ok(json)) = (positions_file(&app), serde_json::to_string(&snapshot)) {
+            let tmp = path.with_extension("json.tmp");
+            if std::fs::write(&tmp, json).is_ok() {
+                let _ = std::fs::rename(&tmp, &path);
+            }
+        }
+    });
 }
 
 fn saved_position(app: &AppHandle, label: &str) -> Option<(f64, f64)> {
@@ -196,9 +241,71 @@ struct MainGeo {
     maximized: bool,
 }
 static MAIN_GEO: Mutex<Option<MainGeo>> = Mutex::new(None);
+static KEEP_UI: AtomicBool = AtomicBool::new(false);
+// zanim JS okna głównego podepnie nasłuchy, akcje z zasobnika, skrótów i mini czekają tutaj zamiast przepaść
+static UI_READY: AtomicBool = AtomicBool::new(false);
+static NOT_READY_AT: AtomicU64 = AtomicU64::new(0);
+static PENDING_UI: Mutex<Vec<(&'static str, String)>> = Mutex::new(Vec::new());
+
+// po 15 s bez sygnału z JS wysyłamy normalnie, żeby zasobnik nie utknął z martwą kolejką
+pub fn ui_is_ready() -> bool {
+    let now = now_ms();
+    UI_READY.load(Ordering::SeqCst)
+        || now.saturating_sub(NOT_READY_AT.load(Ordering::SeqCst)) > 15_000
+}
+
+fn now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_millis() as u64)
+}
+
+fn mark_not_ready() {
+    NOT_READY_AT.store(now_ms(), Ordering::SeqCst);
+    UI_READY.store(false, Ordering::SeqCst);
+}
+
+/// Zwraca false, gdy okno jest gotowe i zdarzenie trzeba wysłać od razu.
+pub fn defer_ui_event(event: &'static str, payload: &str) -> bool {
+    if ui_is_ready() {
+        return false;
+    }
+    let mut q = PENDING_UI.lock().unwrap_or_else(|p| p.into_inner());
+    if q.len() < 32 {
+        q.push((event, payload.to_string()));
+    }
+    true
+}
+
+#[tauri::command]
+pub fn ui_ready(app: AppHandle) {
+    UI_READY.store(true, Ordering::SeqCst);
+    let q = std::mem::take(&mut *PENDING_UI.lock().unwrap_or_else(|p| p.into_inner()));
+    for (event, payload) in q {
+        let _ = app.emit_to("main", event, payload);
+    }
+}
+
+/// JS po schowaniu okna mówi, czy musi żyć dalej: wtyczki bez odpowiednika w Ruście albo dociąganie radia.
+#[tauri::command]
+pub fn ui_keep(app: AppHandle, keep: bool) {
+    KEEP_UI.store(keep, Ordering::SeqCst);
+    let hidden = app
+        .get_webview_window("main")
+        .is_some_and(|w| !w.is_visible().unwrap_or(true));
+    if !keep && hidden {
+        main_hidden(&app);
+    }
+}
+
+// do odpowiedzi JS okno zostaje; zgubione zdarzenie (zasobnik tuż po starcie) nie może go zwolnić z wtyczkami
+pub fn hold_ui() {
+    KEEP_UI.store(true, Ordering::SeqCst);
+}
 
 pub fn ui_drop_enabled() -> bool {
-    let default_on = cfg!(target_os = "linux");
+    // po powrocie okno odtwarza widok z migawki, więc w zasobniku może zostać sam Rust zamiast całego WebView
+    let default_on = cfg!(any(target_os = "linux", windows));
     crate::native_audio::available()
         && match std::env::var("ZENITH_UI_DROP").as_deref() {
             Ok("0") => false,
@@ -211,7 +318,8 @@ fn ui_drop_delay_ms() -> u64 {
     std::env::var("ZENITH_UI_DROP_MS")
         .ok()
         .and_then(|v| v.parse().ok())
-        .unwrap_or(3000)
+        // na Windows okno często chowa się i wraca co chwilę, a każde zwolnienie to sekunda budowania od nowa
+        .unwrap_or(if cfg!(windows) { 30_000 } else { 3000 })
 }
 
 pub fn main_hidden(app: &AppHandle) {
@@ -231,17 +339,30 @@ pub fn main_hidden(app: &AppHandle) {
 }
 
 pub fn drop_main(app: &AppHandle) {
+    // okna wtyczek nie trzymają okna głównego: bez niego utwór i zegar podaje im headless::now_playing
+    if KEEP_UI.load(Ordering::SeqCst) {
+        return;
+    }
     if let Some(w) = app.get_webview_window("main") {
         if w.is_visible().unwrap_or(true) {
             return;
         }
         if let (Ok(pos), Ok(size)) = (w.outer_position(), w.inner_size()) {
-            *MAIN_GEO.lock().unwrap_or_else(|p| p.into_inner()) = Some(MainGeo {
-                pos,
-                size,
-                maximized: w.is_maximized().unwrap_or(false),
-            });
+            let maximized = w.is_maximized().unwrap_or(false);
+            let mut geo = MAIN_GEO.lock().unwrap_or_else(|p| p.into_inner());
+            // rozmiar zmaksymalizowanego okna to obszar roboczy; po przywróceniu zostaje ostatni zwykły
+            match (maximized, geo.as_mut()) {
+                (true, Some(g)) => g.maximized = true,
+                _ => {
+                    *geo = Some(MainGeo {
+                        pos,
+                        size,
+                        maximized,
+                    })
+                }
+            }
         }
+        mark_not_ready();
         crate::native_audio::set_headless(true);
         #[cfg(target_os = "linux")]
         let _ = w.with_webview(|wv| {
@@ -249,11 +370,16 @@ pub fn drop_main(app: &AppHandle) {
             wv.inner().terminate_web_process();
         });
         let _ = w.destroy();
-        std::thread::spawn(|| {
+        let app = app.clone();
+        std::thread::spawn(move || {
             std::thread::sleep(std::time::Duration::from_millis(1500));
             #[cfg(target_os = "linux")]
             unsafe {
                 libc::malloc_trim(0);
+            }
+            // szybki powrót okna w tych 1,5 s nie może zostawić mini i nakładki na niskim limicie pamięci
+            if app.get_webview_window("main").is_none() {
+                crate::wv2_mem::aux_low(&app, true);
             }
         });
     }
@@ -264,22 +390,29 @@ pub fn ensure_main(app: &AppHandle) -> bool {
     if app.get_webview_window("main").is_some() {
         return false;
     }
+    mark_not_ready();
     let Some(cfg) = app.config().app.windows.first().cloned() else {
         return false;
     };
     let h = app.clone();
     let _ = app.run_on_main_thread(move || {
+        // budowane niewidoczne: inaczej mignie w domyślnym miejscu, zanim trafi na zapamiętaną pozycję
         let built = WebviewWindowBuilder::from_config(&h, &cfg).map(|b| {
-            b.enable_clipboard_access().initialization_script(
-                "window.__ZENITH_RESTORED__ = true; window.close = function () {};",
-            )
+            b.visible(false)
+                .enable_clipboard_access()
+                .initialization_script(
+                    "window.__ZENITH_RESTORED__ = true; window.close = function () {};",
+                )
         });
         match built.and_then(|b| b.build()) {
             Ok(w) => {
                 crate::webview_tuning::tune(&w);
+                crate::wv2_mem::aux_low(&h, false);
                 if let Some(g) = *MAIN_GEO.lock().unwrap_or_else(|p| p.into_inner()) {
                     let _ = w.set_size(g.size);
                     let _ = w.set_position(g.pos);
+                    // monitor odłączony, gdy okno siedziało w zasobniku: bez tego wróciłoby poza ekran
+                    keep_on_screen(&w);
                     if g.maximized {
                         let _ = w.maximize();
                     }
@@ -384,7 +517,7 @@ pub fn clamp_rect(
     (x, y, w, h)
 }
 
-fn keep_on_screen(win: &tauri::WebviewWindow) {
+pub(crate) fn keep_on_screen(win: &tauri::WebviewWindow) {
     let (Ok(pos), Ok(size)) = (win.outer_position(), win.outer_size()) else {
         return;
     };

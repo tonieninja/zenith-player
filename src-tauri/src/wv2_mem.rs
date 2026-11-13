@@ -3,6 +3,41 @@ pub fn set_low(win: &tauri::WebviewWindow, low: bool) {
     apply(win, if low { 2 } else { 1 });
 }
 
+/// Okna wtyczek dzielą renderer z oknem głównym; niski cel oddaje to, co po nim zostało (pomiar: z 28 do 8 MB).
+#[cfg(windows)]
+pub fn aux_low(app: &tauri::AppHandle, low: bool) {
+    use tauri::Manager;
+    use webview2_com::Microsoft::Web::WebView2::Win32::{
+        ICoreWebView2_19, COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW,
+        COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL,
+    };
+    use windows_core::Interface;
+    if low {
+        // nowe okno główne startuje na NORMAL, więc stary stan nie może blokować przejścia na LOW
+        STATE.store(0, std::sync::atomic::Ordering::SeqCst);
+    }
+    for label in crate::windows::AUX_WINDOW_LABELS {
+        let Some(win) = app.get_webview_window(label) else {
+            continue;
+        };
+        let _ = win.with_webview(move |wv| unsafe {
+            let Ok(core) = wv.controller().CoreWebView2() else {
+                return;
+            };
+            if let Ok(c19) = core.cast::<ICoreWebView2_19>() {
+                let _ = c19.SetMemoryUsageTargetLevel(if low {
+                    COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW
+                } else {
+                    COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL
+                });
+            }
+        });
+    }
+}
+
+#[cfg(not(windows))]
+pub fn aux_low(_app: &tauri::AppHandle, _low: bool) {}
+
 #[cfg(windows)]
 fn apply(win: &tauri::WebviewWindow, want: u8) {
     use std::sync::atomic::Ordering;

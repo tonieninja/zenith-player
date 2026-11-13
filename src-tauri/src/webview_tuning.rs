@@ -22,7 +22,43 @@ pub fn tune(win: &tauri::WebviewWindow) {
     });
 }
 
-#[cfg(not(target_os = "linux"))]
+/// tauri-codegen 2.6 bierze z icon.ico pierwszy wpis (16 px) i pasek zadań go rozciąga;
+/// zasób exe 32512 ma wszystkie rozmiary, więc system dobiera ostry przy każdym DPI.
+#[cfg(windows)]
+pub fn tune(win: &tauri::WebviewWindow) {
+    use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        GetSystemMetrics, LoadImageW, SendMessageW, ICON_BIG, ICON_SMALL, IMAGE_ICON,
+        LR_DEFAULTCOLOR, LR_SHARED, SM_CXICON, SM_CXSMICON, SM_CYICON, SM_CYSMICON, WM_SETICON,
+    };
+    let Ok(hwnd) = win.hwnd() else {
+        return;
+    };
+    unsafe {
+        let module = GetModuleHandleW(std::ptr::null());
+        if module.is_null() {
+            return;
+        }
+        for (kind, cx, cy) in [
+            (ICON_BIG, SM_CXICON, SM_CYICON),
+            (ICON_SMALL, SM_CXSMICON, SM_CYSMICON),
+        ] {
+            let icon = LoadImageW(
+                module,
+                32512 as *const u16,
+                IMAGE_ICON,
+                GetSystemMetrics(cx),
+                GetSystemMetrics(cy),
+                LR_DEFAULTCOLOR | LR_SHARED,
+            );
+            if !icon.is_null() {
+                SendMessageW(hwnd.0 as _, WM_SETICON, kind as usize, icon as isize);
+            }
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
 pub fn tune(_win: &tauri::WebviewWindow) {}
 
 #[cfg(target_os = "linux")]

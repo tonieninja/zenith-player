@@ -23,16 +23,47 @@ struct Meta {
 static LAST: Mutex<Option<Meta>> = Mutex::new(None);
 
 fn hwnd(app: &AppHandle) -> Option<*mut std::ffi::c_void> {
+    let _ = app;
     #[cfg(windows)]
     {
-        use tauri::Manager;
-        let w = app.get_webview_window("main")?;
-        w.hwnd().ok().map(|h| h.0)
+        host_window()
     }
     #[cfg(not(windows))]
     {
-        let _ = app;
         Some(std::ptr::null_mut())
+    }
+}
+
+// własne ukryte okno: przypięte do głównego znikało razem z nim po zwolnieniu okna w zasobniku
+#[cfg(windows)]
+fn host_window() -> Option<*mut std::ffi::c_void> {
+    use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        CreateWindowExW, DefWindowProcW, RegisterClassW, WNDCLASSW,
+    };
+    let class: Vec<u16> = "ZenithMediaHost\0".encode_utf16().collect();
+    unsafe {
+        let inst = GetModuleHandleW(std::ptr::null());
+        let mut wc: WNDCLASSW = std::mem::zeroed();
+        wc.hInstance = inst;
+        wc.lpszClassName = class.as_ptr();
+        wc.lpfnWndProc = Some(DefWindowProcW);
+        RegisterClassW(&wc);
+        let h = CreateWindowExW(
+            0,
+            class.as_ptr(),
+            class.as_ptr(),
+            0,
+            0,
+            0,
+            0,
+            0,
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            inst,
+            std::ptr::null(),
+        );
+        (!h.is_null()).then_some(h)
     }
 }
 

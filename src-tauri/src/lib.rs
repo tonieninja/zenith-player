@@ -63,7 +63,8 @@ pub(crate) fn now_secs() -> u64 {
 }
 
 #[tauri::command]
-async fn post_webhook(url: String, body: String) -> Result<u16, String> {
+async fn post_webhook(webview: tauri::Webview, url: String, body: String) -> Result<u16, String> {
+    auth_store::main_window_only(&webview)?;
     let parsed = url::Url::parse(url.trim()).map_err(|_| "invalid url".to_string())?;
     let host = parsed.host_str().unwrap_or("").to_ascii_lowercase();
     let loopback = matches!(host.as_str(), "localhost" | "127.0.0.1" | "::1" | "[::1]");
@@ -75,10 +76,8 @@ async fn post_webhook(url: String, body: String) -> Result<u16, String> {
     if body.len() > 64 * 1024 {
         return Err("payload too large".into());
     }
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(8))
-        .build()
-        .map_err(|e| e.to_string())?;
+    // bez przekierowań: adres sprawdzony wyżej nie może odbić żądania do sieci lokalnej
+    let client = crate::player::client("", 8, false).ok_or("http client")?;
     let res = client
         .post(parsed)
         .header("Content-Type", "application/json")
@@ -90,7 +89,11 @@ async fn post_webhook(url: String, body: String) -> Result<u16, String> {
 }
 
 #[tauri::command]
-async fn get_ytm_cookies(app: tauri::AppHandle) -> Result<String, String> {
+async fn get_ytm_cookies(app: tauri::AppHandle, webview: tauri::Webview) -> Result<String, String> {
+    // mini bez okna głównego sam wysyła polubienia na konto, więc też dostaje ciasteczka
+    if webview.label() != "mini-player" {
+        auth_store::main_window_only(&webview)?;
+    }
     Ok(ytm_api::resolve_cookies_public(&app))
 }
 
@@ -264,7 +267,6 @@ async fn open_google_login(app: tauri::AppHandle, title: String) -> Result<(), S
         .center()
         .resizable(true)
         .focused(true)
-        .enable_clipboard_access()
         .background_color(tauri::window::Color(12, 14, 20, 255))
         .user_agent(login_nav::user_agent())
         .data_directory(data_dir)
@@ -385,7 +387,7 @@ use smtc::mpris_update;
 pub(crate) fn tray_action(app: &tauri::AppHandle, action: &str) {
     if native_audio::is_headless() {
         native_audio::headless::action(action);
-    } else {
+    } else if !windows::defer_ui_event("zenith-tray-action", action) {
         let _ = app.emit("zenith-tray-action", action);
     }
 }
@@ -397,9 +399,11 @@ fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let quit = MenuItem::with_id(app, "tray-quit", "Quit", true, None::<&str>)?;
     let menu = Menu::with_items(app, &[&play, &next, &show, &quit])?;
 
-    let icon = app
-        .default_window_icon()
-        .cloned()
+    // na Windows domyślna ikona to wpis 16 px z icon.ico, rozmyty w zasobniku przy skalowaniu powyżej 100%
+    let icon = cfg!(windows)
+        .then(|| tauri::image::Image::from_bytes(include_bytes!("../icons/32x32.png")).ok())
+        .flatten()
+        .or_else(|| app.default_window_icon().cloned())
         .ok_or("missing default window icon")?;
 
     TrayIconBuilder::with_id("zenith-tray")
@@ -694,6 +698,8 @@ pub fn run() {
             }
             if let Some(main) = app.get_webview_window("main") {
                 webview_tuning::tune(&main);
+                // 1280x800 z konfiguracji nie mieści się na 1366x768 ani na 1080p przy skali 150%
+                windows::keep_on_screen(&main);
             }
             tauri::async_runtime::spawn(stream_proxy::start_background());
             potoken::init(app.handle());
@@ -716,6 +722,20 @@ pub fn run() {
             }
             apply_global_shortcuts(app.handle(), GLOBAL_HOTKEYS_ON.load(Ordering::SeqCst));
             native_audio::init(app.handle());
+            {
+                use tauri::Listener;
+                // bez okna głównego przyciski mini odtwarzacza obsługuje sam Rust
+                app.listen_any("zenith-mini-action", |ev| {
+                    let Ok(action) = serde_json::from_str::<String>(ev.payload()) else {
+                        return;
+                    };
+                    if native_audio::is_headless() {
+                        native_audio::headless::mini_action(&action);
+                    } else {
+                        windows::defer_ui_event("zenith-mini-action", &action);
+                    }
+                });
+            }
             wv2_mem::start_watch(app.handle());
             Ok(())
         })
@@ -733,6 +753,7 @@ pub fn run() {
                     if let Some(wv) = window.app_handle().get_webview_window("main") {
                         wv2_mem::set_low(&wv, true);
                     }
+                    windows::hold_ui();
                     let _ = window.emit_to("main", "zenith-hidden-to-tray", ());
                     windows::main_hidden(window.app_handle());
                 } else {
@@ -761,9 +782,12 @@ pub fn run() {
                 if windows::AUX_WINDOW_LABELS.contains(&label.as_str())
                     && !windows::is_shutting_down()
                 {
-                    let _ = window
-                        .app_handle()
-                        .emit_to("main", "zenith-aux-window-closed", label);
+                    let app = window.app_handle();
+                    if app.get_webview_window("main").is_some() && windows::ui_is_ready() {
+                        let _ = app.emit_to("main", "zenith-aux-window-closed", label);
+                    } else {
+                        windows::note_aux_closed(app, &label);
+                    }
                 }
             }
             _ => {}
@@ -781,9 +805,13 @@ pub fn run() {
             native_audio::zaudio_tail,
             native_audio::zaudio_plan,
             native_audio::zaudio_attach,
+            native_audio::zaudio_snapshot,
+            windows::ui_ready,
             cover_cache_base,
             get_ytm_cookies,
             spotify_auth::spotify_wait_for_code,
+            spotify_auth::spotify_token_load,
+            spotify_auth::spotify_token_save,
             export_file::save_playlist_export,
             post_webhook,
             prefs::prefs_load,
@@ -805,6 +833,8 @@ pub fn run() {
             windows::open_lyrics_second_screen,
             windows::open_mini_player,
             windows::close_window,
+            windows::ui_keep,
+            windows::aux_closed_take,
             windows::app_prepare_shutdown,
             set_tray_labels,
             set_close_to_tray,
@@ -857,7 +887,12 @@ pub fn run() {
             discord::discord_disconnect
         ])
         .build(windows::with_user_webview_args(tauri::generate_context!()))
-        .expect("error while building tauri application")
+        .unwrap_or_else(|e| {
+            #[cfg(windows)]
+            webview2_check::fatal(&e.to_string());
+            #[cfg(not(windows))]
+            panic!("error while building tauri application: {e}");
+        })
         .run(|app_handle, event| {
             if let RunEvent::ExitRequested {
                 code: None, api, ..
