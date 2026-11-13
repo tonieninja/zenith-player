@@ -11,7 +11,7 @@ use output::DeckOut;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use source::Buf;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
@@ -29,6 +29,7 @@ pub struct Snapshot {
     pub crossfading: bool,
     pub ended: bool,
     pub muted: bool,
+    pub buffering: bool,
 }
 
 #[derive(Clone, Serialize)]
@@ -190,6 +191,7 @@ fn snap_of(st: &State) -> Snapshot {
         crossfading: st.fading,
         ended: d.ended,
         muted: st.muted,
+        buffering: d.buffering,
     }
 }
 
@@ -212,10 +214,11 @@ fn apply_volume(st: &State, i: usize) {
     d.out.set_gain(v);
 }
 
-fn set_duck(f: f64) {
+// warunek sprawdzany pod blokadą silnika: wyłączenie wtyczki w trakcie callbacku nie zostawi wyciszenia
+fn set_duck(f: f64, still: impl FnOnce() -> bool) {
     let Some(e) = engine() else { return };
     let mut st = e.st.lock().unwrap_or_else(|p| p.into_inner());
-    if (st.duck - f).abs() < 1e-9 {
+    if !still() || (st.duck - f).abs() < 1e-9 {
         return;
     }
     st.duck = f;
@@ -224,6 +227,7 @@ fn set_duck(f: f64) {
 }
 
 fn set_playing(d: &Deck, on: bool) {
+    d.out.armed.store(false, Ordering::SeqCst);
     d.out.playing.store(on, Ordering::SeqCst);
     if on {
         output::wake();
@@ -256,14 +260,15 @@ fn clear_deck(d: &mut Deck) {
 
 fn load_deck(d: &mut Deck, url: &str, rate: f64) {
     clear_deck(d);
-    d.norm = url
+    let known = url
         .rsplit('/')
         .next()
         .filter(|_| decode::NORM_ON.load(Ordering::SeqCst))
-        .and_then(crate::player::loudness_db)
-        .map_or(1.0, dsp::youtube_pregain);
+        .and_then(crate::player::loudness_db);
+    d.norm = known.map_or(1.0, dsp::youtube_pregain);
     d.loud_sum = 0.0;
-    d.loud_n = 0;
+    // wartość głośności od YouTube jest dokładniejsza niż 12 s pomiaru od cichego intro
+    d.loud_n = if known.is_some() { dsp::NORM_BLOCKS } else { 0 };
     d.src = url.to_string();
     let buf = source::open(url);
     d.buf = Some(buf.clone());
@@ -351,10 +356,15 @@ fn on_deck_event(i: usize, gen: u64, ev: DeckEv) {
     if out.is_empty() || !is_active {
         return;
     }
+    let errored = out.contains(&"error");
     let snap = snap_of(&st);
     drop(st);
     for k in out {
         emit(e, k, snap.clone());
+    }
+    // bez okna nikt nie słucha zdarzenia error, więc to Rust musi przejść dalej
+    if errored && HEADLESS.load(Ordering::SeqCst) {
+        std::thread::spawn(headless::on_error);
     }
 }
 
@@ -363,13 +373,16 @@ fn watch_decks(e: &Engine) {
     let active = st.active;
     let mut out: Vec<&'static str> = Vec::new();
     let mut ended = false;
+    // album bez przerw: następny już gra, więc koniec poprzedniego to nie pauza ani koniec kolejki
+    let next = &st.decks[1 - active];
+    let taken_over = next.want_play && next.out.playing.load(Ordering::SeqCst);
     for (i, d) in st.decks.iter_mut().enumerate() {
         if d.out.drained.swap(false, Ordering::SeqCst) && !d.src.is_empty() && !d.ended {
             d.last_t = pos_of(d);
             d.ended = true;
             d.want_play = false;
             set_playing(d, false);
-            if i == active {
+            if i == active && !taken_over {
                 out.extend(["timeupdate", "pause", "ended"]);
                 ended = true;
             }
@@ -421,24 +434,61 @@ pub fn ab_jump(ab: Option<(f64, f64)>, t: f64) -> Option<f64> {
 }
 
 const TICK_MS: u64 = 50;
-const TICKS_PER_UPDATE: u32 = 5;
+const SLOW_TICK_MS: u64 = 250;
+const UPDATE_MS: u64 = 240;
 
 fn busy(st: &State) -> bool {
     st.fading || st.decks.iter().any(|d| d.want_play)
 }
 
+// 50 ms potrzebne tylko przy pętli A-B, przejściu, buforowaniu i tuż przed końcem; poza tym 4 pobudki/s
+fn needs_fast_tick(st: &State) -> bool {
+    let d = &st.decks[st.active];
+    let near_end = dur_of(d).is_some_and(|dur| dur - pos_of(d) < 1.5);
+    st.ab.is_some()
+        || st.fading
+        || near_end
+        || st
+            .decks
+            .iter()
+            .any(|d| d.buffering || d.out.armed.load(Ordering::Relaxed))
+}
+
 fn tick_loop() {
     let Some(e) = engine() else { return };
-    let mut n: u32 = 0;
+    let mut last_update = Instant::now();
     loop {
-        if !busy(&e.st.lock().unwrap_or_else(|p| p.into_inner())) {
-            std::thread::park_timeout(Duration::from_secs(60));
-            continue;
-        }
-        std::thread::sleep(Duration::from_millis(TICK_MS));
-        n = n.wrapping_add(1);
+        let fast = {
+            let st = e.st.lock().unwrap_or_else(|p| p.into_inner());
+            if !busy(&st) {
+                drop(st);
+                std::thread::park_timeout(Duration::from_secs(60));
+                continue;
+            }
+            needs_fast_tick(&st)
+        };
+        std::thread::sleep(Duration::from_millis(if fast {
+            TICK_MS
+        } else {
+            SLOW_TICK_MS
+        }));
         watch_decks(e);
         let mut st = e.st.lock().unwrap_or_else(|p| p.into_inner());
+        // nowe urządzenie z inną częstotliwością: dekoder bez ponownego seeka grałby wolniej i niżej
+        static LAST_SR: AtomicU32 = AtomicU32::new(0);
+        let sr = output::sample_rate();
+        let prev = LAST_SR.swap(sr, Ordering::Relaxed);
+        if prev != 0 && prev != sr {
+            let rate = st.rate;
+            for d in st
+                .decks
+                .iter_mut()
+                .filter(|d| !d.src.is_empty() && !d.ended)
+            {
+                let t = pos_of(d);
+                do_seek(d, t, rate);
+            }
+        }
         let a = st.active;
         let d = &st.decks[a];
         if !d.want_play || d.ready < 4 || d.buffering {
@@ -454,9 +504,10 @@ fn tick_loop() {
                 looped = Some(to);
             }
         }
-        if looped.is_none() && !n.is_multiple_of(TICKS_PER_UPDATE) {
+        if looped.is_none() && last_update.elapsed() < Duration::from_millis(UPDATE_MS) {
             continue;
         }
+        last_update = Instant::now();
         let mut snap = snap_of(&st);
         drop(st);
         if let Some(to) = looped {
@@ -563,6 +614,9 @@ pub fn run_cmd(cmd: Cmd) -> Snapshot {
                 if d.want_play {
                     d.last_t = pos_of(d);
                     d.want_play = false;
+                    // po wznowieniu wciąż pusty bufor zgłosi waiting od nowa
+                    d.buffering = false;
+                    d.out.starved.store(false, Ordering::SeqCst);
                     set_playing(d, false);
                     events.push("pause");
                 }
@@ -720,7 +774,7 @@ pub async fn wait_ready(timeout_ms: u64) -> bool {
 
 pub async fn crossfade(url: String, seconds: f64) -> Result<Snapshot, String> {
     let e = engine().ok_or("no engine")?;
-    let (token, gen, from_audible) = {
+    let (token, gen, from_audible, g0) = {
         let mut st = e.st.lock().unwrap_or_else(|p| p.into_inner());
         st.ab = None;
         st.fade_token += 1;
@@ -729,7 +783,11 @@ pub async fn crossfade(url: String, seconds: f64) -> Result<Snapshot, String> {
         let a = st.active;
         let o = 1 - a;
         let rate = st.rate;
-        let prerolled = st.decks[o].src == url && !st.decks[o].errored && st.decks[o].ready >= 1;
+        // grający deck to ogon poprzedniego przejścia, a nie przygotowany początek utworu
+        let prerolled = st.decks[o].src == url
+            && !st.decks[o].errored
+            && st.decks[o].ready >= 1
+            && !st.decks[o].want_play;
         if !prerolled {
             silence_other(&mut st);
         }
@@ -739,7 +797,8 @@ pub async fn crossfade(url: String, seconds: f64) -> Result<Snapshot, String> {
         }
         st.decks[o].gain = 0.0;
         apply_volume(&st, o);
-        (token, st.decks[o].gen, from_audible)
+        // przejście przerwane w połowie zaczyna wyciszanie od bieżącej głośności, bez skoku do pełnej
+        (token, st.decks[o].gen, from_audible, st.decks[a].gain)
     };
     let tok_ok = |e: &Engine| e.st.lock().unwrap_or_else(|p| p.into_inner()).fade_token == token;
     let fail = |e: &Engine, msg: String| {
@@ -755,11 +814,23 @@ pub async fn crossfade(url: String, seconds: f64) -> Result<Snapshot, String> {
     if !tok_ok(e) {
         return Err("superseded".into());
     }
+    // krótkie przejście albumu: zamiast nakładać utwory, następny wchodzi dokładnie po ostatniej próbce
+    let gapless = seconds < 0.1 && from_audible;
     {
         let mut st = e.st.lock().unwrap_or_else(|p| p.into_inner());
+        if st.fade_token != token {
+            return Err("superseded".into());
+        }
         let o = 1 - st.active;
         st.decks[o].want_play = true;
-        set_playing(&st.decks[o], true);
+        if gapless {
+            st.decks[o].gain = 1.0;
+            apply_volume(&st, o);
+            st.decks[o].out.armed.store(true, Ordering::SeqCst);
+            output::wake();
+        } else {
+            set_playing(&st.decks[o], true);
+        }
     }
     if let Err(m) = wait_for(gen, true, Duration::from_secs(14)).await {
         return Err(fail(e, m));
@@ -769,22 +840,33 @@ pub async fn crossfade(url: String, seconds: f64) -> Result<Snapshot, String> {
     }
     {
         let mut st = e.st.lock().unwrap_or_else(|p| p.into_inner());
+        // token sprawdzany pod tą samą blokadą co zamiana, inaczej pauza mogłaby wskoczyć pomiędzy
+        if st.fade_token != token {
+            return Err("superseded".into());
+        }
         st.active = 1 - st.active;
-        st.fading = true;
+        if gapless {
+            let from = 1 - st.active;
+            clear_deck(&mut st.decks[from]);
+            // mikser włączył deck sam, a dekoder budzi dopiero set_playing
+            set_playing(&st.decks[1 - from], true);
+        } else {
+            st.fading = true;
+        }
     }
     kick();
     emit(e, "durationchange", snapshot());
+    if gapless {
+        return Ok(snapshot());
+    }
     let dur = (seconds * 1000.0).max(180.0);
     std::thread::spawn(move || {
         let started = Instant::now();
         loop {
             let t = (started.elapsed().as_secs_f64() * 1000.0 / dur).min(1.0);
             let mut st = e.st.lock().unwrap_or_else(|p| p.into_inner());
+            // ten, kto przerwał przejście, sam sprząta decki; czyszczenie tutaj zabijało świeżo ładowany utwór
             if st.fade_token != token {
-                let f = 1 - st.active;
-                if st.decks[f].gen != gen {
-                    clear_deck(&mut st.decks[f]);
-                }
                 return;
             }
             let to = st.active;
@@ -792,7 +874,7 @@ pub async fn crossfade(url: String, seconds: f64) -> Result<Snapshot, String> {
             st.decks[to].gain = (t * std::f64::consts::FRAC_PI_2).sin();
             apply_volume(&st, to);
             if from_audible {
-                st.decks[from].gain = (t * std::f64::consts::FRAC_PI_2).cos();
+                st.decks[from].gain = g0 * (t * std::f64::consts::FRAC_PI_2).cos();
                 apply_volume(&st, from);
             }
             if t >= 1.0 {
@@ -903,6 +985,11 @@ pub fn zaudio_attach(app: AppHandle) -> Value {
     headless::take_restore(snapshot())
 }
 
+#[tauri::command]
+pub fn zaudio_snapshot() -> Snapshot {
+    snapshot()
+}
+
 pub fn is_headless() -> bool {
     HEADLESS.load(Ordering::SeqCst)
 }
@@ -949,6 +1036,60 @@ pub mod headless {
             h.prefetched_for = None;
         });
         save_state();
+        now_playing(true);
+        let (resume, i) = h(|h| (h.plan["playing"].as_bool().unwrap_or(false), index(&h.plan)));
+        let s = snapshot();
+        // okno zginęło między końcem utworu a startem następnego; bez tego zasobnik milknie
+        if resume && (s.ended || !s.has_source) {
+            spawn_once(start_index(i, 0.0));
+        }
+    }
+
+    static LAST_NOW_MS: AtomicU64 = AtomicU64::new(0);
+
+    fn unix_ms() -> u64 {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0)
+    }
+
+    /// Bez okna głównego mini odtwarzacz i nakładki biorą utwór i zegar stąd; między zmianami wystarczy co 5 s.
+    pub fn now_playing(force: bool) {
+        // spóźniony wpis z Rusta przełączyłby mini w tryb bez okna, choć okno już wróciło
+        if !is_headless() {
+            return;
+        }
+        let now = unix_ms();
+        if !force && now.saturating_sub(LAST_NOW_MS.load(Ordering::SeqCst)) < 5000 {
+            return;
+        }
+        let Some(app) = engine().and_then(|e| e.app.clone()) else {
+            return;
+        };
+        let track = h(|h| h.plan["queue"][index(&h.plan)].clone());
+        if !track.is_object() {
+            return;
+        }
+        LAST_NOW_MS.store(now, Ordering::SeqCst);
+        let s = snapshot();
+        let rate = with(|st| st.rate).unwrap_or(1.0);
+        let _ = app.emit(
+            "zenith-headless-now",
+            serde_json::json!({ "track": track, "t": s.t, "d": s.d, "playing": !s.paused, "rate": rate }),
+        );
+    }
+
+    /// Przyciski mini odtwarzacza; polubienie mini okno zapisuje samo.
+    pub fn mini_action(name: &str) {
+        match name
+            .strip_prefix("seek:")
+            .and_then(|v| v.parse::<f64>().ok())
+        {
+            Some(t) if t.is_finite() => seek_to(t.max(0.0)),
+            Some(_) => {}
+            None => action(name),
+        }
     }
 
     fn queue_len(p: &Value) -> usize {
@@ -1010,7 +1151,7 @@ pub mod headless {
             h.prefetched_for = None;
         });
         save_state();
-        discord_presence(true);
+        announce(true);
     }
 
     async fn start_index(i: usize, fade: f64) {
@@ -1021,25 +1162,39 @@ pub mod headless {
         if url.is_none() {
             url = resolve(&id).await;
         }
-        let Some(url) = url else {
-            eprintln!("[zaudio] headless: no stream for {id}, skipping");
-            if let Some(n) = h(|h| {
-                h.plan["index"] = Value::from(i as u64);
-                next_index(&h.plan)
-            }) {
-                if n != i {
-                    Box::pin(start_index(n, 0.0)).await;
-                }
-            }
+        // okno wróciło w trakcie pobierania adresu: kolejką rządzi już JS, start tutaj grałby inny utwór niż UI
+        if !is_headless() {
             return;
+        }
+        let started = match url {
+            Some(url) if fade > 0.0 && crossfade(url.clone(), fade).await.is_ok() => true,
+            Some(url) => {
+                run_cmd(Cmd::SetSrc { url });
+                play().await.is_ok()
+            }
+            None => {
+                eprintln!("[zaudio] headless: no stream for {id}, skipping");
+                false
+            }
         };
-        if fade > 0.0 && crossfade(url.clone(), fade).await.is_ok() {
+        if started {
+            ERR_STREAK.store(0, Ordering::SeqCst);
             mark_started(i);
             return;
         }
-        run_cmd(Cmd::SetSrc { url });
-        if play().await.is_ok() {
-            mark_started(i);
+        // bez sieci padnie i następny; po trzech porażkach z rzędu stajemy, zamiast przewijać kolejkę
+        if ERR_STREAK.fetch_add(1, Ordering::SeqCst) >= 3 {
+            save_state();
+            announce(false);
+            return;
+        }
+        if let Some(n) = h(|h| {
+            h.plan["index"] = Value::from(i as u64);
+            next_index(&h.plan)
+        }) {
+            if n != i {
+                Box::pin(start_index(n, 0.0)).await;
+            }
         }
     }
 
@@ -1054,6 +1209,7 @@ pub mod headless {
     }
 
     pub fn on_tick(s: &Snapshot) {
+        now_playing(false);
         let Some(d) = s.d else { return };
         let remaining = d - s.t;
         let (cf, loop_one, next, fade_for, pre_for) = h(|h| {
@@ -1073,7 +1229,12 @@ pub mod headless {
             h(|h| h.prefetched_for = Some(next));
             if let Some(id) = h(|h| track_id(&h.plan, next)) {
                 tauri::async_runtime::spawn(async move {
-                    let _ = resolve(&id).await;
+                    // przejście bez wczytanego decku startuje z opóźnieniem i ucina koniec poprzedniego
+                    if let Some(u) = resolve(&id).await {
+                        if cf > 0.0 {
+                            preroll(&u);
+                        }
+                    }
                 });
             }
         }
@@ -1088,12 +1249,31 @@ pub mod headless {
         }
     }
 
+    static ERR_STREAK: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+
+    pub fn on_error() {
+        if ERR_STREAK.load(Ordering::SeqCst) >= 3 {
+            save_state();
+            announce(false);
+            return;
+        }
+        match h(|h| next_index(&h.plan)) {
+            Some(n) => spawn_once(start_index(n, 0.0)),
+            None => {
+                save_state();
+                announce(false);
+            }
+        }
+    }
+
     pub fn on_ended() {
+        ERR_STREAK.store(0, Ordering::SeqCst);
         let (loop_one, next) = h(|h| (loop_mode(&h.plan) == "one", next_index(&h.plan)));
         if loop_one {
             run_cmd(Cmd::Seek { t: 0.0 });
             tauri::async_runtime::spawn(async {
                 let _ = play().await;
+                now_playing(true);
             });
             return;
         }
@@ -1101,7 +1281,7 @@ pub mod headless {
             Some(n) => spawn_once(start_index(n, 0.0)),
             None => {
                 save_state();
-                discord_presence(false);
+                announce(false);
             }
         }
     }
@@ -1110,20 +1290,25 @@ pub mod headless {
         match action {
             "toggle-play" => {
                 if snapshot().paused {
-                    tauri::async_runtime::spawn(async {
-                        if !snapshot().has_source {
-                            let i = h(|h| index(&h.plan));
+                    if !snapshot().has_source {
+                        // podwójne kliknięcie nie może uruchomić dwóch startów naraz
+                        let i = h(|h| index(&h.plan));
+                        spawn_once(async move {
                             start_index(i, 0.0).await;
-                        } else {
+                            save_state();
+                            announce(true);
+                        });
+                    } else {
+                        tauri::async_runtime::spawn(async {
                             let _ = play().await;
-                        }
-                        save_state();
-                        discord_presence(true);
-                    });
+                            save_state();
+                            announce(true);
+                        });
+                    }
                 } else {
                     run_cmd(Cmd::Pause);
                     save_state();
-                    discord_presence(false);
+                    announce(false);
                 }
             }
             "next" => {
@@ -1134,14 +1319,78 @@ pub mod headless {
             }
             "prev" => {
                 if snapshot().t > 3.0 {
-                    run_cmd(Cmd::Seek { t: 0.0 });
+                    seek_to(0.0);
                 } else if let Some(p) = h(|h| prev_index(&h.plan)) {
                     let cf = h(|h| h.plan["crossfade"].as_f64().unwrap_or(0.0));
                     spawn_once(start_index(p, if snapshot().has_source { cf } else { 0.0 }));
                 }
             }
+            "seek-forward" => {
+                let s = snapshot();
+                seek_to(s.d.map_or(s.t + 10.0, |d| (s.t + 10.0).min(d)));
+            }
+            "seek-back" => seek_to((snapshot().t - 10.0).max(0.0)),
+            // skróty głośności działają w zasobniku tak samo jak przy otwartym oknie, krok 5%
+            "volume-up" | "volume-down" => {
+                let step = if action == "volume-up" { 0.05 } else { -0.05 };
+                let v = with(|st| st.master).unwrap_or(0.8);
+                run_cmd(Cmd::Volume {
+                    v: (v + step).clamp(0.0, 1.0),
+                });
+            }
+            "mute" => {
+                let m = with(|st| st.muted).unwrap_or(false);
+                run_cmd(Cmd::Muted { m: !m });
+            }
             _ => {}
         }
+    }
+
+    // pasek i tekst w mini liczą czas od ostatniego wpisu, więc po skoku muszą go dostać od razu
+    fn seek_to(t: f64) {
+        run_cmd(Cmd::Seek { t });
+        save_state();
+        announce(!snapshot().paused);
+    }
+
+    fn announce(playing: bool) {
+        if !is_headless() {
+            return;
+        }
+        discord_presence(playing);
+        media_meta(playing);
+        now_playing(true);
+    }
+
+    // bez okna nikt inny nie powie panelowi multimediów systemu, że gra już następny utwór
+    fn media_meta(playing: bool) {
+        let (on, track) = h(|h| {
+            (
+                h.plan["mediaSession"].as_bool().unwrap_or(false),
+                h.plan["queue"][index(&h.plan)].clone(),
+            )
+        });
+        let Some(app) = engine().and_then(|e| e.app.clone()) else {
+            return;
+        };
+        if !on {
+            return;
+        }
+        let s = snapshot();
+        let art = track["coverLarge"]
+            .as_str()
+            .or_else(|| track["cover"].as_str())
+            .filter(|u| u.starts_with("http"))
+            .map(String::from);
+        crate::mpris_update(
+            app,
+            track["title"].as_str().map(String::from),
+            track["artist"].as_str().map(String::from),
+            art,
+            playing && !s.paused,
+            s.t,
+            s.d.unwrap_or(0.0),
+        );
     }
 
     fn discord_presence(playing: bool) {
@@ -1170,8 +1419,15 @@ pub mod headless {
                 .as_str()
                 .map(|id| format!("https://music.youtube.com/watch?v={id}")),
         };
+        // wątki ścigają się o klienta Discorda; wysyła tylko najświeższy stan, w kolejności
+        static SEQ: AtomicU64 = AtomicU64::new(0);
+        static SEND: Mutex<()> = Mutex::new(());
+        let my = SEQ.fetch_add(1, Ordering::SeqCst) + 1;
         std::thread::spawn(move || {
-            let _ = crate::discord::discord_update_presence(payload);
+            let _g = SEND.lock().unwrap_or_else(|p| p.into_inner());
+            if SEQ.load(Ordering::SeqCst) == my {
+                let _ = crate::discord::discord_update_presence(payload);
+            }
         });
     }
 
@@ -1194,7 +1450,13 @@ pub mod headless {
                 "savedAt": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0),
             })
         });
-        let _ = std::fs::write(p, v.to_string());
+        // zapis przychodzi z kilku wątków naraz; blokada i podmiana pliku nie zostawiają uciętego JSON-a
+        static SAVE: std::sync::Mutex<()> = std::sync::Mutex::new(());
+        let _g = SAVE.lock().unwrap_or_else(|e| e.into_inner());
+        let tmp = p.with_extension("tmp");
+        if std::fs::write(&tmp, v.to_string()).is_ok() {
+            let _ = std::fs::rename(&tmp, &p);
+        }
     }
 
     pub fn take_restore(s: Snapshot) -> Value {
@@ -1208,6 +1470,8 @@ pub mod headless {
                 "plan": h.plan,
                 "played": std::mem::take(&mut h.played),
                 "moved": std::mem::replace(&mut h.moved, false),
+                "pending": h.busy,
+                "volume": with(|st| st.master),
                 "snap": s,
                 "disk": disk,
             })
