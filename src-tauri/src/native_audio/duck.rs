@@ -28,7 +28,7 @@ pub fn stop() {
     }
     METER.store(0, Ordering::Relaxed);
     DUCKING.store(false, Ordering::Relaxed);
-    super::set_duck(1.0);
+    super::set_duck(1.0, || true);
 }
 
 pub fn meter() -> (f64, bool) {
@@ -98,7 +98,9 @@ fn build<T: SizedSample + 'static>(
             METER.store(gate.level.to_bits(), Ordering::Relaxed);
             DUCKING.store(gate.ducking, Ordering::Relaxed);
             if let Some(ducking) = flip {
-                super::set_duck(if ducking { load(&LEVEL) } else { 1.0 });
+                super::set_duck(if ducking { load(&LEVEL) } else { 1.0 }, || {
+                    GEN.load(Ordering::SeqCst) == gen
+                });
             }
         },
         |e| eprintln!("[zaudio] mic stream error: {e}"),

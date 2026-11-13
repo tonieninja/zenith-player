@@ -355,6 +355,8 @@ impl Session {
                 return Ok(None)
             }
             Err(SymError::IoError(e)) if self.buf.cancelled() => return Err(e.to_string()),
+            // zerwane pobieranie to błąd, nie koniec utworu; inaczej aplikacja przeskakuje zamiast wznowić
+            Err(SymError::IoError(e)) => return Err(e.to_string()),
             Err(SymError::ResetRequired) => {
                 let (dec, ..) = make_dec(self.fmt.as_ref())?;
                 self.dec = dec;
@@ -505,7 +507,8 @@ fn worker(i: usize, out: Arc<DeckOut>, rx: Receiver<DecCmd>, sink: Sink) {
                 Err(_) => return,
             }
         } else if s.as_ref().is_some_and(|s| !s.eof) && out.playing.load(Ordering::Relaxed) {
-            match rx.recv_timeout(Duration::from_millis(100)) {
+            // 3 s zapasu w kolejce: dolewka co 0,5 s wystarcza nawet przy 2× prędkości
+            match rx.recv_timeout(Duration::from_millis(500)) {
                 Ok(c) => Some(c),
                 Err(RecvTimeoutError::Timeout) => None,
                 Err(_) => return,

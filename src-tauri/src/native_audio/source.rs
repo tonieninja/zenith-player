@@ -79,13 +79,14 @@ fn pwrite(f: &std::fs::File, data: &[u8], at: u64) -> io::Result<()> {
 }
 
 impl Store {
-    fn sized(total: u64) -> Store {
+    // bez pliku tymczasowego bufor idzie do RAM; 9 h nagranie to setki MB, a nieudana alokacja zabija proces
+    fn sized(total: u64) -> Option<Store> {
         if let Some(f) = spool_file() {
             if f.set_len(total).is_ok() {
-                return Store::Disk(f, total);
+                return Some(Store::Disk(f, total));
             }
         }
-        Store::Mem(vec![0u8; total as usize])
+        (total <= 256 * 1024 * 1024).then(|| Store::Mem(vec![0u8; total as usize]))
     }
 
     fn len(&self) -> u64 {
@@ -254,7 +255,11 @@ impl Buf {
         let mut d = self.lock();
         loop {
             if self.cancelled() {
-                return Err(io::Error::new(io::ErrorKind::Interrupted, "cancelled"));
+                // Interrupted symphonia ponawia w nieskończoność, a wątek dekodera kręciłby rdzeń na 100%
+                return Err(io::Error::new(
+                    io::ErrorKind::ConnectionAborted,
+                    "cancelled",
+                ));
             }
             if let Some(end) = d.has(pos) {
                 let n = ((end - pos) as usize).min(out.len());
@@ -286,6 +291,7 @@ fn client(local: bool) -> &'static reqwest::blocking::Client {
     static NET: OnceLock<reqwest::blocking::Client> = OnceLock::new();
     let cell = if local { &LOCAL } else { &NET };
     cell.get_or_init(|| {
+        crate::win_proxy::wait();
         let b = reqwest::blocking::Client::builder()
             .connect_timeout(Duration::from_secs(15))
             .timeout(None::<Duration>)
@@ -397,8 +403,10 @@ fn download(b: &Buf, url: &str) {
             }
         };
         let partial = resp.status().as_u16() == 206;
-        {
+        let changed = {
             let mut d = b.lock();
+            // odświeżony link może dać inny format; doklejenie go do bufora dałoby śmieci w dźwięku
+            let changed = matches!((d.total, total_from(&resp)), (Some(k), Some(t)) if k != t);
             if d.mime.is_empty() {
                 d.mime = resp
                     .headers()
@@ -413,10 +421,22 @@ fn download(b: &Buf, url: &str) {
             if d.total.is_none() {
                 if let Some(t) = total_from(&resp) {
                     d.total = Some(t);
-                    d.bytes = Store::sized(t);
+                    match Store::sized(t) {
+                        Some(s) => d.bytes = s,
+                        None => d.err = Some("no room for the audio buffer".into()),
+                    }
                 }
             }
             d.cursor = from;
+            changed
+        };
+        if changed {
+            fail(b, "stream changed size".into());
+            return;
+        }
+        if b.lock().err.is_some() {
+            b.cv.notify_all();
+            return;
         }
         match pump(b, resp, from) {
             Pump::Again(at) => {
@@ -424,7 +444,8 @@ fn download(b: &Buf, url: &str) {
                 from = at;
             }
             Pump::Broken(at) => {
-                tries += 1;
+                // limit prób dotyczy zerwań bez postępu; zerwane, ale płynące pobieranie liczy od nowa
+                tries = if at > from { 1 } else { tries + 1 };
                 from = at;
                 if tries > 5 {
                     fail(b, "connection dropped".into());
