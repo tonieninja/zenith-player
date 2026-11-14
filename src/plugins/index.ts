@@ -29,6 +29,7 @@ import { sleepTimerPlugin } from './sleepTimer';
 import { smoothVolumePlugin } from './smoothVolume';
 import { STAGE_BUNDLE, zenithStagePlugin } from './stage';
 import { smartLyricsPlugin } from './smartLyrics';
+import { sponsorBlockPlugin } from './sponsorBlock';
 import { statsTrackerPlugin } from './statsTracker';
 import { systemTrayPlugin } from './systemTray';
 import { webhookPlugin } from './webhook';
@@ -46,6 +47,7 @@ export const PLUGIN_ORDER = [
   'sleep-timer',
   'playback-speed',
   'ab-loop',
+  'sponsorblock',
   'auto-pause-blur',
   'equalizer',
   'loudness-normalization',
@@ -121,6 +123,7 @@ export const ALL_PLUGINS: ZenithPlugin[] = [
   sleepTimerPlugin,
   smartLyricsPlugin,
   smoothVolumePlugin,
+  sponsorBlockPlugin,
   statsTrackerPlugin,
   systemTrayPlugin,
   webhookPlugin,
@@ -154,7 +157,6 @@ class PluginManager {
     for (const plugin of this.plugins) {
       this.enabled[plugin.id] = stored[plugin.id] ?? plugin.defaultEnabled;
     }
-    for (const id of Object.keys(AUX_WINDOW_PLUGINS)) this.enabled[id] = false;
   }
 
   reloadFromStorage() {
@@ -186,6 +188,42 @@ class PluginManager {
     this.emitChange();
   }
 
+  private windowsSettled = false;
+  private enabledAt: Record<string, number> = {};
+
+  /** Okna włączonych wtyczek wracają po starcie; zamknięte bez okna głównego wyłączają wtyczkę. */
+  async restoreWindows(
+    restoredUi: boolean,
+    closedLabels: string[],
+    exists: (label: string) => Promise<boolean>
+  ) {
+    for (const [id, label] of Object.entries(AUX_WINDOW_PLUGINS)) {
+      if (!this.enabled[id]) continue;
+      if (closedLabels.includes(label)) {
+        this.markWindowClosed(label);
+        continue;
+      }
+      if (await exists(label)) continue;
+      // po odbudowie okna głównego brak okna znaczy, że ktoś je zamknął w zasobniku
+      if (restoredUi) this.markWindowClosed(label);
+      else {
+        this.enabledAt[id] = Date.now();
+        catchAsync(() => this.plugins.find((p) => p.id === id)?.onEnable?.());
+      }
+    }
+    this.windowsSettled = true;
+  }
+
+  /** Wtyczka z oknem jest włączona tylko wtedy, gdy jej okno istnieje, nawet gdy zgubi się zdarzenie zamknięcia. */
+  async reconcileWindows(exists: (label: string) => Promise<boolean>) {
+    if (!this.windowsSettled) return;
+    for (const [id, label] of Object.entries(AUX_WINDOW_PLUGINS)) {
+      // świeżo włączone okno może się jeszcze budować
+      if (!this.enabled[id] || Date.now() - (this.enabledAt[id] ?? 0) < 4000) continue;
+      if (!(await exists(label))) this.markWindowClosed(label);
+    }
+  }
+
   isEnabled(id: string): boolean {
     return Boolean(this.enabled[id]);
   }
@@ -207,10 +245,16 @@ class PluginManager {
   setEnabled(id: string, on: boolean) {
     if (this.enabled[id] === on) return;
     this.enabled[id] = on;
+    if (on) this.enabledAt[id] = Date.now();
     this.persist();
     const plugin = this.plugins.find((p) => p.id === id);
     if (!plugin) return;
-    catchAsync(() => (on ? plugin.onEnable?.() : plugin.onDisable?.()));
+    if (on && AUX_WINDOW_PLUGINS[id]) {
+      // wyłączenie w trakcie budowania okna nie miało czego zamknąć, więc zamykamy po otwarciu
+      void Promise.allSettled([(async () => plugin.onEnable?.())()]).then(() => {
+        if (!this.enabled[id]) catchAsync(() => plugin.onDisable?.());
+      });
+    } else catchAsync(() => (on ? plugin.onEnable?.() : plugin.onDisable?.()));
 
     if (id === 'zenith-stage') {
       for (const bundled of STAGE_BUNDLE) {
