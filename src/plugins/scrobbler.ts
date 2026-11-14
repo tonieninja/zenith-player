@@ -22,13 +22,37 @@ export function scrobbleThreshold(duration: number): number {
 }
 
 export function createScrobbler(o: ScrobblerOptions): ZenithPlugin {
+  // czas słuchania liczy zegar, nie pozycja: aplikacja zgłasza pozycję tylko przy zmianach, nie co sekundę
   let cur: {
     info: NowPlayingInfo;
     start: number;
     listened: number;
-    lastPos: number;
+    since: number | null;
     done: boolean;
   } | null = null;
+
+  const tally = () => {
+    if (cur?.since == null) return;
+    const now = Date.now();
+    cur.listened += (now - cur.since) / 1000;
+    cur.since = now;
+  };
+  const setPlaying = (on: boolean) => {
+    if (!cur) return;
+    tally();
+    cur.since = on ? (cur.since ?? Date.now()) : null;
+  };
+  const begin = (info: NowPlayingInfo | null) => {
+    cur = info
+      ? {
+          info,
+          start: Date.now(),
+          listened: 0,
+          since: info.isPlaying ? Date.now() : null,
+          done: false,
+        }
+      : null;
+  };
 
   const readQueue = (): Scrobble[] => {
     try {
@@ -50,12 +74,22 @@ export function createScrobbler(o: ScrobblerOptions): ZenithPlugin {
       () => true,
       () => false
     );
+  let flushing = false;
   const flush = async () => {
+    // dwa równoległe opróżnienia wysłałyby zaległości podwójnie
+    if (flushing) return;
     const q = readQueue();
     if (!q.length) return;
-    const left: Scrobble[] = [];
-    for (const p of q) if (!(await send(p))) left.push(p);
-    writeQueue(left);
+    flushing = true;
+    try {
+      const sent = new Set<Scrobble>();
+      for (const p of q) if (await send(p)) sent.add(p);
+      // odsłuchy dopisane w trakcie wysyłki zostają w kolejce
+      const added = readQueue().slice(q.length);
+      writeQueue([...q.filter((p) => !sent.has(p)), ...added]);
+    } finally {
+      flushing = false;
+    }
   };
   const maybeScrobble = () => {
     if (!cur || cur.done) return;
@@ -82,9 +116,9 @@ export function createScrobbler(o: ScrobblerOptions): ZenithPlugin {
     description: o.description,
     defaultEnabled: false,
     onTrackChange(info) {
-      cur = info
-        ? { info, start: Date.now(), listened: 0, lastPos: info.position, done: false }
-        : null;
+      tally();
+      maybeScrobble();
+      begin(info);
       if (info?.artist && info.title) {
         void o
           .nowPlaying({
@@ -98,14 +132,17 @@ export function createScrobbler(o: ScrobblerOptions): ZenithPlugin {
     },
     onNowPlaying(info) {
       if (!cur || !info || info.id !== cur.info.id) return;
-      const step = info.position - cur.lastPos;
-      if (info.isPlaying && step > 0 && step < 3) cur.listened += step;
-      cur.lastPos = info.position;
-      if (info.duration) cur.info = { ...cur.info, duration: info.duration };
+      tally();
+      const d = info.duration || cur.info.duration;
+      // pętla jednego utworu nie zmienia utworu, więc powrót na start po przesłuchaniu to nowe odtworzenie
+      if (cur.done && info.position < 3 && (Date.now() - cur.start) / 1000 >= d - 5) begin(info);
+      setPlaying(info.isPlaying);
+      if (cur && info.duration) cur.info = { ...cur.info, duration: info.duration };
       maybeScrobble();
     },
-    onSeek(position) {
-      if (cur) cur.lastPos = position;
+    onPlayStateChange(playing) {
+      setPlaying(playing);
+      maybeScrobble();
     },
     onEnable() {
       void flush();

@@ -10,6 +10,10 @@ export const smoothVolumePlugin: ZenithPlugin = {
 
 let rampToken = 0;
 
+export function cancelRamps() {
+  rampToken++;
+}
+
 export function rampVolume(
   audio: { volume: number },
   target: number,

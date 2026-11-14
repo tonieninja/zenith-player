@@ -68,10 +68,17 @@ export function popPlayHistory(
 
 export function formatTime(time: number): string {
   if (isNaN(time) || !isFinite(time) || time < 0) return '0:00';
-  if (time >= 60 * 60) return 'LIVE';
-  const mins = Math.floor(time / 60);
-  const secs = Math.floor(time % 60);
-  return `${mins}:${secs.toString().padStart(2, '0')}`;
+  const secs = Math.floor(time % 60)
+    .toString()
+    .padStart(2, '0');
+  // strumień na żywo ma nieskończony czas, więc godzina i więcej to zwykłe długie nagranie
+  if (time >= 3600) {
+    const mins = Math.floor((time % 3600) / 60)
+      .toString()
+      .padStart(2, '0');
+    return `${Math.floor(time / 3600)}:${mins}:${secs}`;
+  }
+  return `${Math.floor(time / 60)}:${secs}`;
 }
 
 export function knownDurationSec(
