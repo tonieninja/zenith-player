@@ -120,6 +120,9 @@ async function startHid() {
   if (!unlistenStatus) {
     const un = await listen<string>('zenith-dualsense-status', (e) => {
       hidConnected = e.payload === 'connected' || e.payload === 'connected-bt';
+      // pad czytany przez HID: interwał Gamepad API tylko budziłby renderer 5-10 razy na sekundę
+      if (hidConnected) stopGamepad();
+      else if (gen === hidGen) startGamepad();
     });
     if (gen !== hidGen || unlistenStatus) un();
     else unlistenStatus = un;

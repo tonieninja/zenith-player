@@ -341,7 +341,8 @@ fn poll_loop(app: AppHandle) {
                 told_missing = true;
                 let _ = app.emit("zenith-dualsense-status", "not-found");
             }
-            sleep_while_running(Duration::from_secs(2));
+            // wyliczanie urządzeń HID kosztuje; pad podłączony później złapiemy po kilku sekundach
+            sleep_while_running(Duration::from_secs(5));
             continue;
         };
         told_missing = false;
