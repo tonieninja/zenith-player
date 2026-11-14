@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>com.zenithplayer.desktop</id>
+  <name>Zenith</name>
+  <summary>Music player with synced lyrics, crossfade and plugins</summary>
+  <summary xml:lang="pl">Odtwarzacz muzyki z synchronizowanymi tekstami, crossfade i wtyczkami</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <description>
+    <p>Independent desktop music player: synced karaoke lyrics, crossfade, mini player, lyrics overlay, phone remote and 30+ plugins. Not affiliated with Google or YouTube.</p>
+  </description>
+  <launchable type="desktop-id">Zenith.desktop</launchable>
+  <url type="homepage">https://github.com/tonieninja/zenith-player</url>
+  <categories><category>AudioVideo</category><category>Audio</category><category>Player</category></categories>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="4.0.1" date="2026-11-05"/>
+    <release version="4.0.0" date="2026-10-29"/>
+  </releases>
+</component>

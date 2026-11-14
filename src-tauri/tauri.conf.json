@@ -1,0 +1,124 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Zenith",
+  "version": "4.0.1",
+  "identifier": "com.zenithplayer.desktop",
+  "build": {
+    "beforeDevCommand": "pnpm dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "pnpm build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "macOSPrivateApi": true,
+    "windows": [
+      {
+        "title": "Zenith",
+        "width": 1280,
+        "height": 800,
+        "minWidth": 720,
+        "minHeight": 520,
+        "decorations": false,
+        "backgroundColor": "#171a22",
+        "additionalBrowserArgs": "--disable-features=BlockInsecurePrivateNetworkRequests,PrivateNetworkAccessSendPreflights,PrivateNetworkAccessRespectPreflightResults,IntensiveWakeUpThrottling,msWebOOUI,msPdfOOUI,msSmartScreenProtection,SpareRendererForSitePerProcess,BackForwardCache,Translate,OptimizationHints,MediaRouter,AutofillServerCommunication --disable-background-networking --disable-component-update --disable-domain-reliability --disable-sync --no-pings --renderer-process-limit=1"
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self' ipc: http://ipc.localhost; connect-src 'self' ipc: http://ipc.localhost https: wss: ws: http://127.0.0.1:* http://localhost:*; img-src 'self' https: data: blob: http://127.0.0.1:*; media-src 'self' https: blob: http://127.0.0.1:* http://localhost:*; style-src 'self' 'unsafe-inline'; script-src 'self'; font-src 'self' data:; worker-src 'self' blob:"
+    }
+  },
+  "bundle": {
+    "category": "Music",
+    "shortDescription": "Independent desktop music player. Not affiliated with Google or YouTube.",
+    "longDescription": "Zenith is an independent desktop music player (custom UI, synced lyrics, plugins). Catalog and playback use YouTube Music as a data source. The software is not affiliated with, endorsed by, or sponsored by Google or YouTube.",
+    "copyright": "Copyright © 2026 Zenith Player contributors",
+    "publisher": "Zenith Player",
+    "homepage": "https://github.com/tonieninja/zenith-player",
+    "license": "MIT",
+    "licenseFile": "../LICENSE",
+    "active": true,
+    "createUpdaterArtifacts": true,
+    "targets": ["nsis", "msi", "app", "dmg", "appimage", "deb", "rpm"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "resources": {
+      "../LICENSE": "LICENSE"
+    },
+    "windows": {
+      "digestAlgorithm": "sha256",
+      "timestampUrl": "http://timestamp.digicert.com",
+      "tsp": true,
+      "signCommand": {
+        "cmd": "powershell",
+        "args": [
+          "-NoProfile",
+          "-ExecutionPolicy",
+          "Bypass",
+          "-File",
+          "../scripts/sign-windows.ps1",
+          "%1"
+        ]
+      },
+      "webviewInstallMode": {
+        "type": "embedBootstrapper",
+        "silent": true
+      },
+      "wix": {
+        "language": "en-US",
+        "upgradeCode": "c4e8a91b-2f6d-4b70-9e13-7a5c0d18f246"
+      },
+      "nsis": {
+        "installMode": "currentUser",
+        "displayLanguageSelector": false,
+        "compression": "lzma",
+        "languages": ["English", "Polish"],
+        "installerIcon": "icons/icon.ico",
+        "uninstallerIcon": "icons/icon.ico",
+        "startMenuFolder": "Zenith",
+        "headerImage": "nsis/header.bmp",
+        "sidebarImage": "nsis/sidebar.bmp",
+        "installerHooks": "nsis/hooks.nsh",
+        "customLanguageFiles": {
+          "English": "nsis/English.nsh",
+          "Polish": "nsis/Polish.nsh"
+        }
+      }
+    },
+    "macOS": {
+      "minimumSystemVersion": "11.0",
+      "hardenedRuntime": true,
+      "dmg": {
+        "background": "macos/dmg-background.png",
+        "windowSize": { "width": 660, "height": 400 },
+        "appPosition": { "x": 180, "y": 190 },
+        "applicationFolderPosition": { "x": 480, "y": 190 }
+      }
+    },
+    "linux": {
+      "appimage": {
+        "bundleMediaFramework": true
+      },
+      "rpm": {
+        "desktopTemplate": "linux/zenith.desktop",
+        "depends": ["webkit2gtk4.1", "gtk3", "libayatana-appindicator-gtk3", "gstreamer1-plugins-base", "gstreamer1-plugins-good", "gstreamer1-plugin-libav"]
+      },
+      "deb": {
+        "section": "sound",
+        "desktopTemplate": "linux/zenith.desktop",
+        "files": { "/usr/share/metainfo/com.zenithplayer.desktop.metainfo.xml": "linux/zenith.metainfo.xml" },
+        "depends": ["libwebkit2gtk-4.1-0", "libgtk-3-0", "libayatana-appindicator3-1", "gstreamer1.0-plugins-base", "gstreamer1.0-plugins-good", "gstreamer1.0-libav"]
+      }
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEY5NjE1NjFGNjdDRjI0NkQKUldSdEpNOW5IMVpoK2R1c20rRFI0cnhCNVJ2VUlJZ2doWDN2dXk1UkxrRGVDckh5M3creE9IYXUK",
+      "endpoints": ["https://github.com/tonieninja/zenith-player/releases/latest/download/latest.json"]
+    }
+  }
+}

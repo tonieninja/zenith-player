@@ -1,0 +1,67 @@
+{
+ "message": {
+  "header": {
+   "status_code": 200
+  },
+  "body": {
+   "macro_calls": {
+    "matcher.track.get": {
+     "message": {
+      "header": {
+       "status_code": 200
+      },
+      "body": {
+       "track": {
+        "track_id": 226291677,
+        "commontrack_id": 124185591,
+        "track_name": "NOKIA",
+        "artist_name": "Drake",
+        "album_name": "$ome $exy $ongs 4 U",
+        "track_length": null,
+        "has_lyrics": 1,
+        "has_subtitles": 1,
+        "has_richsync": 1,
+        "instrumental": 0,
+        "restricted": 0,
+        "track_isrc": null
+       }
+      }
+     }
+    },
+    "track.lyrics.get": {
+     "message": {
+      "header": {
+       "status_code": 200
+      },
+      "body": {
+       "lyrics": {
+        "lyrics_id": 35776330,
+        "restricted": 0,
+        "instrumental": 0,
+        "lyrics_body": "Wob gopini den\nTefe woxica fero\nGogoh vudob wiya\nKeric sohu peduf"
+       }
+      }
+     }
+    },
+    "track.subtitles.get": {
+     "message": {
+      "header": {
+       "status_code": 200
+      },
+      "body": {
+       "subtitle_list": [
+        {
+         "subtitle": {
+          "subtitle_id": 32661201,
+          "subtitle_length": 836,
+          "subtitle_body": "[00:12.00]Wob gopini den\n[00:16.00]Tefe woxica fero\n[00:20.00]Gogoh vudob wiya\n[00:24.00]Keric sohu peduf"
+         }
+        }
+       ]
+      }
+     }
+    }
+   }
+  }
+ }
+}

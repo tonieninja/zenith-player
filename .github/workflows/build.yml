@@ -1,0 +1,193 @@
+name: build
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: write
+env:
+  TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+  TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+jobs:
+  linux:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with: { workspaces: src-tauri }
+      - name: system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential cmake pkg-config \
+            libwebkit2gtk-4.1-dev libgtk-3-dev \
+            libayatana-appindicator3-dev librsvg2-dev \
+            libssl-dev patchelf libudev-dev libunwind-dev \
+            libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
+            gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-libav libasound2-dev \
+            rpm libfuse2
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test
+      - run: pnpm typecheck
+      - run: cargo test --manifest-path src-tauri/Cargo.toml
+      - name: e2e (phone remote page, Playwright)
+        run: |
+          pnpm exec playwright install --with-deps chromium
+          pnpm e2e
+      - name: build
+        shell: bash
+        run: |
+          if [ -z "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            pnpm tauri build --bundles deb,appimage,rpm --config '{"bundle":{"createUpdaterArtifacts":false}}'
+          else
+            pnpm tauri build --bundles deb,appimage,rpm
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bundle-linux
+          path: |
+            src-tauri/target/release/bundle/deb/*.deb
+            src-tauri/target/release/bundle/deb/*.sig
+            src-tauri/target/release/bundle/appimage/*.AppImage
+            src-tauri/target/release/bundle/appimage/*.sig
+            src-tauri/target/release/bundle/rpm/*.rpm
+            src-tauri/target/release/bundle/rpm/*.sig
+
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - uses: dtolnay/rust-toolchain@stable
+        with: { targets: 'aarch64-apple-darwin,x86_64-apple-darwin' }
+      - uses: Swatinem/rust-cache@v2
+        with: { workspaces: src-tauri }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test
+      - run: cargo test --manifest-path src-tauri/Cargo.toml
+      - name: build
+        shell: bash
+        run: |
+          if [ -z "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            pnpm tauri build --target universal-apple-darwin --bundles app,dmg --config '{"bundle":{"createUpdaterArtifacts":false}}'
+          else
+            pnpm tauri build --target universal-apple-darwin --bundles app,dmg
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bundle-macos
+          path: |
+            src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
+            src-tauri/target/universal-apple-darwin/release/bundle/macos/*.app.tar.gz
+            src-tauri/target/universal-apple-darwin/release/bundle/macos/*.sig
+
+  windows:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { target: x86_64-pc-windows-msvc, arch: x64 }
+          - { target: i686-pc-windows-msvc, arch: x86 }
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - uses: dtolnay/rust-toolchain@stable
+        with: { targets: '${{ matrix.target }}' }
+      - uses: Swatinem/rust-cache@v2
+        with: { workspaces: src-tauri, key: '${{ matrix.target }}' }
+      - run: pnpm install --frozen-lockfile
+      - name: unit tests (x64)
+        if: matrix.arch == 'x64'
+        run: |
+          pnpm test
+          cargo test --manifest-path src-tauri/Cargo.toml
+      - name: build installer
+        shell: bash
+        env:
+          ZENITH_SKIP_CODESIGN: '1'
+          RUSTFLAGS: '-C target-feature=+crt-static'
+        run: |
+          if [ -z "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            pnpm tauri build --target ${{ matrix.target }} --bundles nsis,msi --config '{"bundle":{"createUpdaterArtifacts":false}}'
+          else
+            pnpm tauri build --target ${{ matrix.target }} --bundles nsis,msi
+          fi
+          mkdir -p portable
+          cp src-tauri/target/${{ matrix.target }}/release/zenith-player.exe "portable/Zenith_4.0.1_${{ matrix.arch }}_portable.exe"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bundle-windows-${{ matrix.arch }}
+          path: |
+            src-tauri/target/${{ matrix.target }}/release/bundle/nsis/*-setup.exe
+            src-tauri/target/${{ matrix.target }}/release/bundle/nsis/*.sig
+            src-tauri/target/${{ matrix.target }}/release/bundle/msi/*.msi
+            src-tauri/target/${{ matrix.target }}/release/bundle/msi/*.sig
+            portable/*.exe
+
+  release:
+    needs: [linux, macos, windows]
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { path: dl }
+      - name: merge bundles
+        shell: bash
+        run: |
+          mkdir -p bundle
+          for d in deb appimage rpm dmg macos nsis msi portable; do mkdir -p "bundle/$d"; done
+          find dl -type f | while read -r f; do
+            case "$f" in
+              */deb/*) cp "$f" bundle/deb/ ;;
+              */appimage/*) cp "$f" bundle/appimage/ ;;
+              */dmg/*) cp "$f" bundle/dmg/ ;;
+              */macos/*) cp "$f" bundle/macos/ ;;
+              */nsis/*) cp "$f" bundle/nsis/ ;;
+              */msi/*) cp "$f" bundle/msi/ ;;
+              */rpm/*) cp "$f" bundle/rpm/ ;;
+              */portable/*) cp "$f" bundle/portable/ ;;
+            esac
+          done
+          find bundle -type f | sort
+      - name: latest.json
+        if: env.TAURI_SIGNING_PRIVATE_KEY != ''
+        run: |
+          V=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          node scripts/make-latest-json.mjs bundle "$V" "${GITHUB_REF_NAME}" > bundle/latest.json
+          cat bundle/latest.json
+      - name: checksums
+        run: |
+          cd bundle
+          find . -type f ! -name SHA256SUMS -printf '%P\n' | sort | xargs sha256sum > SHA256SUMS
+          cat SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: zenith-release
+          path: bundle
+      - name: publish release (tags only)
+        if: startsWith(github.ref, 'refs/tags/v') && env.TAURI_SIGNING_PRIVATE_KEY != ''
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          files: |
+            bundle/deb/*
+            bundle/appimage/*
+            bundle/dmg/*
+            bundle/macos/*
+            bundle/nsis/*
+            bundle/msi/*
+            bundle/rpm/*
+            bundle/portable/*
+            bundle/latest.json
+            bundle/SHA256SUMS
