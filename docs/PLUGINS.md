@@ -61,7 +61,7 @@ used Zenith, your own choices stay exactly as they were.
 | Listening Room        | `listening-room`   | no            | Sync playback with friends over a local WebSocket room (same PC / LAN).                               |
 | Zenith Stage          | `zenith-stage`     | no            | Streamer pack: opens lyrics overlay, turns on karaoke, and enables the share card in one toggle.      |
 | Share Card            | `share-card`       | no            | Makes a 1080×1080 Now Playing card and copies it to the clipboard.                                    |
-| Copy Track Link       | `copy-track-link`  | no            | Automatically copies the YouTube Music link when you start a new track (Ctrl+C still works).          |
+| Copy Track Link       | `copy-track-link`  | no            | Copies the YouTube Music link to the clipboard every time a new track starts.                         |
 
 ### Window and stats
 
