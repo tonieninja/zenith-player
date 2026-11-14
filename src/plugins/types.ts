@@ -10,12 +10,7 @@ export interface NowPlayingInfo {
 }
 
 export type PluginCategory =
-  | 'playback'
-  | 'sound'
-  | 'lyrics'
-  | 'control'
-  | 'integrations'
-  | 'interface';
+  'playback' | 'sound' | 'lyrics' | 'control' | 'integrations' | 'interface';
 
 export const PLUGIN_CATEGORY_ORDER: PluginCategory[] = [
   'playback',
