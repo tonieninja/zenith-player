@@ -1,6 +1,6 @@
 [package]
 name = "zenith-player"
-version = "4.1.0"
+version = "4.1.1"
 description = "Independent desktop music player. Not affiliated with Google or YouTube."
 authors = ["tonieninja"]
 edition = "2021"

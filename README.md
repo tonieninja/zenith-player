@@ -22,12 +22,12 @@ Grab it from [Releases](https://github.com/tonieninja/zenith-player/releases/lat
 
 | System               | File                                                                             |
 | -------------------- | -------------------------------------------------------------------------------- |
-| Windows 10/11        | `Zenith_4.1.0_x64-setup.exe` (or `_x64_portable.exe` if you can't install stuff) |
-| Old 32-bit Windows   | `Zenith_4.1.0_x86-setup.exe` / `_x86_portable.exe`                               |
-| Debian, Ubuntu, Mint | `Zenith_4.1.0_amd64.deb`                                                         |
-| Fedora, openSUSE     | `Zenith-4.1.0-1.x86_64.rpm`                                                      |
-| Any Linux            | `Zenith_4.1.0_amd64.AppImage`                                                    |
-| macOS 11+            | `Zenith_4.1.0_universal.dmg` (built by CI, I don't have a Mac to test it)        |
+| Windows 10/11        | `Zenith_4.1.1_x64-setup.exe` (or `_x64_portable.exe` if you can't install stuff) |
+| Old 32-bit Windows   | `Zenith_4.1.1_x86-setup.exe` / `_x86_portable.exe`                               |
+| Debian, Ubuntu, Mint | `Zenith_4.1.1_amd64.deb`                                                         |
+| Fedora, openSUSE     | `Zenith-4.1.1-1.x86_64.rpm`                                                      |
+| Any Linux            | `Zenith_4.1.1_amd64.AppImage`                                                    |
+| macOS 11+            | `Zenith_4.1.1_universal.dmg` (built by CI, I don't have a Mac to test it)        |
 
 Windows builds aren't signed with a paid certificate, so SmartScreen will complain. More info, Run anyway.
 On macOS right click, Open the first time (or System Settings, Privacy & Security, Open Anyway). `SHA256SUMS` is attached to every release.
