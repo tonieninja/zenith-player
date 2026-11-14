@@ -1,4 +1,3 @@
-
 $ErrorActionPreference = 'Stop'
 
 $principal = [Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()

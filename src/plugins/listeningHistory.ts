@@ -27,9 +27,7 @@ export function getListeningHistory(): HistoryEntry[] {
 export function clearListeningHistory() {
   try {
     localStorage.removeItem(STORAGE_KEY);
-  } catch (err) {
-    console.debug('listeningHistory clearListeningHistory', err);
-  }
+  } catch {}
 }
 
 export const listeningHistoryPlugin: ZenithPlugin = {
@@ -50,9 +48,7 @@ export const listeningHistoryPlugin: ZenithPlugin = {
         playedAt: Date.now(),
       });
       localStorage.setItem(STORAGE_KEY, JSON.stringify(list.slice(0, LIMIT)));
-    } catch (err) {
-      console.debug('listeningHistory onTrackChange', err);
-    }
+    } catch {}
   },
   onDisable() {},
 };

@@ -239,7 +239,7 @@ export function PluginsPanel({
   useEffect(() => {
     lastfmStatus()
       .then(setLfm)
-      .catch((err) => console.debug('PluginsPanel', err));
+      .catch(() => {});
   }, []);
   const lfmRun = (p: Promise<LastfmStatus>) =>
     p
@@ -732,9 +732,7 @@ export function PluginsPanel({
                     href="#"
                     onClick={(e) => {
                       e.preventDefault();
-                      void openUrl('https://www.last.fm/api/account/create').catch((err) =>
-                        console.debug('PluginsPanel renderSettings', err)
-                      );
+                      void openUrl('https://www.last.fm/api/account/create').catch(() => {});
                     }}
                   >
                     last.fm/api/account/create
@@ -790,9 +788,7 @@ export function PluginsPanel({
                     onClick={() =>
                       lfmRun(
                         lastfmBeginAuth().then(async (url) => {
-                          await openUrl(url).catch((err) =>
-                            console.debug('PluginsPanel renderSettings', err)
-                          );
+                          await openUrl(url).catch(() => {});
                           return lastfmStatus();
                         })
                       )
@@ -1227,7 +1223,7 @@ export function PluginsPanel({
   return (
     <ModalOverlay onClick={onClose} testId="plugins-overlay">
       <div className="glass-modal-container plugins-modal" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header-polished">
+        <div className="modal-header">
           <h2>{t.plugins}</h2>
           <X size={26} className="modal-close-icon" onClick={onClose} />
         </div>
@@ -1264,7 +1260,7 @@ export function PluginsPanel({
             </button>
           )}
         </div>
-        <div className="modal-body-polished plugins-modal-body">
+        <div className="modal-body plugins-modal-body">
           {(() => {
             const q = deferredQuery.trim().toLowerCase();
             const groups = pluginManager.byCategory();

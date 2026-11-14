@@ -164,9 +164,7 @@ class PluginManager {
   private persist() {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(this.enabled));
-    } catch (err) {
-      console.debug('index persist', err);
-    }
+    } catch {}
   }
 
   subscribe(fn: PluginListener): () => void {
@@ -181,9 +179,7 @@ class PluginManager {
     for (const fn of this.listeners) {
       try {
         fn(snapshot);
-      } catch (err) {
-        console.debug('index emitChange', err);
-      }
+      } catch {}
     }
   }
 

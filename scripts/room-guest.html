@@ -96,7 +96,9 @@
   <body>
     <div class="card">
       <h1>Zenith Guest</h1>
-      <p>Join the host Listening Room over local WebSocket. Paste the 6-character code from Zenith.</p>
+      <p>
+        Join the host Listening Room over local WebSocket. Paste the 6-character code from Zenith.
+      </p>
       <input id="code" maxlength="6" placeholder="ROOM CODE" autocomplete="off" />
       <button id="join">Join room</button>
       <div class="now" id="now" hidden>
@@ -118,7 +120,7 @@
       let packets = 0;
 
       const params = new URLSearchParams(location.search);
-      const defaultPort = Number(params.get('port') || 18765);
+      const port = Number(params.get('port')) || 18765;
 
       function log(msg) {
         const line = `[${new Date().toLocaleTimeString()}] ${msg}`;
@@ -149,13 +151,10 @@
         if (socket) {
           try {
             socket.close();
-          } catch (e) {
-            console.debug('room guest', e);
-          }
+          } catch {}
           socket = null;
         }
         packets = 0;
-        const port = Number(params.get('port') || defaultPort || 18765);
         const url = `ws://127.0.0.1:${port}/ws?code=${encodeURIComponent(cleaned)}`;
         log(`Connecting ${url}...`);
         try {
@@ -165,9 +164,7 @@
             log('Join timeout (12s)');
             try {
               ws.close();
-            } catch (e) {
-              console.debug('room guest', e);
-            }
+            } catch {}
             joinBtn.disabled = false;
           }, 12000);
           ws.onopen = () => {

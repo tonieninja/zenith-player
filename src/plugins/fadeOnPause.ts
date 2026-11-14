@@ -6,18 +6,14 @@ export function getFadePauseMs(): number {
   try {
     const v = Number(localStorage.getItem(FADE_PAUSE_MS_KEY));
     if (Number.isFinite(v) && v >= 0 && v <= 800) return v;
-  } catch (err) {
-    console.debug('fadeOnPause getFadePauseMs', err);
-  }
+  } catch {}
   return 280;
 }
 
 export function setFadePauseMs(ms: number) {
   try {
     localStorage.setItem(FADE_PAUSE_MS_KEY, String(ms));
-  } catch (err) {
-    console.debug('fadeOnPause setFadePauseMs', err);
-  }
+  } catch {}
 }
 
 export const fadeOnPausePlugin: ZenithPlugin = {

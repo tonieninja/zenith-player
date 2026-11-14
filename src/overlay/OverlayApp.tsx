@@ -194,15 +194,11 @@ export default function OverlayApp() {
               text: p.text ? '[plain]' : null,
             })
           );
-        } catch (err) {
-          console.debug('OverlayApp', err);
-        }
+        } catch {}
       }
     }).then((fn) => {
       unlisten = fn;
-      void emit('zenith-overlay-ready', currentWindowLabel()).catch((err) =>
-        console.debug('OverlayApp', err)
-      );
+      void emit('zenith-overlay-ready', currentWindowLabel()).catch(() => {});
     });
     return () => unlisten?.();
   }, []);

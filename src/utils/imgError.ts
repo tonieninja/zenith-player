@@ -17,9 +17,7 @@ export async function initCoverCache(): Promise<void> {
     const { invoke } = await import('@tauri-apps/api/core');
     const base = await invoke<string>('cover_cache_base');
     if (/^http:\/\/127\.0\.0\.1:\d+\/cover\/[^/]+\/$/.test(base)) coverBase = base;
-  } catch (err) {
-    console.debug('imgError initCoverCache', err);
-  }
+  } catch {}
 }
 
 export function cachedCoverUrl(src: string, px: 120 | 240 | 544): string {

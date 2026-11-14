@@ -45,8 +45,3 @@ export function itemClickPlan(track: Pick<Track, 'id' | 'type'>): { kind: ItemCl
   if (track.type === 'track' || /^[\w-]{11}$/.test(track.id)) return { kind: 'play-track' };
   return { kind: 'play-collection' };
 }
-
-export function shouldOpenCollection(track: Pick<Track, 'id' | 'type'>): boolean {
-  const kind = itemClickPlan(track).kind;
-  return kind === 'browse-page' || kind === 'play-collection';
-}

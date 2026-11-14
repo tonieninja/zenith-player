@@ -12,7 +12,6 @@ export function ModalOverlay({
   className?: string;
   testId?: string;
 }) {
-  if (typeof document === 'undefined') return null;
   return createPortal(
     <div
       className={`global-modal-overlay${className ? ` ${className}` : ''}`}

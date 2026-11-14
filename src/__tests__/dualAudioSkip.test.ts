@@ -114,7 +114,7 @@ describe('skipping near the end of a track', () => {
     const a = new DualAudio();
     a.volume = 0.05;
     await startOn(a, 'u1');
-    const p1 = a.crossfadeTo('u2', 6).catch((err) => console.debug('dualAudioSkip', err));
+    const p1 = a.crossfadeTo('u2', 6).catch(() => {});
     await settle(1200);
     const p2 = a.crossfadeTo('u3', 0.35);
     await settle(1500);
@@ -128,7 +128,7 @@ describe('skipping near the end of a track', () => {
     a.volume = 0.05;
     await startOn(a, 'u1');
     a.preroll('u2');
-    const p1 = a.crossfadeTo('u2', 0.35).catch((err) => console.debug('dualAudioSkip', err));
+    const p1 = a.crossfadeTo('u2', 0.35).catch(() => {});
     const p2 = a.crossfadeTo('u3', 0.35);
     await settle(1500);
     await Promise.allSettled([p1, p2]);

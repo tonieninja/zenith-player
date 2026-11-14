@@ -65,9 +65,7 @@ export function getEqBands(): number[] {
         return fromLegacyBands(v).map(clampDb);
       }
     }
-  } catch (err) {
-    console.debug('equalizer getEqBands', err);
-  }
+  } catch {}
   return flat();
 }
 
@@ -77,18 +75,14 @@ export function getEqBass(): number {
     if (raw === null) return EQ_PRESET_BASS[getEqPreset()] ?? 0;
     const v = Number(raw);
     if (Number.isFinite(v)) return Math.max(0, Math.min(EQ_BASS_MAX_DB, v));
-  } catch (err) {
-    console.debug('equalizer getEqBass', err);
-  }
+  } catch {}
   return 0;
 }
 
 export function getEqPreset(): string {
   try {
     return localStorage.getItem(EQ_PRESET_KEY) || 'flat';
-  } catch (err) {
-    console.debug('equalizer getEqPreset', err);
-  }
+  } catch {}
   return 'flat';
 }
 
@@ -114,9 +108,7 @@ export function setEqBands(bands: number[], preset: string, bass = getEqBass()) 
     localStorage.setItem(EQ_BANDS_KEY, JSON.stringify(bands));
     localStorage.setItem(EQ_PRESET_KEY, preset);
     localStorage.setItem(EQ_BASS_KEY, String(bass));
-  } catch (err) {
-    console.debug('equalizer setEqBands', err);
-  }
+  } catch {}
   push();
 }
 

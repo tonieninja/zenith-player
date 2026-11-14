@@ -41,13 +41,9 @@ export async function initFavoritesStore(): Promise<void> {
     } else if (local.length > 0 && fromDisk.length === 0) {
       await invoke('favorites_save', { body: JSON.stringify(local.slice(0, 500)) });
     }
-  } catch (err) {
-    console.debug('favorites initFavoritesStore', err);
-  }
+  } catch {}
 }
 
 export function persistFavorites(tracksJson: string) {
-  void invoke('favorites_save', { body: tracksJson }).catch((err) =>
-    console.debug('favorites persistFavorites', err)
-  );
+  void invoke('favorites_save', { body: tracksJson }).catch(() => {});
 }

@@ -84,7 +84,7 @@ export class NativeAudio {
       .then((s) => {
         if (seq === this.seq) this.take(s);
       })
-      .catch((err) => console.debug('nativeAudio send', err));
+      .catch(() => {});
   }
 
   get currentTime() {
@@ -135,9 +135,7 @@ export class NativeAudio {
       this.volQueued = true;
       queueMicrotask(() => {
         this.volQueued = false;
-        void invoke('zaudio_cmd', { cmd: { op: 'volume', v: this.master } }).catch((err) =>
-          console.debug('nativeAudio volume', err)
-        );
+        void invoke('zaudio_cmd', { cmd: { op: 'volume', v: this.master } }).catch(() => {});
       });
     }
   }

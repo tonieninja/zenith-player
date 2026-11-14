@@ -12,10 +12,6 @@ function applyOccluded(next: boolean) {
   document.documentElement.classList.toggle(OCCLUDED_CLASS, next);
 }
 
-export function isWindowOccluded() {
-  return occluded;
-}
-
 export async function syncWindowOcclusion() {
   const win = getCurrentWindow();
   try {
@@ -63,7 +59,7 @@ export function installWindowOcclusionHandlers(onFocus?: (focused: boolean) => v
       if (disposed) fn();
       else unlistenFocus = fn;
     })
-    .catch((err) => console.debug('windowOcclusion installWindowOcclusionHandlers', err));
+    .catch(() => {});
 
   void win
     .onResized(() => {
@@ -77,7 +73,7 @@ export function installWindowOcclusionHandlers(onFocus?: (focused: boolean) => v
       if (disposed) fn();
       else unlistenResize = fn;
     })
-    .catch((err) => console.debug('windowOcclusion installWindowOcclusionHandlers', err));
+    .catch(() => {});
 
   return () => {
     disposed = true;
@@ -106,7 +102,7 @@ export function installMaximizeStateHandler(setMaximized: (v: boolean) => void):
       .then((max) => {
         if (!disposed) setMaximized(max);
       })
-      .catch((err) => console.debug('windowOcclusion sync', err))
+      .catch(() => {})
       .finally(() => {
         maximizePending = false;
       });
@@ -115,7 +111,7 @@ export function installMaximizeStateHandler(setMaximized: (v: boolean) => void):
   void win
     .isMaximized()
     .then(setMaximized)
-    .catch((err) => console.debug('windowOcclusion installMaximizeStateHandler', err));
+    .catch(() => {});
 
   void win
     .onResized(() => {
@@ -129,7 +125,7 @@ export function installMaximizeStateHandler(setMaximized: (v: boolean) => void):
       if (disposed) fn();
       else unlisten = fn;
     })
-    .catch((err) => console.debug('windowOcclusion installMaximizeStateHandler', err));
+    .catch(() => {});
 
   return () => {
     disposed = true;

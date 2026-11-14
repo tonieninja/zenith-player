@@ -40,9 +40,7 @@ export function recordCrash(error: Error, stack?: string | null) {
       component: String(stack || '').slice(0, 2000),
     };
     localStorage.setItem(CRASH_KEY, JSON.stringify([...prev, entry].slice(-20)));
-  } catch (err) {
-    console.debug('ErrorBoundary recordCrash', err);
-  }
+  } catch {}
 }
 
 export class ErrorBoundary extends Component<Props, State> {
@@ -115,7 +113,7 @@ export class ErrorBoundary extends Component<Props, State> {
             navigator.clipboard
               ?.writeText(details)
               .then(() => this.setState({ copied: true }))
-              .catch((err) => console.debug('ErrorBoundary render', err));
+              .catch(() => {});
           }}
           style={{
             border: '1px solid rgba(255,255,255,0.25)',

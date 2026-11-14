@@ -155,9 +155,7 @@ export function applyCoverTheme(coverUrl: string | undefined | null) {
       );
       const app = document.querySelector('.zenith-app') as HTMLElement | null;
       app?.style.setProperty('--ambient-color', `rgb(${r}, ${g}, ${b})`);
-    } catch (err) {
-      console.debug('coverTheme applyCoverTheme', err);
-    }
+    } catch {}
   };
   img.onerror = () => {
     if (job === themeJob) resetCoverTheme();

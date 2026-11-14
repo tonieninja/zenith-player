@@ -14,10 +14,8 @@ import {
 import type { Language } from '../i18n';
 import { translations } from '../i18n';
 import {
-  isFeatureTourDone,
   isLegalAcked,
   isOnboardingDone,
-  markFeatureTourDone,
   markLegalAcked,
   markOnboardingDone,
 } from '../utils/onboarding';
@@ -97,7 +95,6 @@ export function Onboarding({ lang, open, onClose, onSignIn, libAuthed }: Onboard
   const finish = useCallback(() => {
     markLegalAcked();
     markOnboardingDone();
-    markFeatureTourDone();
     setLeaving(true);
     window.setTimeout(() => onClose(), 280);
   }, [onClose]);
@@ -112,7 +109,6 @@ export function Onboarding({ lang, open, onClose, onSignIn, libAuthed }: Onboard
   const skipTour = useCallback(() => {
     if (!isLegalAcked()) return;
     markOnboardingDone();
-    markFeatureTourDone();
     setLeaving(true);
     window.setTimeout(() => onClose(), 280);
   }, [onClose]);
@@ -339,8 +335,4 @@ export function Onboarding({ lang, open, onClose, onSignIn, libAuthed }: Onboard
       </div>
     </div>
   );
-}
-
-export function shouldShowFeatureTourOnly(): boolean {
-  return isOnboardingDone() && !isFeatureTourDone();
 }

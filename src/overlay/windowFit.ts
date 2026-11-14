@@ -78,9 +78,7 @@ export function attachOverlayWindowFit(panel: HTMLElement): () => void {
     lastH = height;
     try {
       await win.setSize(new LogicalSize(width, height));
-    } catch (err) {
-      console.debug('windowFit resize', err);
-    }
+    } catch {}
   };
 
   const syncIgnore = async () => {
@@ -96,9 +94,7 @@ export function attachOverlayWindowFit(panel: HTMLElement): () => void {
         ignoring = !hit;
         await win.setIgnoreCursorEvents(!hit);
       }
-    } catch (err) {
-      console.debug('windowFit syncIgnore', err);
-    }
+    } catch {}
   };
 
   const ro = new ResizeObserver(() => {
@@ -119,8 +115,6 @@ export function attachOverlayWindowFit(panel: HTMLElement): () => void {
     stopped = true;
     window.clearTimeout(timer);
     ro.disconnect();
-    void win
-      .setIgnoreCursorEvents(false)
-      .catch((err) => console.debug('windowFit attachOverlayWindowFit', err));
+    void win.setIgnoreCursorEvents(false).catch(() => {});
   };
 }

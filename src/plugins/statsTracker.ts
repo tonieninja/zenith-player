@@ -41,9 +41,7 @@ function saveStats(stats: ListenStats) {
   try {
     stats.trackPlays = pruneTrackPlays(stats.trackPlays);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(stats));
-  } catch (err) {
-    console.debug('statsTracker saveStats', err);
-  }
+  } catch {}
 }
 
 let activeId: string | null = null;
@@ -92,9 +90,7 @@ function markStarted() {
 export function resetListenStats() {
   try {
     localStorage.removeItem(STORAGE_KEY);
-  } catch (err) {
-    console.debug('statsTracker resetListenStats', err);
-  }
+  } catch {}
 }
 
 export const statsTrackerPlugin: ZenithPlugin = {
@@ -120,15 +116,3 @@ export const statsTrackerPlugin: ZenithPlugin = {
     else stopClock();
   },
 };
-
-export function formatListenStats(stats: ListenStats): string {
-  const hrs = Math.floor(stats.totalSeconds / 3600);
-  const mins = Math.floor((stats.totalSeconds % 3600) / 60);
-  const top = Object.entries(stats.trackPlays)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 5);
-  const topLines = top
-    .map(([id, min]) => `  ${id.slice(0, 11)}... ${Math.round(min)} min`)
-    .join('\n');
-  return `${hrs}h ${mins}m total · ${stats.sessions} track starts\nTop:\n${topLines || '  -'}`;
-}

@@ -35,7 +35,7 @@ pub fn meter() -> (f64, bool) {
     (load(&METER), DUCKING.load(Ordering::Relaxed))
 }
 
-// histereza jak w starym analizatorze: wyciszamy nad progiem, puszczamy poniżej 60% progu
+// histereza: wyciszamy nad progiem, puszczamy poniżej 60% progu, żeby nie przełączać na granicy
 pub struct Gate {
     acc: f64,
     n: usize,
@@ -85,7 +85,7 @@ fn build<T: SizedSample + 'static>(
     gen: u64,
     to_f32: fn(T) -> f32,
 ) -> Result<cpal::Stream, String> {
-    // okno 100 ms, tak jak tick starego monitora w webview
+    // okno RMS 100 ms
     let window = (cfg.sample_rate.0 as usize * cfg.channels as usize) / 10;
     let mut gate = Gate::new(window);
     dev.build_input_stream(

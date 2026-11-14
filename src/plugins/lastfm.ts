@@ -36,9 +36,7 @@ function readQueue(): Pending[] {
 function writeQueue(q: Pending[]) {
   try {
     localStorage.setItem(QUEUE_KEY, JSON.stringify(q.slice(-50)));
-  } catch (err) {
-    console.debug('lastfm writeQueue', err);
-  }
+  } catch {}
 }
 
 async function send(p: Pending): Promise<boolean> {
@@ -97,7 +95,7 @@ export const lastfmPlugin: ZenithPlugin = {
           track: info.title,
           duration: Math.round(info.duration) || undefined,
         },
-      }).catch((err) => console.debug('lastfm onTrackChange', err));
+      }).catch(() => {});
     }
   },
   onNowPlaying(info) {

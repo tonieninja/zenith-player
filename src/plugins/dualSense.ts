@@ -34,9 +34,7 @@ function fire(action: DualSenseAction) {
 async function setLed([r, g, b]: Rgb) {
   try {
     await invoke('dualsense_set_led', { r, g, b });
-  } catch (err) {
-    console.debug('dualSense setLed', err);
-  }
+  } catch {}
 }
 
 let baseRgb: Rgb = DEFAULT_RGB;
@@ -134,7 +132,7 @@ async function startHid() {
     console.warn('[dualsense] HID start failed - gamepad fallback only', err);
   }
   if (gen !== hidGen) {
-    invoke('dualsense_stop').catch((err) => console.debug('dualSense startHid', err));
+    invoke('dualsense_stop').catch(() => {});
     return;
   }
   if (unlistenHid) return;
@@ -162,9 +160,7 @@ async function stopHid() {
   flashTimer = 0;
   try {
     await invoke('dualsense_stop');
-  } catch (err) {
-    console.debug('dualSense stopHid', err);
-  }
+  } catch {}
   await setLed([0, 0, 0]);
 }
 

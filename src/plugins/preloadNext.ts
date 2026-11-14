@@ -6,18 +6,14 @@ export function getPreloadDepth(): number {
   try {
     const v = Number(localStorage.getItem(PRELOAD_DEPTH_KEY));
     if (Number.isFinite(v) && v >= 1 && v <= 3) return v;
-  } catch (err) {
-    console.debug('preloadNext getPreloadDepth', err);
-  }
+  } catch {}
   return 2;
 }
 
 export function setPreloadDepth(n: number) {
   try {
     localStorage.setItem(PRELOAD_DEPTH_KEY, String(Math.max(1, Math.min(3, n))));
-  } catch (err) {
-    console.debug('preloadNext setPreloadDepth', err);
-  }
+  } catch {}
 }
 
 export const preloadNextPlugin: ZenithPlugin = {

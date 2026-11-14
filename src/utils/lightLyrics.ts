@@ -22,9 +22,7 @@ export function setLightLyrics(on: boolean) {
   current = on;
   try {
     localStorage.setItem(LIGHT_LYRICS_KEY, on ? '1' : '0');
-  } catch (err) {
-    console.debug('lightLyrics setLightLyrics', err);
-  }
+  } catch {}
   for (const l of listeners) l();
 }
 

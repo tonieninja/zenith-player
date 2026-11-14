@@ -4,7 +4,6 @@ import {
   browseMoodId,
   isViewingPlaylist,
   itemClickPlan,
-  shouldOpenCollection,
   sidebarClickPlan,
 } from '../utils/itemClick';
 
@@ -19,7 +18,6 @@ describe('search / feed item identity', () => {
     });
     expect(artist).toEqual({ id: 'UC_x5XG1OV2P6uZZ5FSM9Ttw', type: 'artist' });
     expect(itemClickPlan(artist!).kind).toBe('browse-page');
-    expect(shouldOpenCollection(artist!)).toBe(true);
   });
 
   it('still treats a song row as a track even when the subtitle links the artist channel', () => {
@@ -62,7 +60,6 @@ describe('search / feed item identity', () => {
     });
     expect(album).toEqual({ id: 'MPREb_ramAlbum', type: 'album' });
     expect(itemClickPlan(album!).kind).toBe('browse-page');
-    expect(shouldOpenCollection(album!)).toBe(true);
   });
 
   it('still classifies MPREb rows as albums when the overlay videoId is present without pageType', () => {

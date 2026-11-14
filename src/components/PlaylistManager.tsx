@@ -444,7 +444,7 @@ export function PlaylistManager({
         role="dialog"
         aria-label={t.pmTitle}
       >
-        <div className="modal-header-polished">
+        <div className="modal-header">
           <h2>{t.pmTitle}</h2>
           <X size={26} className="modal-close-icon" onClick={onClose} aria-label={t.pmCancel} />
         </div>

@@ -111,9 +111,7 @@ export function DownloadsSettings({
                   className="np-cancel-btn"
                   aria-label={`${t.dlDelete} ${d.title}`}
                   onClick={async () => {
-                    await deleteDownload(d.id).catch((err) =>
-                      console.debug('DownloadsSettings', err)
-                    );
+                    await deleteDownload(d.id).catch(() => {});
                     setItems(await listDownloads());
                   }}
                 >

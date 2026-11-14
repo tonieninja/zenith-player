@@ -14,18 +14,14 @@ export function loadFolders(): FolderState {
   try {
     const v = JSON.parse(localStorage.getItem(KEY) || 'null');
     if (v && Array.isArray(v.folders) && v.assign && typeof v.assign === 'object') return v;
-  } catch (err) {
-    console.debug('playlistFolders loadFolders', err);
-  }
+  } catch {}
   return { folders: [], assign: {} };
 }
 
 export function saveFolders(s: FolderState) {
   try {
     localStorage.setItem(KEY, JSON.stringify(s));
-  } catch (err) {
-    console.debug('playlistFolders saveFolders', err);
-  }
+  } catch {}
 }
 
 export function addFolder(s: FolderState, name: string): [FolderState, string] {

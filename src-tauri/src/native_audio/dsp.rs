@@ -229,7 +229,7 @@ impl Limiter {
             } else {
                 1.0
             };
-            // shortcut: liniowe minimum z 240 wartości na ramkę, kolejka monotoniczna gdyby wyszło w profilu
+            // liniowe minimum z 240 wartości na ramkę wystarcza; kolejka monotoniczna, jeśli wyjdzie w profilerze
             let h = self.need.iter().copied().fold(1.0f32, f32::min);
             self.sum += h as f64 - self.held[self.i] as f64;
             self.held[self.i] = h;

@@ -8,18 +8,14 @@ export function getPlaybackSpeed(enabled: boolean): number {
   try {
     const v = Number(localStorage.getItem(PLAYBACK_SPEED_KEY));
     if (PLAYBACK_SPEEDS.includes(v as (typeof PLAYBACK_SPEEDS)[number])) return v;
-  } catch (err) {
-    console.debug('playbackSpeed getPlaybackSpeed', err);
-  }
+  } catch {}
   return 1;
 }
 
 export function setPlaybackSpeed(rate: number) {
   try {
     localStorage.setItem(PLAYBACK_SPEED_KEY, String(rate));
-  } catch (err) {
-    console.debug('playbackSpeed setPlaybackSpeed', err);
-  }
+  } catch {}
 }
 
 export const playbackSpeedPlugin: ZenithPlugin = {

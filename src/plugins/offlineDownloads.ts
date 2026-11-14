@@ -56,7 +56,7 @@ export function onDownloadProgress(cb: (p: DownloadProgress) => void): () => voi
       if (dead) fn();
       else un = fn;
     })
-    .catch((err) => console.debug('offlineDownloads onDownloadProgress', err));
+    .catch(() => {});
   return () => {
     dead = true;
     un?.();

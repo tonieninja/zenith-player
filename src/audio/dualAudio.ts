@@ -21,9 +21,7 @@ function clampVol(v: number): number {
 function safeLoad(el: HTMLAudioElement) {
   try {
     el.load();
-  } catch (e) {
-    console.debug('[audio] load() refused', e);
-  }
+  } catch {}
 }
 
 function waitUntilCanPlay(
@@ -121,10 +119,8 @@ export class DualAudio {
       el.removeEventListener('loadedmetadata', once);
       try {
         el.currentTime = t;
-      } catch (err) {
-        console.debug('dualAudio once', err);
-      }
-      if (playing) void el.play().catch((err) => console.debug('dualAudio once', err));
+      } catch {}
+      if (playing) void el.play().catch(() => {});
     };
     el.addEventListener('loadedmetadata', once);
     el.src = src;
@@ -323,9 +319,7 @@ export class DualAudio {
       el.removeAttribute('src');
       try {
         el.load();
-      } catch (err) {
-        console.debug('dualAudio abortAll', err);
-      }
+      } catch {}
     });
     this.applyMasterVolume();
   }
@@ -444,7 +438,7 @@ export class DualAudio {
       fixed = true;
     }
     if (shouldPlay && this.el.paused && this.el.getAttribute('src') && !this.el.ended) {
-      void this.el.play().catch((err) => console.debug('dualAudio ensureOutput', err));
+      void this.el.play().catch(() => {});
       fixed = true;
     }
     return fixed;
@@ -488,8 +482,6 @@ export class DualAudio {
     o.removeAttribute('src');
     try {
       o.load();
-    } catch (err) {
-      console.debug('dualAudio silenceOther', err);
-    }
+    } catch {}
   }
 }

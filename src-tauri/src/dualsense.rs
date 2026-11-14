@@ -139,7 +139,7 @@ const TOUCH_CLICK: u8 = 0x02;
 const HAT_RIGHT: u8 = 2;
 const HAT_LEFT: u8 = 6;
 
-// te same przyciski co wcześniej w Gamepad API: krzyżyk/options/klik touchpada, R1/L1, d-pad
+// układ jak w Gamepad API: krzyżyk/options/klik touchpada, R1/L1, d-pad
 fn button_action(prev: [u8; 3], now: [u8; 3]) -> Option<&'static str> {
     let down = |i: usize, mask: u8| now[i] & mask != 0 && prev[i] & mask == 0;
     let hat = |b: [u8; 3]| b[0] & 0x0F;
@@ -482,13 +482,12 @@ mod tests {
         let setup = bt_setup_report(4);
         assert_eq!((setup[3], setup[41], setup[44]), (0, 0x02, 0x02));
 
-        // raport USB bajt w bajt taki jak przed zmianą
         let usb = led_report(false, 0, [10, 20, 30]);
-        let mut old = [0u8; 48];
-        old[0] = 0x02;
-        old[1] = 0xFF;
-        old[2] = 0xF7;
-        old[45..48].copy_from_slice(&[10, 20, 30]);
-        assert_eq!(usb, old.to_vec());
+        let mut want = [0u8; 48];
+        want[0] = 0x02;
+        want[1] = 0xFF;
+        want[2] = 0xF7;
+        want[45..48].copy_from_slice(&[10, 20, 30]);
+        assert_eq!(usb, want.to_vec());
     }
 }

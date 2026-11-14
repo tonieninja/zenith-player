@@ -475,29 +475,9 @@ pub fn wipe_webview_auth_cookies(app: &AppHandle) {
 
 #[cfg(test)]
 mod tests {
-    fn ck(name: &str, domain: &str) -> StoredCookie {
-        StoredCookie {
-            name: name.into(),
-            value: "v".into(),
-            domain: Some(domain.into()),
-            path: None,
-            secure: true,
-            http_only: false,
-        }
-    }
-
-    #[test]
-    fn google_only_sapisid_is_not_a_youtube_login() {
-        let google = vec![ck("SAPISID", ".google.com"), ck("SID", ".google.com")];
-        assert!(!has_auth_marker(&google));
-        let mut both = google.clone();
-        both.push(ck("SAPISID", ".youtube.com"));
-        assert!(has_auth_marker(&both));
-    }
-
     use super::*;
 
-    fn c(name: &str, value: &str, domain: &str) -> StoredCookie {
+    fn cv(name: &str, value: &str, domain: &str) -> StoredCookie {
         StoredCookie {
             name: name.into(),
             value: value.into(),
@@ -508,13 +488,31 @@ mod tests {
         }
     }
 
+    fn c(name: &str, domain: &str) -> StoredCookie {
+        cv(name, "x", domain)
+    }
+
+    #[test]
+    fn google_only_sapisid_is_not_a_youtube_login() {
+        let google = vec![c("SAPISID", ".google.com"), c("SID", ".google.com")];
+        assert!(!has_auth_marker(&google));
+        let mut both = google.clone();
+        both.push(c("SAPISID", ".youtube.com"));
+        assert!(has_auth_marker(&both));
+        assert!(has_auth_marker(&[c(
+            "__Secure-3PAPISID",
+            "music.youtube.com"
+        )]));
+        assert!(!has_auth_marker(&[c("SAPISID", ".notyoutube.com")]));
+    }
+
     #[test]
     fn header_prefers_youtube_sapisid_over_google() {
         let cookies = vec![
-            c("SAPISID", "google", ".google.com"),
-            c("SAPISID", "yt", ".youtube.com"),
-            c("__Secure-3PSID", "psid", ".youtube.com"),
-            c("_ga", "x", ".example.com"),
+            cv("SAPISID", "google", ".google.com"),
+            cv("SAPISID", "yt", ".youtube.com"),
+            cv("__Secure-3PSID", "psid", ".youtube.com"),
+            cv("_ga", "x", ".example.com"),
         ];
         let h = stored_to_header(&cookies);
         assert_eq!(h, "SAPISID=yt; __Secure-3PSID=psid");
@@ -536,52 +534,13 @@ mod tests {
 
     #[test]
     fn auth_marker_needs_sapisid() {
-        assert!(!has_auth_marker(&[c("SID", "1", ".google.com")]));
-        assert!(has_auth_marker(&[c(
-            "__Secure-3PAPISID",
-            "1",
-            ".youtube.com"
-        )]));
+        assert!(!has_auth_marker(&[c("SID", ".google.com")]));
+        assert!(has_auth_marker(&[c("__Secure-3PAPISID", ".youtube.com")]));
     }
 
     #[test]
     fn session_cookie_filter() {
-        assert!(is_session_cookie(&c("SID", "1", ".google.com")));
-        assert!(!is_session_cookie(&c("x", "1", ".example.com")));
-    }
-}
-
-#[cfg(test)]
-mod login_cookie_tests {
-    use super::*;
-
-    fn c(name: &str, domain: &str) -> StoredCookie {
-        StoredCookie {
-            name: name.into(),
-            value: "x".into(),
-            domain: Some(domain.into()),
-            path: Some("/".into()),
-            secure: true,
-            http_only: false,
-        }
-    }
-
-    #[test]
-    fn google_only_sapisid_is_not_enough() {
-        assert!(!has_auth_marker(&[c("SAPISID", ".google.com")]));
-        assert!(has_auth_marker(&[
-            c("SAPISID", ".google.com"),
-            c("SAPISID", ".youtube.com")
-        ]));
-        assert!(has_auth_marker(&[c(
-            "__Secure-3PAPISID",
-            "music.youtube.com"
-        )]));
-        assert!(!has_auth_marker(&[c("SAPISID", ".notyoutube.com")]));
-    }
-
-    #[test]
-    fn session_cookie_filter() {
+        assert!(is_session_cookie(&c("SID", ".google.com")));
         assert!(is_session_cookie(&c("SID", ".google.pl")));
         assert!(is_session_cookie(&c("LOGIN_INFO", ".youtube.com")));
         assert!(!is_session_cookie(&c("x", ".example.com")));

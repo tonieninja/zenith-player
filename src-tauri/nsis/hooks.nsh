@@ -1,10 +1,5 @@
-; Zenith installer hooks (tauri bundle.windows.nsis.installerHooks)
-; Firewall: inbound rule for zenith-player.exe so the phone remote plugin works. It allows only
-; devices on the local subnet, on private AND public profiles: lots of home networks are marked
-; Public by Windows, and a private-only rule silently blocked every phone there. The remote server
-; itself also refuses anything that isn't a LAN address. The installer is per-user (no admin), so
-; the rule is added through an elevated netsh after the user agrees; silent installs (updater)
-; never ask. The rule is removed on uninstall when possible.
+; pilot w telefonie potrzebuje reguły zapory; profil Public też, bo Windows często tak oznacza sieć domową
+; instalator działa bez admina, więc netsh idzie przez runas po zgodzie; tryb cichy (updater) nie pyta
 
 !define ZENITH_FW_RULE "Zenith Player (local network)"
 
@@ -20,8 +15,8 @@
 !macroend
 
 !macro NSIS_HOOK_POSTUNINSTALL
-  ; succeeds only when the uninstaller runs elevated; otherwise the (harmless, program-bound)
-  ; rules stay until removed in Windows Security
+  ; bez admina reguła zostaje, ale jest przypięta do exe, więc po odinstalowaniu nic nie otwiera
   nsExec::Exec 'netsh advfirewall firewall delete rule name="${ZENITH_FW_RULE}"'
+  ; stara nazwa reguły, gdy obejmowała tylko sieci prywatne
   nsExec::Exec 'netsh advfirewall firewall delete rule name="Zenith Player (private networks)"'
 !macroend

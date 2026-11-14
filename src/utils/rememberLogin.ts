@@ -13,7 +13,5 @@ export function getRememberLogin(): boolean {
 export function setRememberLogin(enabled: boolean): void {
   try {
     localStorage.setItem(REMEMBER_LOGIN_KEY, enabled ? '1' : '0');
-  } catch (err) {
-    console.debug('rememberLogin setRememberLogin', err);
-  }
+  } catch {}
 }

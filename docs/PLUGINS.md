@@ -1,12 +1,11 @@
 # Plugins
 
-Zenith ships 36 plugins. Toggle them in the Plugins panel; the enabled set is stored in
+Zenith ships 35 plugins. Toggle them in the Plugins panel, the enabled set is stored in
 `localStorage` key `zenith_plugins_enabled`.
 
-A fresh install turns on only what Zenith needs to feel right: fast starts (Preload Next),
-remembering your queue and volume, smart lyrics search, media keys and OS controls, keyboard
-shortcuts and global hotkeys, and the tray. Everything else is one click away. If you already
-used Zenith, your own choices stay exactly as they were.
+A fresh install turns on the ones marked below (preload, queue and volume memory, smart lyrics
+search, media keys, shortcuts, hotkeys and the tray), the rest is off. An existing install keeps
+whatever you had.
 
 ### Playback
 
@@ -28,7 +27,7 @@ used Zenith, your own choices stay exactly as they were.
 | ---------------------- | ------------------------ | ------------- | ---------------------------------------------------------------------------------------------------------------- |
 | Equalizer              | `equalizer`              | no            | 15-band graphic equalizer with presets (Bass Boost, treble, vocal, rock, electronic...).                         |
 | Loudness Normalization | `loudness-normalization` | no            | Evens out volume between tracks: loud masters are turned down to a common level (never boosted, so no clipping). |
-| Fade on Pause          | `fade-on-pause`          | no            | Smooth volume fade when pausing and a gentle fade-in when resuming.                                              |
+| Fade on Pause          | `fade-on-pause`          | no            | Fades the volume out on pause and back in on resume.                                                             |
 | Smooth Volume          | `smooth-volume`          | no            | Ramps volume changes smoothly instead of jumping instantly.                                                      |
 | Duck on Voice          | `duck-on-voice`          | no            | Lowers music volume when your microphone detects speech (Discord, calls).                                        |
 

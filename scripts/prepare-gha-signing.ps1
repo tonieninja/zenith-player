@@ -1,4 +1,3 @@
-
 $ErrorActionPreference = 'Stop'
 
 if (-not $env:ZENITH_CODESIGN_PFX_BASE64) {

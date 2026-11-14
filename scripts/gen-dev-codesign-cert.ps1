@@ -1,4 +1,3 @@
-
 param(
   [switch]$ExportPfx,
   [switch]$Trust,
