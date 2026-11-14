@@ -62,7 +62,8 @@ class DuckMonitor {
   private stream: MediaStream | null = null;
   private timer = 0;
   private buf: Uint8Array<ArrayBuffer> | null = null;
-  private ducking = false;
+  ducking = false;
+  level = 0;
   private stopped = false;
 
   constructor(
@@ -112,6 +113,7 @@ class DuckMonitor {
     let sum = 0;
     for (let i = 0; i < buf.length; i += 1) sum += buf[i];
     const avg = sum / buf.length / 255;
+    this.level = avg;
     const threshold = getDuckSensitivity();
     const targetMaster = this.getMaster();
 
@@ -135,6 +137,21 @@ export function startDuckMonitor(getMaster: () => number, setVol: VolumeSetter) 
   }
   monitor = new DuckMonitor(getMaster, setVol);
   monitor.start();
+}
+
+export type DuckMeter = { level: number; ducking: boolean };
+
+// null, gdy plugin nie słucha mikrofonu
+export async function readDuckMeter(): Promise<DuckMeter | null> {
+  if (nativeDuck) {
+    try {
+      const [level, ducking] = await invoke<[number, boolean]>('zaudio_duck_meter');
+      return { level, ducking };
+    } catch {
+      return null;
+    }
+  }
+  return monitor ? { level: monitor.level, ducking: monitor.ducking } : null;
 }
 
 export function stopDuckMonitor() {

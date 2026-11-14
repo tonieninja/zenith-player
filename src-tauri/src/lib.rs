@@ -754,6 +754,7 @@ pub fn run() {
             mpris_update,
             native_audio::zaudio_available,
             native_audio::zaudio_duck,
+            native_audio::zaudio_duck_meter,
             native_audio::zaudio_cmd,
             native_audio::zaudio_play,
             native_audio::zaudio_wait_ready,

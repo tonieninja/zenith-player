@@ -1,12 +1,14 @@
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{SampleFormat, SizedSample};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{self, Sender};
 use std::sync::Mutex;
 
 static LEVEL: AtomicU64 = AtomicU64::new(0);
 static SENS: AtomicU64 = AtomicU64::new(0);
 static GEN: AtomicU64 = AtomicU64::new(0);
+static METER: AtomicU64 = AtomicU64::new(0);
+static DUCKING: AtomicBool = AtomicBool::new(false);
 static STOP: Mutex<Option<(u64, Sender<()>)>> = Mutex::new(None);
 
 fn load(a: &AtomicU64) -> f64 {
@@ -24,7 +26,13 @@ pub fn stop() {
     if let Some((_, tx)) = STOP.lock().unwrap_or_else(|p| p.into_inner()).take() {
         let _ = tx.send(());
     }
+    METER.store(0, Ordering::Relaxed);
+    DUCKING.store(false, Ordering::Relaxed);
     super::set_duck(1.0);
+}
+
+pub fn meter() -> (f64, bool) {
+    (load(&METER), DUCKING.load(Ordering::Relaxed))
 }
 
 // histereza jak w starym analizatorze: wyciszamy nad progiem, puszczamy poniżej 60% progu
@@ -33,6 +41,7 @@ pub struct Gate {
     n: usize,
     window: usize,
     ducking: bool,
+    level: f64,
 }
 
 impl Gate {
@@ -42,6 +51,7 @@ impl Gate {
             n: 0,
             window: window.max(1),
             ducking: false,
+            level: 0.0,
         }
     }
 
@@ -56,6 +66,7 @@ impl Gate {
             let rms = (self.acc / self.n as f64).sqrt();
             self.acc = 0.0;
             self.n = 0;
+            self.level = rms;
             if !self.ducking && rms > threshold {
                 self.ducking = true;
                 flip = Some(true);
@@ -80,10 +91,13 @@ fn build<T: SizedSample + 'static>(
     dev.build_input_stream(
         cfg,
         move |data: &[T], _| {
-            let Some(ducking) = gate.feed(data.iter().map(|s| to_f32(*s)), load(&SENS)) else {
+            let flip = gate.feed(data.iter().map(|s| to_f32(*s)), load(&SENS));
+            if GEN.load(Ordering::SeqCst) != gen {
                 return;
-            };
-            if GEN.load(Ordering::SeqCst) == gen {
+            }
+            METER.store(gate.level.to_bits(), Ordering::Relaxed);
+            DUCKING.store(gate.ducking, Ordering::Relaxed);
+            if let Some(ducking) = flip {
                 super::set_duck(if ducking { load(&LEVEL) } else { 1.0 });
             }
         },

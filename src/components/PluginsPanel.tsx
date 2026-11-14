@@ -17,6 +17,7 @@ import { Select } from './ui/Select';
 import { ModalOverlay } from './ui/ModalOverlay';
 import { DownloadsSettings } from './plugins/DownloadsSettings';
 import { HotkeySettings } from './plugins/HotkeySettings';
+import { DuckMeter } from './plugins/DuckMeter';
 import type { Track } from '../api/youtube';
 import { getListenStats, resetListenStats } from '../plugins/statsTracker';
 import { clearListeningHistory, getListeningHistory } from '../plugins/listeningHistory';
@@ -917,6 +918,13 @@ export function PluginsPanel({
                 <span className="crossfade-secs-value">{Math.round(duckSens * 100)}%</span>
               </div>
             </div>
+            <DuckMeter
+              threshold={duckSens}
+              label={t.duckMeter}
+              idle={t.duckMeterIdle}
+              listening={t.duckMeterListening}
+              ducking={t.duckMeterDucking}
+            />
           </>
         );
       case 'lyrics-karaoke':

@@ -4528,6 +4528,48 @@ html.has-cover-theme .main-play-pause-circle {
   white-space: nowrap;
 }
 
+.duck-meter {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 4px 0 2px;
+}
+
+.duck-meter-track {
+  position: relative;
+  height: 10px;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.duck-meter-fill {
+  height: 100%;
+  background: var(--accent-1);
+  transition: width 90ms linear;
+}
+
+.duck-meter-fill.ducking {
+  background: #ff7a59;
+}
+
+.duck-meter-mark {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: #fff;
+}
+
+.duck-meter-mark.release {
+  background: rgba(255, 255, 255, 0.35);
+}
+
+.duck-meter-on {
+  color: #ff7a59;
+}
+
 .plugin-setting-row--stacked {
   flex-direction: column;
   align-items: stretch;
