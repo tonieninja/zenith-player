@@ -9,8 +9,12 @@ crossfade, a 15-band EQ, offline downloads, a phone remote and a pile of plugins
 
 <p align="center"><img src="docs/screenshots/tour.gif" width="760" alt="Zenith"></p>
 
-Not an official YouTube or Google thing, just a player that talks to YouTube Music. Your account
-and YouTube's terms still apply.
+Zenith isn't affiliated with, endorsed by or connected to Google or YouTube in any way. It's just a
+player that talks to YouTube Music. Your account and YouTube's terms still apply.
+
+Privacy: the microphone is only used by the Duck on Voice plugin to lower the music while you talk,
+and only while that plugin is on. Nothing gets recorded or sent anywhere, settings, history and
+your session stay on your computer.
 
 ## Download
 
@@ -18,15 +22,15 @@ Grab it from [Releases](https://github.com/tonieninja/zenith-player/releases/lat
 
 | System               | File                                                                             |
 | -------------------- | -------------------------------------------------------------------------------- |
-| Windows 10/11        | `Zenith_4.0.1_x64-setup.exe` (or `_x64_portable.exe` if you can't install stuff) |
-| Old 32-bit Windows   | `Zenith_4.0.1_x86-setup.exe` / `_x86_portable.exe`                               |
-| Debian, Ubuntu, Mint | `Zenith_4.0.1_amd64.deb`                                                         |
-| Fedora, openSUSE     | `Zenith-4.0.1-1.x86_64.rpm`                                                      |
-| Any Linux            | `Zenith_4.0.1_amd64.AppImage`                                                    |
-| macOS 11+            | `Zenith_4.0.1_universal.dmg` (built by CI, I don't have a Mac to test it)        |
+| Windows 10/11        | `Zenith_4.1.0_x64-setup.exe` (or `_x64_portable.exe` if you can't install stuff) |
+| Old 32-bit Windows   | `Zenith_4.1.0_x86-setup.exe` / `_x86_portable.exe`                               |
+| Debian, Ubuntu, Mint | `Zenith_4.1.0_amd64.deb`                                                         |
+| Fedora, openSUSE     | `Zenith-4.1.0-1.x86_64.rpm`                                                      |
+| Any Linux            | `Zenith_4.1.0_amd64.AppImage`                                                    |
+| macOS 11+            | `Zenith_4.1.0_universal.dmg` (built by CI, I don't have a Mac to test it)        |
 
-Windows builds aren't signed, so SmartScreen will complain. More info, Run anyway.
-On macOS right click, Open the first time. `SHA256SUMS` is attached to every release.
+Windows builds aren't signed with a paid certificate, so SmartScreen will complain. More info, Run anyway.
+On macOS right click, Open the first time (or System Settings, Privacy & Security, Open Anyway). `SHA256SUMS` is attached to every release.
 
 ## What it does
 
@@ -71,6 +75,11 @@ asks, on Linux open the port (`sudo ufw allow 8765/tcp`). With the plugin off th
 - **Reset:** delete `%LOCALAPPDATA%\com.zenithplayer.desktop` on Windows or
   `~/.local/share/com.zenithplayer.desktop` on Linux.
 
+## Support
+
+Zenith is free and stays free. If it saves you a Premium subscription and you want to say thanks,
+[buy me a coffee](https://buymeacoffee.com/tonieninja). There's the same link in Settings, About.
+
 ## Building
 
 Node 20+, pnpm 10, Rust stable. On Linux also
@@ -84,6 +93,12 @@ pnpm tauri build
 ```
 
 CI in `.github/workflows/build.yml` builds Windows x64/x86, Linux deb/rpm/AppImage and the mac dmg.
+
+Yes, I know `App.tsx` is around 6000 lines. It's a crime and someone should probably shoot me for it,
+but that's life. I hack on this on my knees and it's just easier for me with everything in one place.
+
+RAM on Linux sits around 250 MB with the window open and most of that is WebKit itself. Closing to
+the tray drops the UI completely, so the player alone uses a lot less.
 
 ## License
 
