@@ -1567,7 +1567,7 @@ export async function ytmAction(endpoint: string, body: Record<string, unknown>,
     if (response.status === 401) throw new SessionExpiredError();
     throw new Error(`${endpoint} HTTP ${response.status}`);
   }
-  let data: any = null;
+  let data: any;
   try {
     data = text ? JSON.parse(text) : {};
   } catch {
@@ -2537,9 +2537,9 @@ export function lyricsSearchTitle(title: string, artist = ''): string {
     if (localStorage.getItem('zenith_smart_lyrics') === '0') return title.trim();
   } catch {}
   return cleanQueryTitle(title, artist)
-    .replace(/\s*[(\[]\s*(feat\.?|ft\.?|featuring|with)\s+[^)\]]+[)\]]/gi, '')
-    .replace(/\s*[-–,;]?\s+(feat\.?|ft\.?|featuring)\s+[^()\[\]]+(?=[)\]])/gi, '')
-    .replace(/\s+(feat\.?|ft\.?|featuring)\s+[^()\[\]]+$/gi, '')
+    .replace(/\s*[([]\s*(feat\.?|ft\.?|featuring|with)\s+[^)\]]+[)\]]/gi, '')
+    .replace(/\s*[-–,;]?\s+(feat\.?|ft\.?|featuring)\s+[^()[\]]+(?=[)\]])/gi, '')
+    .replace(/\s+(feat\.?|ft\.?|featuring)\s+[^()[\]]+$/gi, '')
     .replace(/\s{2,}/g, ' ')
     .trim();
 }
@@ -2556,7 +2556,7 @@ export function lyricsSearchArtist(artist: string): string {
     if (localStorage.getItem('zenith_smart_lyrics') === '0') return firstArtist(artist);
   } catch {}
   return firstArtist(artist)
-    .replace(/\s*[(\[]\s*(feat\.?|ft\.?|featuring|with)\s+[^)\]]+[)\]]/gi, '')
+    .replace(/\s*[([]\s*(feat\.?|ft\.?|featuring|with)\s+[^)\]]+[)\]]/gi, '')
     .replace(/\s+(feat\.?|ft\.?|featuring)\s+.+$/gi, '')
     .replace(/\s+-\s+topic$/i, '')
     .replace(/\s+-\s+vevo$/i, '')

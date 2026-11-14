@@ -9,7 +9,8 @@ import {
 
 describe('playlist folders', () => {
   it('groups, renames and removes without losing playlists', () => {
-    let [s, id] = addFolder({ folders: [], assign: {} }, '  Chill ');
+    const [s0, id] = addFolder({ folders: [], assign: {} }, '  Chill ');
+    let s = s0;
     expect(s.folders[0].name).toBe('Chill');
     s = moveToFolder(s, 'b', id);
     s = moveToFolder(s, 'x', 'nope');

@@ -81,10 +81,10 @@ const BYLINE_TYPE_WORDS = new Set([
   'Playlist',
 ]);
 
-export function bylineFromRuns(runs: any[]): string {
+export function bylineFromRuns(runs: { text?: unknown }[]): string {
   return tidyByline(
     (runs || [])
-      .map((x: any) => String(x?.text ?? ''))
+      .map((x) => String(x?.text ?? ''))
       .join('')
       .split('•')
       .map((part) => part.replace(/\s+/g, ' ').trim())
