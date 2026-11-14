@@ -1,6 +1,31 @@
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
+
+// jeden klient na (UA, limit, przekierowania): każda budowa wczytuje certyfikaty i gubi otwarte połączenia
+pub fn client(ua: &str, secs: u64, follow: bool) -> Option<reqwest::Client> {
+    type Key = (String, u64, bool);
+    static CACHE: OnceLock<Mutex<HashMap<Key, reqwest::Client>>> = OnceLock::new();
+    let mut m = CACHE
+        .get_or_init(Default::default)
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let key = (ua.to_string(), secs, follow);
+    if let Some(c) = m.get(&key) {
+        return Some(c.clone());
+    }
+    crate::win_proxy::wait();
+    let mut b = reqwest::Client::builder().timeout(Duration::from_secs(secs));
+    if !ua.is_empty() {
+        b = b.user_agent(ua);
+    }
+    if !follow {
+        b = b.redirect(reqwest::redirect::Policy::none());
+    }
+    let c = b.build().ok()?;
+    m.insert(key, c.clone());
+    Some(c)
+}
 use std::time::{Duration, Instant};
 
 use crate::now_secs;
@@ -37,11 +62,7 @@ async fn visitor_data() -> Option<String> {
             }
         }
     }
-    let http = reqwest::Client::builder()
-        .timeout(Duration::from_secs(6))
-        .user_agent(CHROME_UA)
-        .build()
-        .ok()?;
+    let http = client(CHROME_UA, 6, true)?;
     let body = http
         .get("https://www.youtube.com/sw.js_data")
         .send()
@@ -453,11 +474,7 @@ struct Embed {
 }
 
 async fn embed_tokens(video_id: &str, user_agent: &str) -> Option<Embed> {
-    let http = reqwest::Client::builder()
-        .timeout(Duration::from_secs(8))
-        .user_agent(user_agent)
-        .build()
-        .ok()?;
+    let http = client(user_agent, 8, true)?;
     let html = http
         .get(format!("https://www.youtube.com/embed/{video_id}?html5=1"))
         .header("Referer", EMBED_URL)
@@ -504,11 +521,7 @@ async fn player_request(
         });
         body["playbackContext"]["contentPlaybackContext"]["encryptedHostFlags"] = json!(e.flags);
     }
-    let http = reqwest::Client::builder()
-        .timeout(Duration::from_secs(10))
-        .user_agent(spec.user_agent)
-        .build()
-        .ok()?;
+    let http = client(spec.user_agent, 10, true)?;
     let origin = format!("https://{}", spec.host);
     let url = if spec.name == "VISIONOS" {
         format!("{PLAYER_URL}?prettyPrint=false&key={ANDROID_KEY}")
@@ -714,12 +727,7 @@ pub async fn url_reachable(url: &str, user_agent: &str) -> bool {
 }
 
 async fn probe(url: &str, user_agent: &str) -> Option<bool> {
-    let http = reqwest::Client::builder()
-        .timeout(Duration::from_secs(8))
-        .user_agent(user_agent)
-        .redirect(reqwest::redirect::Policy::none())
-        .build()
-        .ok()?;
+    let http = client(user_agent, 8, false)?;
     let mut at = url.to_string();
     for _ in 0..4 {
         let r = http

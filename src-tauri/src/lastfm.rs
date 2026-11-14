@@ -73,11 +73,8 @@ async fn call(
     let sig = sign(&p, &c.secret);
     p.insert("api_sig".into(), sig);
     p.insert("format".into(), "json".into());
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(12))
-        .user_agent("Zenith/4.0 (desktop music player)")
-        .build()
-        .map_err(|e| e.to_string())?;
+    let client = crate::player::client("Zenith/4.0 (desktop music player)", 12, true)
+        .ok_or("http client")?;
     let req = if post {
         client.post(API).form(&p)
     } else {

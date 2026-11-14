@@ -342,7 +342,12 @@ pub async fn mint(binding: &str) -> Option<String> {
         }
     }
     let app = APP.get()?.clone();
-    let win = app.get_webview_window(LABEL)?;
+    // okno zniszczone poza close() zostawiało LOADED=true i PoToken nie wracał do restartu
+    let Some(win) = app.get_webview_window(LABEL) else {
+        LOADED.store(false, Ordering::SeqCst);
+        open();
+        return None;
+    };
     let id = NEXT_ID.fetch_add(1, Ordering::SeqCst);
     let (tx, rx) = oneshot::channel();
     pending().lock().ok()?.insert(id, tx);

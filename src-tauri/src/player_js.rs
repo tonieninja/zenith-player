@@ -31,11 +31,7 @@ pub struct Player {
 }
 
 fn http() -> Option<reqwest::Client> {
-    reqwest::Client::builder()
-        .timeout(Duration::from_secs(15))
-        .user_agent(CHROME_UA)
-        .build()
-        .ok()
+    crate::player::client(CHROME_UA, 15, true)
 }
 
 pub fn parse_player_id(iframe_api: &str) -> Option<String> {
@@ -124,9 +120,19 @@ pub async fn download(id: &str, keep: bool) -> Option<String> {
         let _ = std::fs::write(p, sts.to_string());
     }
     if keep && !crate::jsc::has_preprocessed(id) {
+        let at = Instant::now();
         if let Ok(mut g) = LAST_JS.lock() {
-            *g = Some((id.to_string(), js.clone(), Instant::now()));
+            *g = Some((id.to_string(), js.clone(), at));
         }
+        // 2,5 MB skryptu czeka tylko na rozwiązanie wyzwania; gdy ono nie przyjdzie, nie trzymamy go do końca sesji
+        tauri::async_runtime::spawn(async move {
+            tokio::time::sleep(Duration::from_secs(120)).await;
+            if let Ok(mut g) = LAST_JS.lock() {
+                if g.as_ref().is_some_and(|x| x.2 == at) {
+                    *g = None;
+                }
+            }
+        });
     }
     Some(js)
 }

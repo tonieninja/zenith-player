@@ -43,11 +43,8 @@ fn save(app: &AppHandle, c: &Creds) -> Result<(), String> {
 }
 
 fn client() -> Result<reqwest::Client, String> {
-    reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(12))
-        .user_agent(concat!("Zenith/", env!("CARGO_PKG_VERSION")))
-        .build()
-        .map_err(|e| e.to_string())
+    crate::player::client(concat!("Zenith/", env!("CARGO_PKG_VERSION")), 12, true)
+        .ok_or_else(|| "http client".to_string())
 }
 
 async fn reply(res: reqwest::Response) -> Result<Value, String> {
