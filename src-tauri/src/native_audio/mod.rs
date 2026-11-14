@@ -17,8 +17,6 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager};
 
-use dsp::eq_preamp;
-
 #[derive(Clone, Serialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct Snapshot {
@@ -70,7 +68,6 @@ struct State {
     fade_token: u64,
     fading: bool,
     norm_on: bool,
-    preamp: f64,
     ab: Option<(f64, f64)>,
     ab_hold_until: Option<Instant>,
 }
@@ -141,7 +138,6 @@ fn start(app: Option<AppHandle>) -> Option<&'static Engine> {
         fade_token: 0,
         fading: false,
         norm_on: false,
-        preamp: 1.0,
         ab: None,
         ab_hold_until: None,
     };
@@ -211,7 +207,7 @@ fn apply_volume(st: &State, i: usize) {
     let v = if st.muted {
         0.0
     } else {
-        (st.master * st.duck * d.gain * d.norm * st.preamp).clamp(0.0, 1.0)
+        (st.master * st.duck * d.gain * d.norm).clamp(0.0, 1.0)
     };
     d.out.set_gain(v);
 }
@@ -499,19 +495,38 @@ fn silence_other(st: &mut State) {
 #[derive(Deserialize)]
 #[serde(tag = "op", rename_all = "camelCase")]
 pub enum Cmd {
-    SetSrc { url: String },
+    SetSrc {
+        url: String,
+    },
     ClearSrc,
     Pause,
-    Seek { t: f64 },
-    Volume { v: f64 },
-    Muted { m: bool },
-    Rate { r: f64 },
-    Eq { bands: Vec<f64> },
-    Norm { on: bool },
+    Seek {
+        t: f64,
+    },
+    Volume {
+        v: f64,
+    },
+    Muted {
+        m: bool,
+    },
+    Rate {
+        r: f64,
+    },
+    Eq {
+        bands: Vec<f64>,
+        #[serde(default)]
+        bass: f64,
+    },
+    Norm {
+        on: bool,
+    },
     AbortAll,
     ReleaseInactive,
     Load,
-    Loop { a: Option<f64>, b: Option<f64> },
+    Loop {
+        a: Option<f64>,
+        b: Option<f64>,
+    },
 }
 
 pub fn run_cmd(cmd: Cmd) -> Snapshot {
@@ -577,13 +592,7 @@ pub fn run_cmd(cmd: Cmd) -> Snapshot {
                     }
                 }
             }
-            Cmd::Eq { bands } => {
-                output::set_eq(&bands);
-                st.preamp = eq_preamp(&bands);
-                for i in 0..st.decks.len() {
-                    apply_volume(&st, i);
-                }
-            }
+            Cmd::Eq { bands, bass } => output::set_eq(&bands, bass),
             Cmd::Norm { on } => {
                 st.norm_on = on;
                 decode::NORM_ON.store(on, Ordering::SeqCst);
@@ -1297,10 +1306,11 @@ mod engine_tests {
 
         run_cmd(Cmd::Eq {
             bands: vec![6.0; 15],
+            bass: 6.0,
         });
-        assert!((with(|st| st.preamp).unwrap() - 10f64.powf(-6.0 / 20.0)).abs() < 1e-9);
         run_cmd(Cmd::Eq {
             bands: vec![0.0; 15],
+            bass: 0.0,
         });
 
         run_cmd(Cmd::Seek { t: 2.7 });

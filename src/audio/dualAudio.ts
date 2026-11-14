@@ -102,12 +102,12 @@ export class DualAudio {
     return this.fx?.state ?? 'off';
   }
 
-  setFx(bands: number[] | null, norm: boolean) {
+  setFx(bands: number[] | null, norm: boolean, bass = 0) {
     if (!this.fx) {
       if (!bands && !norm) return;
       this.fx = new WebFx(this.els, () => this.reloadForCors());
     }
-    this.fx.configure(bands, norm);
+    this.fx.configure(bands, norm, bass);
   }
 
   private reloadForCors() {

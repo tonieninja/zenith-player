@@ -5,78 +5,245 @@ pub const EQ_FREQS: [f64; 15] = [
     10000.0, 16000.0,
 ];
 pub const EQ_Q: f64 = 1.4;
+pub const BASS_HZ: f64 = 90.0;
+// S=1, najstromsza półka bez przerzutu, więc bas rośnie bez dudnienia
+const SHELF_Q: f64 = 0.707;
+// poniżej 22 Hz nikt nie słyszy, a te częstotliwości zjadają zapas przed limiterem
+const HPF_HZ: f64 = 22.0;
+const STAGES: usize = EQ_FREQS.len() + 1;
+const GLIDE_FRAMES: usize = 32;
 
-pub fn eq_preamp(bands: &[f64]) -> f64 {
-    let peak = bands.iter().cloned().fold(0.0f64, f64::max).min(12.0);
-    10f64.powf(-peak / 20.0)
-}
-
-#[derive(Clone, Copy, Default, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Coefs {
-    b0: f32,
-    b1: f32,
-    b2: f32,
-    a1: f32,
-    a2: f32,
+    b0: f64,
+    b1: f64,
+    b2: f64,
+    a1: f64,
+    a2: f64,
 }
 
-pub fn peaking(freq: f64, q: f64, gain_db: f64, sr: f64) -> Option<Coefs> {
+const UNITY: Coefs = Coefs {
+    b0: 1.0,
+    b1: 0.0,
+    b2: 0.0,
+    a1: 0.0,
+    a2: 0.0,
+};
+
+fn biquad(b0: f64, b1: f64, b2: f64, a0: f64, a1: f64, a2: f64) -> Coefs {
+    Coefs {
+        b0: b0 / a0,
+        b1: b1 / a0,
+        b2: b2 / a0,
+        a1: a1 / a0,
+        a2: a2 / a0,
+    }
+}
+
+pub fn peaking(freq: f64, q: f64, gain_db: f64, sr: f64) -> Coefs {
     if gain_db.abs() < 0.01 || freq >= sr * 0.47 {
-        return None;
+        return UNITY;
     }
     let a = 10f64.powf(gain_db / 40.0);
-    let w0 = 2.0 * PI * freq / sr;
-    let alpha = w0.sin() / (2.0 * q);
-    let c = w0.cos();
-    let a0 = 1.0 + alpha / a;
-    Some(Coefs {
-        b0: ((1.0 + alpha * a) / a0) as f32,
-        b1: (-2.0 * c / a0) as f32,
-        b2: ((1.0 - alpha * a) / a0) as f32,
-        a1: (-2.0 * c / a0) as f32,
-        a2: ((1.0 - alpha / a) / a0) as f32,
-    })
+    let (s, c) = (2.0 * PI * freq / sr).sin_cos();
+    let al = s / (2.0 * q);
+    biquad(
+        1.0 + al * a,
+        -2.0 * c,
+        1.0 - al * a,
+        1.0 + al / a,
+        -2.0 * c,
+        1.0 - al / a,
+    )
 }
 
-#[derive(Clone, Default)]
+pub fn low_shelf(freq: f64, q: f64, gain_db: f64, sr: f64) -> Coefs {
+    if gain_db.abs() < 0.01 {
+        return UNITY;
+    }
+    let a = 10f64.powf(gain_db / 40.0);
+    let (s, c) = (2.0 * PI * freq / sr).sin_cos();
+    let k = 2.0 * a.sqrt() * s / (2.0 * q);
+    biquad(
+        a * ((a + 1.0) - (a - 1.0) * c + k),
+        2.0 * a * ((a - 1.0) - (a + 1.0) * c),
+        a * ((a + 1.0) - (a - 1.0) * c - k),
+        (a + 1.0) + (a - 1.0) * c + k,
+        -2.0 * ((a - 1.0) + (a + 1.0) * c),
+        (a + 1.0) + (a - 1.0) * c - k,
+    )
+}
+
+pub fn high_pass(freq: f64, q: f64, sr: f64) -> Coefs {
+    let (s, c) = (2.0 * PI * freq / sr).sin_cos();
+    let al = s / (2.0 * q);
+    biquad(
+        (1.0 + c) / 2.0,
+        -(1.0 + c),
+        (1.0 + c) / 2.0,
+        1.0 + al,
+        -2.0 * c,
+        1.0 - al,
+    )
+}
+
+fn stage(k: usize, gain_db: f64, sr: f64) -> Coefs {
+    if k < EQ_FREQS.len() {
+        peaking(EQ_FREQS[k], EQ_Q, gain_db, sr)
+    } else {
+        low_shelf(BASS_HZ, SHELF_Q, gain_db, sr)
+    }
+}
+
+// filtry żyją cały czas, a wzmocnienia dojeżdżają do celu w ~30 ms, więc suwak nie trzeszczy
+#[derive(Clone)]
 pub struct Eq {
-    stages: Vec<(Coefs, [[f32; 4]; 2])>,
+    sr: f64,
+    target: [f64; STAGES],
+    cur: [f64; STAGES],
+    coefs: [Coefs; STAGES],
+    hp: Coefs,
+    z: [[[f64; 4]; 2]; STAGES + 1],
+    tick: usize,
 }
 
 impl Eq {
     pub fn new(bands: &[f64], sr: f64) -> Self {
-        let stages = EQ_FREQS
-            .iter()
-            .enumerate()
-            .filter_map(|(k, f)| {
-                let g = bands.get(k).copied().unwrap_or(0.0).clamp(-24.0, 12.0);
-                peaking(*f, EQ_Q, g, sr).map(|c| (c, [[0.0; 4]; 2]))
-            })
-            .collect();
-        Eq { stages }
+        let mut eq = Eq {
+            sr,
+            target: [0.0; STAGES],
+            cur: [0.0; STAGES],
+            coefs: [UNITY; STAGES],
+            hp: high_pass(HPF_HZ, SHELF_Q, sr),
+            z: [[[0.0; 4]; 2]; STAGES + 1],
+            tick: 0,
+        };
+        eq.set(bands, 0.0);
+        eq.cur = eq.target;
+        for k in 0..STAGES {
+            eq.coefs[k] = stage(k, eq.cur[k], sr);
+        }
+        eq
+    }
+
+    pub fn set(&mut self, bands: &[f64], bass: f64) {
+        for k in 0..EQ_FREQS.len() {
+            self.target[k] = bands.get(k).copied().unwrap_or(0.0).clamp(-24.0, 12.0);
+        }
+        self.target[STAGES - 1] = bass.clamp(0.0, 12.0);
     }
 
     pub fn is_flat(&self) -> bool {
-        self.stages.is_empty()
+        self.target.iter().chain(&self.cur).all(|g| g.abs() < 0.01)
+    }
+
+    fn glide(&mut self) {
+        let k = 1.0 - (-(GLIDE_FRAMES as f64) / (0.03 * self.sr)).exp();
+        for i in 0..STAGES {
+            let d = self.target[i] - self.cur[i];
+            if d == 0.0 {
+                continue;
+            }
+            self.cur[i] = if d.abs() < 0.01 {
+                self.target[i]
+            } else {
+                self.cur[i] + d * k
+            };
+            self.coefs[i] = stage(i, self.cur[i], self.sr);
+        }
     }
 
     pub fn process(&mut self, stereo: &mut [f32]) {
-        if self.stages.is_empty() {
+        if self.is_flat() {
+            self.z = [[[0.0; 4]; 2]; STAGES + 1];
             return;
         }
         for fr in stereo.chunks_exact_mut(2) {
-            for (c, z) in self.stages.iter_mut() {
-                for ch in 0..2 {
+            if self.tick == 0 {
+                self.glide();
+            }
+            self.tick = (self.tick + 1) % GLIDE_FRAMES;
+            for (ch, v) in fr.iter_mut().enumerate() {
+                let mut x = *v as f64;
+                for (c, z) in std::iter::once(&self.hp)
+                    .chain(self.coefs.iter())
+                    .zip(self.z.iter_mut())
+                {
                     let s = &mut z[ch];
-                    let x = fr[ch];
                     let y = c.b0 * x + c.b1 * s[0] + c.b2 * s[1] - c.a1 * s[2] - c.a2 * s[3];
                     s[1] = s[0];
                     s[0] = x;
                     s[3] = s[2];
-                    s[2] = if y.abs() < 1e-20 { 0.0 } else { y };
-                    fr[ch] = y;
+                    s[2] = if y.abs() < 1e-30 { 0.0 } else { y };
+                    x = y;
                 }
+                *v = x as f32;
             }
+        }
+    }
+}
+
+// -0.5 dBFS zostawia miejsce na szczyty między próbkami po przetworniku
+pub const LIMIT_CEIL: f32 = 0.944;
+
+// zamiast przyciszać cały miks o największe podbicie EQ, ścinamy tylko szczyty;
+// 5 ms wyprzedzenia i 150 ms powrotu, żeby nie modulować pojedynczych okresów basu
+pub struct Limiter {
+    sr: u32,
+    delay: Vec<[f32; 2]>,
+    need: Vec<f32>,
+    held: Vec<f32>,
+    sum: f64,
+    i: usize,
+    j: usize,
+    gain: f32,
+    rel: f32,
+}
+
+impl Limiter {
+    pub fn new(sr: u32) -> Self {
+        let n = (sr as usize / 200).max(8);
+        Limiter {
+            sr,
+            delay: vec![[0.0; 2]; n - 1],
+            need: vec![1.0; n],
+            held: vec![1.0; n],
+            sum: n as f64,
+            i: 0,
+            j: 0,
+            gain: 1.0,
+            rel: 1.0 - (-1.0 / (0.15 * sr as f32)).exp(),
+        }
+    }
+
+    pub fn reset(&mut self) {
+        *self = Limiter::new(self.sr);
+    }
+
+    pub fn process(&mut self, stereo: &mut [f32]) {
+        let n = self.need.len();
+        for fr in stereo.chunks_exact_mut(2) {
+            let peak = fr[0].abs().max(fr[1].abs());
+            self.need[self.i] = if peak > LIMIT_CEIL {
+                LIMIT_CEIL / peak
+            } else {
+                1.0
+            };
+            // shortcut: liniowe minimum z 240 wartości na ramkę, kolejka monotoniczna gdyby wyszło w profilu
+            let h = self.need.iter().copied().fold(1.0f32, f32::min);
+            self.sum += h as f64 - self.held[self.i] as f64;
+            self.held[self.i] = h;
+            self.i = (self.i + 1) % n;
+            let smooth = (self.sum / n as f64) as f32;
+            self.gain = if smooth < self.gain {
+                smooth
+            } else {
+                self.gain + (smooth - self.gain) * self.rel
+            };
+            let out = std::mem::replace(&mut self.delay[self.j], [fr[0], fr[1]]);
+            self.j = (self.j + 1) % self.delay.len();
+            fr[0] = out[0] * self.gain;
+            fr[1] = out[1] * self.gain;
         }
     }
 }
@@ -380,13 +547,6 @@ mod tests {
     }
 
     #[test]
-    fn preamp_follows_highest_boost() {
-        assert!((eq_preamp(&[4.0, 5.5, 0.0]) - 10f64.powf(-5.5 / 20.0)).abs() < 1e-9);
-        assert_eq!(eq_preamp(&[-3.0, 0.0]), 1.0);
-        assert!((eq_preamp(&[30.0]) - 10f64.powf(-12.0 / 20.0)).abs() < 1e-9);
-    }
-
-    #[test]
     fn flat_eq_is_bypassed() {
         assert!(Eq::new(&[0.0; 15], 48000.0).is_flat());
         assert!(Eq::new(&[], 48000.0).is_flat());
@@ -422,6 +582,74 @@ mod tests {
         let g = db(rms(&v[44100..]), rms(&sine(25.0, 44100, 1.0, 0.5)));
         assert!(g < -18.0, "{g}");
         assert!(v.iter().all(|x| x.is_finite()));
+    }
+
+    #[test]
+    fn bass_shelf_is_strong_and_stays_low() {
+        let sr = 48000u32;
+        let gain = |freq: f64| {
+            let mut eq = Eq::new(&[0.0; 15], sr as f64);
+            eq.set(&[0.0; 15], 9.0);
+            let mut v = sine(freq, sr, 2.0, 0.1);
+            eq.process(&mut v);
+            db(rms(&v[sr as usize * 2..]), rms(&sine(freq, sr, 1.0, 0.1)))
+        };
+        let low = gain(45.0);
+        assert!((low - 8.5).abs() < 1.0, "{low}");
+        let mid = gain(1000.0);
+        assert!(mid.abs() < 0.3, "{mid}");
+        let sub = gain(10.0);
+        assert!(
+            sub < low - 12.0,
+            "sub rumble stays far below the boosted bass: {sub}"
+        );
+    }
+
+    #[test]
+    fn eq_change_glides_without_clicks() {
+        let sr = 48000u32;
+        let src = sine(200.0, sr, 0.5, 0.3);
+        let max_step = |v: &[f32]| {
+            v.chunks_exact(2)
+                .map(|f| f[0])
+                .collect::<Vec<_>>()
+                .windows(2)
+                .map(|w| (w[1] - w[0]).abs())
+                .fold(0.0f32, f32::max)
+        };
+        let mut eq = Eq::new(&[0.0; 15], sr as f64);
+        eq.set(&[0.0; 15], 1.0);
+        let mut v = src.clone();
+        let half = v.len() / 2;
+        eq.process(&mut v[..half]);
+        eq.set(&[0.0; 15], 9.0);
+        eq.process(&mut v[half..]);
+        // +9 dB na 200 Hz to ok. 1.6x amplitudy, skok ponad to byłby trzaskiem
+        assert!(
+            max_step(&v) < max_step(&src) * 2.2,
+            "{} vs {}",
+            max_step(&v),
+            max_step(&src)
+        );
+    }
+
+    #[test]
+    fn limiter_holds_ceiling_and_leaves_quiet_audio_alone() {
+        let mut l = Limiter::new(48000);
+        let src = sine(1000.0, 48000, 0.5, 0.5);
+        let mut v = src.clone();
+        l.process(&mut v);
+        let lag = (48000 / 200 - 1) * 2;
+        assert!(v[lag..].iter().zip(&src).all(|(a, b)| (a - b).abs() < 1e-6));
+        let mut l = Limiter::new(48000);
+        let mut loud = sine(60.0, 48000, 1.0, 2.0);
+        l.process(&mut loud);
+        assert!(loud.iter().all(|x| x.abs() <= LIMIT_CEIL + 1e-5));
+        let g = db(
+            rms(&loud[48000..]),
+            rms(&sine(60.0, 48000, 0.5, LIMIT_CEIL)),
+        );
+        assert!(g > -0.5, "{g}");
     }
 
     #[test]

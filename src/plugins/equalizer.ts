@@ -2,6 +2,8 @@ import { ZenithPlugin } from './types';
 
 export const EQ_BANDS_KEY = 'zenith_eq_bands';
 export const EQ_PRESET_KEY = 'zenith_eq_preset';
+export const EQ_BASS_KEY = 'zenith_eq_bass';
+export const EQ_BASS_MAX_DB = 12;
 export const EQ_FREQS = [
   25, 40, 63, 100, 160, 250, 400, 630, 1000, 1600, 2500, 4000, 6300, 10000, 16000,
 ] as const;
@@ -12,9 +14,12 @@ export const EQ_LABELS = EQ_FREQS.map((f) =>
 export const EQ_MIN_DB = -12;
 export const EQ_MAX_DB = 12;
 
+// sam bas robi półka 90 Hz, tu tylko lekko wycięte 250-400 Hz, żeby nie zamulało, i trochę góry dla czytelności
 export const BASS_BOOST_BANDS: readonly number[] = [
-  4, 5.5, 5, 1.8, 0, 0, 0.8, 0.8, 0, 0, 0.5, 0.5, 0.5, 0.3, 0.3,
+  0, 0, 0, 0, 0, -1.5, -1, 0, 0, 0, 0.5, 0.8, 0.8, 0.5, 0.3,
 ];
+
+export const EQ_PRESET_BASS: Record<string, number> = { bass: 9 };
 
 const LEGACY_FREQS = [32, 64, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
 
@@ -48,6 +53,9 @@ const clampDb = (x: number) => Math.max(EQ_MIN_DB, Math.min(EQ_MAX_DB, x));
 
 export function getEqBands(): number[] {
   try {
+    // nazwa presetu zostaje tylko, gdy nikt nie ruszał suwaków, więc stary Bass Boost dostaje nową krzywą
+    const preset = getEqPreset();
+    if (EQ_PRESET_BASS[preset] !== undefined) return [...EQ_PRESETS[preset]!];
     const v = JSON.parse(localStorage.getItem(EQ_BANDS_KEY) || 'null');
     if (Array.isArray(v) && v.every((x) => typeof x === 'number')) {
       if (v.length === EQ_FREQS.length) return v.map(clampDb);
@@ -63,8 +71,16 @@ export function getEqBands(): number[] {
   return flat();
 }
 
-export function eqPreampDb(bands: number[]): number {
-  return -Math.min(EQ_MAX_DB, Math.max(0, ...bands));
+export function getEqBass(): number {
+  try {
+    const raw = localStorage.getItem(EQ_BASS_KEY);
+    if (raw === null) return EQ_PRESET_BASS[getEqPreset()] ?? 0;
+    const v = Number(raw);
+    if (Number.isFinite(v)) return Math.max(0, Math.min(EQ_BASS_MAX_DB, v));
+  } catch (err) {
+    console.debug('equalizer getEqBass', err);
+  }
+  return 0;
 }
 
 export function getEqPreset(): string {
@@ -76,13 +92,13 @@ export function getEqPreset(): string {
   return 'flat';
 }
 
-type FxTarget = { setFx(bands: number[] | null, norm: boolean): void };
+type FxTarget = { setFx(bands: number[] | null, norm: boolean, bass: number): void };
 let target: FxTarget | null = null;
 let eqOn = false;
 let normOn = false;
 
 function push() {
-  target?.setFx(eqOn ? getEqBands() : null, normOn);
+  target?.setFx(eqOn ? getEqBands() : null, normOn, eqOn ? getEqBass() : 0);
 }
 
 export function bindFx(audio: FxTarget, eq: boolean, norm: boolean) {
@@ -93,10 +109,11 @@ export function bindFx(audio: FxTarget, eq: boolean, norm: boolean) {
   if (changed) push();
 }
 
-export function setEqBands(bands: number[], preset: string) {
+export function setEqBands(bands: number[], preset: string, bass = getEqBass()) {
   try {
     localStorage.setItem(EQ_BANDS_KEY, JSON.stringify(bands));
     localStorage.setItem(EQ_PRESET_KEY, preset);
+    localStorage.setItem(EQ_BASS_KEY, String(bass));
   } catch (err) {
     console.debug('equalizer setEqBands', err);
   }
@@ -108,7 +125,7 @@ export const equalizerPlugin: ZenithPlugin = {
   name: 'Equalizer',
   category: 'sound',
   description:
-    '15-band graphic equalizer with presets (Bass Boost, treble, vocal, rock, electronic...).',
+    '15-band graphic equalizer with a clean bass boost and presets (treble, vocal, rock, electronic...). A limiter keeps it from clipping instead of turning everything down.',
   defaultEnabled: false,
 };
 

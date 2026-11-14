@@ -1,4 +1,4 @@
-import { EQ_FREQS, EQ_Q, eqPreampDb } from '../plugins/equalizer';
+import { EQ_FREQS, EQ_Q } from '../plugins/equalizer';
 
 export { EQ_FREQS };
 
@@ -26,7 +26,8 @@ export class WebFx {
   private ctx: AudioContext | null = null;
   private decks: Deck[] = [];
   private filters: BiquadFilterNode[] = [];
-  private preamp: GainNode | null = null;
+  private bass: BiquadFilterNode | null = null;
+  private bassDb = 0;
   private bands: number[] = EQ_FREQS.map(() => 0);
   private norm = false;
   private buf = new Float32Array(2048);
@@ -46,10 +47,11 @@ export class WebFx {
     return this.ctx ? this.ctx.state : this.waiting ? 'waiting-for-gesture' : 'off';
   }
 
-  configure(bands: number[] | null, norm: boolean) {
+  configure(bands: number[] | null, norm: boolean, bass = 0) {
     this.bands = bands ? bands.slice(0, EQ_FREQS.length) : EQ_FREQS.map(() => 0);
     this.norm = norm;
-    const wanted = Boolean(bands && bands.some((b) => b !== 0)) || norm;
+    this.bassDb = bass;
+    const wanted = Boolean(bands && bands.some((b) => b !== 0)) || bass > 0 || norm;
     if (!this.ctx && wanted) this.build();
     this.apply();
   }
@@ -90,9 +92,24 @@ export class WebFx {
     });
     for (let i = 0; i < this.filters.length - 1; i += 1)
       this.filters[i].connect(this.filters[i + 1]);
-    this.preamp = ctx.createGain();
-    this.filters[this.filters.length - 1].connect(this.preamp);
-    this.preamp.connect(ctx.destination);
+    // ten sam łańcuch co w Ruście: półka basowa, odcięcie poniżej 22 Hz i limiter zamiast przyciszania
+    this.bass = ctx.createBiquadFilter();
+    this.bass.type = 'lowshelf';
+    this.bass.frequency.value = 90;
+    const hp = ctx.createBiquadFilter();
+    hp.type = 'highpass';
+    hp.frequency.value = 22;
+    hp.Q.value = Math.SQRT1_2;
+    const lim = ctx.createDynamicsCompressor();
+    lim.threshold.value = -1.5;
+    lim.knee.value = 0;
+    lim.ratio.value = 20;
+    lim.attack.value = 0.003;
+    lim.release.value = 0.15;
+    this.filters[this.filters.length - 1].connect(this.bass);
+    this.bass.connect(hp);
+    hp.connect(lim);
+    lim.connect(ctx.destination);
     this.els.forEach((el) => {
       el.crossOrigin = 'anonymous';
       const src = ctx.createMediaElementSource(el);
@@ -129,7 +146,7 @@ export class WebFx {
     if (!this.ctx) return;
     const t = this.ctx.currentTime;
     this.filters.forEach((f, i) => f.gain.setTargetAtTime(this.bands[i] ?? 0, t, 0.05));
-    this.preamp?.gain.setTargetAtTime(Math.pow(10, eqPreampDb(this.bands) / 20), t, 0.05);
+    this.bass?.gain.setTargetAtTime(this.bassDb, t, 0.05);
     for (const d of this.decks) {
       if (!this.norm) {
         this.stopMeasure(d);
