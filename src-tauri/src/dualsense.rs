@@ -228,7 +228,7 @@ fn sleep_while_running(total: Duration) {
     }
 }
 
-fn run_pad(app: &AppHandle, device: &HidDevice, mut bt: bool) {
+fn run_pad(app: &AppHandle, device: &HidDevice, mut bt: bool) -> bool {
     // bez odczytu raportu 0x05 pad po Bluetooth wysyła skrócony raport bez touchpada;
     // Windows odrzuca bufor mniejszy niż największy feature report pada, stąd zapas
     let mut feature = [0u8; 128];
@@ -245,10 +245,15 @@ fn run_pad(app: &AppHandle, device: &HidDevice, mut bt: bool) {
     let mut seq = 0u8;
     let mut last_action = Instant::now() - Duration::from_secs(1);
     let mut buf = [0u8; 128];
+    let mut alive = false;
+    let mut last_report = Instant::now();
+    let mut last_write = Instant::now();
 
     while RUNNING.load(Ordering::SeqCst) {
         let want = LED.lock().map(|c| *c).unwrap_or([0, 0, 0]);
-        if last_led != Some(want) {
+        // Steam Input potrafi nadpisać diodę, więc kolor wraca co sekundę
+        if last_led != Some(want) || last_write.elapsed() >= Duration::from_secs(1) {
+            last_write = Instant::now();
             if bt && !setup_sent {
                 let _ = device.write(&bt_setup_report(seq));
                 seq = seq.wrapping_add(1);
@@ -270,9 +275,26 @@ fn run_pad(app: &AppHandle, device: &HidDevice, mut bt: bool) {
             Ok(n) => n,
             Err(e) => {
                 eprintln!("[dualsense] read failed: {e}");
-                return;
+                return alive;
             }
         };
+        if n == 0 {
+            // Windows nie zgłasza błędu po wyłączeniu pada przez BT, odczyt po prostu milknie
+            if last_report.elapsed() >= Duration::from_secs(3) {
+                return alive;
+            }
+            continue;
+        }
+        last_report = Instant::now();
+        if !alive {
+            alive = true;
+            let status = if bt || buf[0] == 0x31 || is_bt_basic_report(&buf[..n]) {
+                "connected-bt"
+            } else {
+                "connected"
+            };
+            let _ = app.emit("zenith-dualsense-status", status);
+        }
         if !bt && is_bt_basic_report(&buf[..n]) {
             // pad po BT w trybie podstawowym, raport diody 0x31 przełączy go w pełny tryb
             bt = true;
@@ -304,6 +326,7 @@ fn run_pad(app: &AppHandle, device: &HidDevice, mut bt: bool) {
 
     let off = led_report(bt, seq, [0, 0, 0]);
     let _ = device.write(&off);
+    alive
 }
 
 fn poll_loop(app: AppHandle) {
@@ -322,11 +345,11 @@ fn poll_loop(app: AppHandle) {
             continue;
         };
         told_missing = false;
-        let status = if bt { "connected-bt" } else { "connected" };
-        let _ = app.emit("zenith-dualsense-status", status);
-        run_pad(&app, &device, bt);
+        let was_alive = run_pad(&app, &device, bt);
         if RUNNING.load(Ordering::SeqCst) {
-            let _ = app.emit("zenith-dualsense-status", "disconnected");
+            if was_alive {
+                let _ = app.emit("zenith-dualsense-status", "disconnected");
+            }
             sleep_while_running(Duration::from_secs(1));
         }
     }

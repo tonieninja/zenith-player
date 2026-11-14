@@ -1,10 +1,12 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
+import { coverLedColor } from '../utils/coverTheme';
 import { NowPlayingInfo, ZenithPlugin } from './types';
 
 export type DualSenseAction = 'toggle-play' | 'next' | 'prev';
 
 type ActionHandler = (action: DualSenseAction) => void;
+type Rgb = [number, number, number];
 
 let actionHandler: ActionHandler | null = null;
 let unlistenHid: (() => void) | null = null;
@@ -15,6 +17,8 @@ let lastButtonSnapshot = '';
 let lastGestureAt = 0;
 
 const DEBOUNCE_MS = 450;
+const FLASH_MS = 400;
+const DEFAULT_RGB: Rgb = [0, 90, 255];
 
 export function registerDualSenseHandler(fn: ActionHandler) {
   actionHandler = fn;
@@ -27,14 +31,7 @@ function fire(action: DualSenseAction) {
   actionHandler?.(action);
 }
 
-function hexToRgb(hex: string): [number, number, number] | null {
-  const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
-  if (!m) return null;
-  const n = parseInt(m[1]!, 16);
-  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
-}
-
-async function setLed(r: number, g: number, b: number) {
+async function setLed([r, g, b]: Rgb) {
   try {
     await invoke('dualsense_set_led', { r, g, b });
   } catch (err) {
@@ -42,21 +39,47 @@ async function setLed(r: number, g: number, b: number) {
   }
 }
 
-async function setLedPlaying(playing: boolean, coverAccent?: string) {
-  if (!playing) {
-    await setLed(0, 0, 0);
-    return;
-  }
-  const rgb = coverAccent ? hexToRgb(coverAccent) : null;
-  if (rgb) await setLed(rgb[0], rgb[1], rgb[2]);
-  else await setLed(0, 90, 255);
+let baseRgb: Rgb = DEFAULT_RGB;
+let playing = false;
+let flashTimer = 0;
+let coverUrl = '';
+let coverJob = 0;
+
+// mignięcie po akcji ma pierwszeństwo, zmiana utworu czy pauza nie może go nadpisać
+function showBase() {
+  if (flashTimer) return;
+  const k = playing ? 1 : 0.2;
+  void setLed(baseRgb.map((c) => Math.round(c * k)) as Rgb);
 }
 
-function flashLed(r: number, g: number, b: number) {
-  void (async () => {
-    await setLed(r, g, b);
-    await new Promise((res) => setTimeout(res, 350));
-  })();
+function flashLed(rgb: Rgb) {
+  window.clearTimeout(flashTimer);
+  void setLed(rgb);
+  flashTimer = window.setTimeout(() => {
+    flashTimer = 0;
+    showBase();
+  }, FLASH_MS);
+}
+
+function flashFor(action: string) {
+  if (action === 'next') flashLed([0, 255, 60]);
+  else if (action === 'prev') flashLed([255, 30, 0]);
+  else flashLed([255, 255, 255]);
+}
+
+function followCover(url: string) {
+  coverUrl = url;
+  const job = ++coverJob;
+  if (!url) {
+    baseRgb = DEFAULT_RGB;
+    showBase();
+    return;
+  }
+  void coverLedColor(url).then((rgb) => {
+    if (job !== coverJob) return;
+    baseRgb = rgb ?? DEFAULT_RGB;
+    showBase();
+  });
 }
 
 function pollGamepad() {
@@ -95,12 +118,6 @@ function pollGamepad() {
 }
 
 let hidGen = 0;
-
-function flashFor(action: string) {
-  if (action === 'next') flashLed(0, 220, 80);
-  else if (action === 'prev') flashLed(220, 40, 40);
-  else flashLed(160, 40, 255);
-}
 
 async function startHid() {
   const gen = ++hidGen;
@@ -141,12 +158,14 @@ async function stopHid() {
   unlistenStatus?.();
   unlistenStatus = null;
   hidConnected = false;
+  window.clearTimeout(flashTimer);
+  flashTimer = 0;
   try {
     await invoke('dualsense_stop');
   } catch (err) {
     console.debug('dualSense stopHid', err);
   }
-  await setLed(0, 0, 0);
+  await setLed([0, 0, 0]);
 }
 
 let onGamepadConnect: (() => void) | null = null;
@@ -172,8 +191,6 @@ function stopGamepad() {
   onGamepadConnect = null;
 }
 
-let lastCoverAccent = '';
-
 export const dualSensePlugin: ZenithPlugin = {
   id: 'dualsense-pad',
   name: 'DualSense Pad',
@@ -184,21 +201,23 @@ export const dualSensePlugin: ZenithPlugin = {
   async onEnable() {
     await startHid();
     startGamepad();
+    showBase();
   },
   async onDisable() {
     stopGamepad();
     await stopHid();
   },
   onPlayStateChange(isPlaying) {
-    void setLedPlaying(isPlaying, lastCoverAccent);
+    if (isPlaying === playing) return;
+    playing = isPlaying;
+    showBase();
   },
   onNowPlaying(info: NowPlayingInfo | null) {
-    try {
-      lastCoverAccent =
-        getComputedStyle(document.documentElement).getPropertyValue('--theme-accent').trim() || '';
-    } catch {
-      lastCoverAccent = '';
-    }
-    void setLedPlaying(Boolean(info?.isPlaying), lastCoverAccent);
+    const nowPlaying = Boolean(info?.isPlaying);
+    const changed = nowPlaying !== playing;
+    playing = nowPlaying;
+    const url = info?.coverUrl || '';
+    if (url !== coverUrl) followCover(url);
+    else if (changed) showBase();
   },
 };
