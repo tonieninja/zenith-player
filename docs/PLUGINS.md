@@ -37,7 +37,6 @@ used Zenith, your own choices stay exactly as they were.
 | Name                 | Id                     | On by default | What it does                                                                                                      |
 | -------------------- | ---------------------- | ------------- | ----------------------------------------------------------------------------------------------------------------- |
 | Smart Lyrics Search  | `smart-lyrics`         | yes           | Cleans track titles before lyrics lookup (drops Artist - prefix and feat. credits). Turn off if a match is wrong. |
-| Lyrics Karaoke       | `lyrics-karaoke`       | no            | Karaoke-style active line glow, next-line preview, beat pulse and high-contrast text for any screen.              |
 | Lyrics Overlay       | `lyrics-overlay`       | no            | Always-on-top transparent overlay with synced lyrics and automatic font size.                                     |
 | Second Screen Lyrics | `second-screen-lyrics` | no            | Fullscreen lyrics on your second monitor with large, centered text.                                               |
 
@@ -59,7 +58,7 @@ used Zenith, your own choices stay exactly as they were.
 | Last.fm Scrobbler     | `lastfm-scrobbler` | no            | Scrobbles what you listen to to your Last.fm profile and shows "now playing" there.                       |
 | Discord Rich Presence | `discord-rpc`      | no            | Shows the currently playing track, artist, cover art and a live progress bar on your Discord profile.     |
 | Listening Room        | `listening-room`   | no            | Sync playback with friends over a local WebSocket room (same PC / LAN).                                   |
-| Zenith Stage          | `zenith-stage`     | no            | Streamer pack: opens lyrics overlay, turns on karaoke, and enables the share card in one toggle.          |
+| Zenith Stage          | `zenith-stage`     | no            | Streamer pack: opens lyrics overlay and enables the share card in one toggle.                             |
 | Share Card            | `share-card`       | no            | Makes a 1080×1080 Now Playing card and copies it to the clipboard.                                        |
 | Copy Track Link       | `copy-track-link`  | no            | Right click the cover in the player to copy a clean YouTube Music link, with or without the current time. |
 

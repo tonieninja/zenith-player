@@ -13,7 +13,6 @@ import { globalHotkeysPlugin } from './globalHotkeys';
 import { keyboardShortcutsPlugin } from './keyboardShortcuts';
 import { listeningHistoryPlugin } from './listeningHistory';
 import { listeningRoomPlugin } from './listeningRoom';
-import { lyricsKaraokePlugin } from './lyricsKaraoke';
 import { lyricsOverlayPlugin } from './lyricsOverlay';
 import { mediaSessionPlugin } from './mediaSession';
 import { offlineDownloadsPlugin } from './offlineDownloads';
@@ -53,7 +52,6 @@ export const PLUGIN_ORDER = [
   'smooth-volume',
   'duck-on-voice',
   'smart-lyrics',
-  'lyrics-karaoke',
   'lyrics-overlay',
   'second-screen-lyrics',
   'media-session',
@@ -106,7 +104,6 @@ export const ALL_PLUGINS: ZenithPlugin[] = [
   listeningRoomPlugin,
   loudnessPlugin,
   lastfmPlugin,
-  lyricsKaraokePlugin,
   lyricsOverlayPlugin,
   mediaSessionPlugin,
   offlineDownloadsPlugin,

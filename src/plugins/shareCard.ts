@@ -1,3 +1,4 @@
+import { cachedCoverUrl } from '../utils/imgError';
 import { NowPlayingInfo, ZenithPlugin } from './types';
 
 export async function generateShareCard(
@@ -129,8 +130,10 @@ export async function copyShareCardToClipboard(info: NowPlayingInfo): Promise<bo
     await new Promise<void>((res) => {
       img!.onload = () => res();
       img!.onerror = () => res();
-      img!.src = info.coverUrl!;
+      img!.src = cachedCoverUrl(info.coverUrl!, 544);
     });
+    // drawImage rzuca wyjątek na uszkodzonym obrazku, wtedy karta wychodzi bez okładki
+    if (!img.naturalWidth) img = null;
   }
   let blob: Blob;
   try {

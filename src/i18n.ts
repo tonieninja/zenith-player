@@ -309,8 +309,6 @@ const en = {
   duckMeterIdle: 'Turn the plugin on to see the mic level.',
   duckMeterListening: 'Listening. Music ducks when the bar crosses the bright line.',
   duckMeterDucking: 'Ducking. Music comes back when the bar drops below the dim line.',
-  karaokeMode: 'Karaoke mode',
-  karaokeModeDesc: 'Gradient active line, beat pulse, next-line preview.',
   highContrastLyrics: 'High contrast text',
   highContrastLyricsDesc: 'Black stroke behind lyrics for any background.',
   roomCode: 'Room code',
@@ -322,10 +320,11 @@ const en = {
   roomWebRtcHint: 'Local WebSocket room on this PC (guests join with the 6-character code + port).',
 
   stageHint:
-    'Enables overlay, karaoke and share card together. Duck-on-voice stays optional (needs the mic).',
+    'Enables overlay and share card together. Duck-on-voice stays optional (needs the mic).',
   dualSenseHint: 'Swipe touchpad: right=next, left=prev, up/down=play. Cross/L1/R1 also work.',
   shareCard: 'Copy share card',
   shareCardCopied: 'Copied to clipboard!',
+  shareCardFailed: "Couldn't copy the share card",
   abLoop: 'A-B loop',
   abLoopSetA: 'Set loop start (A)',
   abLoopSetB: 'Set loop end (B)',
@@ -843,8 +842,6 @@ const pl: Record<keyof typeof en, string> = {
   duckMeterIdle: 'Włącz plugin, żeby zobaczyć poziom mikrofonu.',
   duckMeterListening: 'Słucham. Muzyka ścisza się, gdy pasek przejdzie jasną kreskę.',
   duckMeterDucking: 'Przyciszam. Muzyka wraca, gdy pasek spadnie poniżej ciemnej kreski.',
-  karaokeMode: 'Tryb karaoke',
-  karaokeModeDesc: 'Gradient aktywnej linii, pulsowanie w rytm i podgląd następnej linii.',
   highContrastLyrics: 'Wysoki kontrast tekstu',
   highContrastLyricsDesc: 'Czarna obwódka wokół tekstu, czytelny na każdym tle.',
   roomCode: 'Kod pokoju',
@@ -857,11 +854,12 @@ const pl: Record<keyof typeof en, string> = {
     'Lokalny pokój WebSocket na tym komputerze (goście łączą się 6-znakowym kodem i portem).',
 
   stageHint:
-    'Włącza naraz nakładkę z tekstem, karaoke i kartę udostępniania. Ściszanie przy mówieniu jest osobno (wymaga mikrofonu).',
+    'Włącza naraz nakładkę z tekstem i kartę udostępniania. Ściszanie przy mówieniu jest osobno (wymaga mikrofonu).',
   dualSenseHint:
     'Touchpad: w prawo = następny, w lewo = poprzedni, góra/dół = odtwarzaj. Działają też Krzyżyk/L1/R1.',
   shareCard: 'Kopiuj kartę',
   shareCardCopied: 'Skopiowano do schowka!',
+  shareCardFailed: 'Nie udało się skopiować karty',
   abLoop: 'Pętla A-B',
   abLoopSetA: 'Ustaw początek pętli (A)',
   abLoopSetB: 'Ustaw koniec pętli (B)',

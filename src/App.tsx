@@ -3991,10 +3991,7 @@ export default function App() {
   }, [isPlaying, lyrics, audio]);
 
   useEffect(() => {
-    const overlayOn =
-      pluginStates['lyrics-overlay'] ||
-      pluginStates['second-screen-lyrics'] ||
-      pluginStates['lyrics-karaoke'];
+    const overlayOn = pluginStates['lyrics-overlay'] || pluginStates['second-screen-lyrics'];
     if (!overlayOn || !currentTrack) return;
     const m = overlayMetaRef.current;
     const lyr = lyricsRef.current;
@@ -4028,10 +4025,7 @@ export default function App() {
     meta.syncedLen = syncedLen;
     meta.textLen = textLen;
 
-    const overlayOn =
-      pluginStates['lyrics-overlay'] ||
-      pluginStates['second-screen-lyrics'] ||
-      pluginStates['lyrics-karaoke'];
+    const overlayOn = pluginStates['lyrics-overlay'] || pluginStates['second-screen-lyrics'];
     if (overlayOn && changed) {
       pushLyricsOverlay(
         {
@@ -4062,10 +4056,7 @@ export default function App() {
   }, [pluginStates, currentTrack, lyrics, isPlaying]);
 
   useEffect(() => {
-    const overlayOn =
-      pluginStates['lyrics-overlay'] ||
-      pluginStates['second-screen-lyrics'] ||
-      pluginStates['lyrics-karaoke'];
+    const overlayOn = pluginStates['lyrics-overlay'] || pluginStates['second-screen-lyrics'];
     overlayPluginsOnRef.current = overlayOn;
     secondScreenLyricsRef.current = Boolean(pluginStates['second-screen-lyrics']);
     const miniOn = pluginStates['mini-player'];
@@ -4155,9 +4146,10 @@ export default function App() {
       isPlaying,
       coverUrl: currentTrack.coverLarge || currentTrack.cover,
     });
-    if (ok) setShareCardOk(true);
-    setTimeout(() => setShareCardOk(false), 2000);
-  }, [currentTrack, duration, isPlaying]);
+    setShareCardOk(ok);
+    pushToast(ok ? t.shareCardCopied : t.shareCardFailed, ok ? 'success' : 'error');
+    if (ok) window.setTimeout(() => setShareCardOk(false), 2000);
+  }, [currentTrack, duration, isPlaying, t]);
 
   const heroTrack = useMemo(
     () =>
@@ -5332,12 +5324,16 @@ export default function App() {
                   );
                 })()}
               {pluginStates['share-card'] && (
-                <Share2
-                  size={18}
-                  className={`extra-icon-btn ${shareCardOk ? 'active' : ''}`}
-                  aria-label={shareCardOk ? t.shareCardCopied : t.shareCard}
-                  onClick={handleShareCard}
-                />
+                <button
+                  type="button"
+                  className={`extra-icon-btn share-card-btn ${shareCardOk ? 'active' : ''}`}
+                  aria-label={t.shareCard}
+                  title={shareCardOk ? t.shareCardCopied : t.shareCard}
+                  disabled={!currentTrack}
+                  onClick={() => void handleShareCard()}
+                >
+                  <Share2 size={20} strokeWidth={2.25} />
+                </button>
               )}
               <button
                 type="button"

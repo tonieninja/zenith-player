@@ -261,7 +261,7 @@ html.opaque-window #root {
   width: 100%;
 }
 
-.overlay-root.karaoke .lyric-karaoke-fill {
+.overlay-root .lyric-karaoke-fill {
   text-shadow:
     0 1px 3px rgba(0, 0, 0, 0.9),
     0 0 18px rgba(180, 210, 255, 0.45);
@@ -305,29 +305,9 @@ html.opaque-window #root {
   min-height: 0;
 }
 
-.overlay-root.karaoke .overlay-beat {
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  pointer-events: none;
-  opacity: 0;
-  z-index: 0;
-  background: radial-gradient(circle at 50% 70%, rgba(100, 160, 255, 0.14), transparent 65%);
-  animation: beatFlash 0.55s ease-out;
-}
-
-.overlay-panel > *:not(.overlay-beat):not(.overlay-chrome) {
+.overlay-panel > *:not(.overlay-chrome) {
   position: relative;
   z-index: 1;
-}
-
-@keyframes beatFlash {
-  0% {
-    opacity: 0.45;
-  }
-  100% {
-    opacity: 0;
-  }
 }
 
 .overlay-idle {
