@@ -166,31 +166,41 @@ fn crc32(prefix: u8, data: &[u8]) -> u32 {
     !crc
 }
 
-fn led_report(bt: bool, seq: u8, first: bool, rgb: [u8; 3]) -> Vec<u8> {
-    if !bt {
-        let mut r = vec![0u8; 48];
-        r[0] = 0x02;
-        r[1] = 0xFF;
-        r[2] = 0xF7;
-        r[45..48].copy_from_slice(&rgb);
-        return r;
-    }
+// po BT pad dostaje te same 47 bajtów co po USB, tylko z nagłówkiem 0x31 i CRC na końcu
+fn bt_report(seq: u8, common: &[u8; 47]) -> Vec<u8> {
     let mut r = vec![0u8; 78];
     r[0] = 0x31;
     r[1] = (seq & 0x0F) << 4;
     r[2] = 0x10;
-    let c = &mut r[3..];
-    c[0] = 0xFF;
-    c[1] = 0xF7;
-    if first {
-        // po sparowaniu pad trzyma własną animację diody, dopóki jej nie wygasimy
-        c[38] = 0x02;
-        c[41] = 0x02;
-    }
-    c[44..47].copy_from_slice(&rgb);
+    r[3..50].copy_from_slice(common);
     let crc = crc32(0xA2, &r[..74]);
     r[74..78].copy_from_slice(&crc.to_le_bytes());
     r
+}
+
+// po sparowaniu przez BT pad trzyma własną animację diody i ignoruje kolor, dopóki jej nie wygasimy
+fn bt_setup_report(seq: u8) -> Vec<u8> {
+    let mut c = [0u8; 47];
+    c[38] = 0x02;
+    c[41] = 0x02;
+    bt_report(seq, &c)
+}
+
+fn led_report(bt: bool, seq: u8, rgb: [u8; 3]) -> Vec<u8> {
+    let mut c = [0u8; 47];
+    c[0] = 0xFF;
+    c[1] = 0xF7;
+    c[44..47].copy_from_slice(&rgb);
+    if bt {
+        return bt_report(seq, &c);
+    }
+    let mut r = vec![0x02];
+    r.extend_from_slice(&c);
+    r
+}
+
+fn is_bt_basic_report(buf: &[u8]) -> bool {
+    buf.first() == Some(&0x01) && (10..64).contains(&buf.len())
 }
 
 fn open_pad(api: &mut HidApi) -> Option<(HidDevice, bool)> {
@@ -219,14 +229,19 @@ fn sleep_while_running(total: Duration) {
 }
 
 fn run_pad(app: &AppHandle, device: &HidDevice, mut bt: bool) {
-    // bez odczytu raportu 0x05 pad po Bluetooth wysyła skrócony raport bez touchpada
-    let mut feature = [0u8; 41];
+    // bez odczytu raportu 0x05 pad po Bluetooth wysyła skrócony raport bez touchpada;
+    // Windows odrzuca bufor mniejszy niż największy feature report pada, stąd zapas
+    let mut feature = [0u8; 128];
     feature[0] = 0x05;
-    let _ = device.get_feature_report(&mut feature);
+    if let Err(e) = device.get_feature_report(&mut feature) {
+        eprintln!("[dualsense] feature report 0x05 failed: {e}");
+    }
 
     let mut tracker = GestureTracker::new();
     let mut prev = PadState::default();
     let mut last_led: Option<[u8; 3]> = None;
+    let mut setup_sent = false;
+    let mut write_err_logged = false;
     let mut seq = 0u8;
     let mut last_action = Instant::now() - Duration::from_secs(1);
     let mut buf = [0u8; 128];
@@ -234,10 +249,20 @@ fn run_pad(app: &AppHandle, device: &HidDevice, mut bt: bool) {
     while RUNNING.load(Ordering::SeqCst) {
         let want = LED.lock().map(|c| *c).unwrap_or([0, 0, 0]);
         if last_led != Some(want) {
-            let report = led_report(bt, seq, last_led.is_none(), want);
+            if bt && !setup_sent {
+                let _ = device.write(&bt_setup_report(seq));
+                seq = seq.wrapping_add(1);
+                setup_sent = true;
+            }
+            let report = led_report(bt, seq, want);
             seq = seq.wrapping_add(1);
-            if device.write(&report).is_ok() {
-                last_led = Some(want);
+            match device.write(&report) {
+                Ok(_) => last_led = Some(want),
+                Err(e) if !write_err_logged => {
+                    write_err_logged = true;
+                    eprintln!("[dualsense] lightbar write failed (bt={bt}): {e}");
+                }
+                Err(_) => {}
             }
         }
 
@@ -248,6 +273,11 @@ fn run_pad(app: &AppHandle, device: &HidDevice, mut bt: bool) {
                 return;
             }
         };
+        if !bt && is_bt_basic_report(&buf[..n]) {
+            // pad po BT w trybie podstawowym, raport diody 0x31 przełączy go w pełny tryb
+            bt = true;
+            last_led = None;
+        }
         let Some((state, is_bt)) = parse_report(&buf[..n]) else {
             continue;
         };
@@ -272,7 +302,7 @@ fn run_pad(app: &AppHandle, device: &HidDevice, mut bt: bool) {
         }
     }
 
-    let off = led_report(bt, seq, false, [0, 0, 0]);
+    let off = led_report(bt, seq, [0, 0, 0]);
     let _ = device.write(&off);
 }
 
@@ -381,10 +411,12 @@ mod tests {
     }
 
     #[test]
-    fn short_bt_report_is_ignored() {
+    fn short_bt_report_is_ignored_but_marks_bt() {
         let mut short = vec![0u8; 10];
         short[0] = 0x01;
         assert!(parse_report(&short).is_none());
+        assert!(is_bt_basic_report(&short));
+        assert!(!is_bt_basic_report(&usb_report()));
     }
 
     #[test]
@@ -413,13 +445,27 @@ mod tests {
 
     #[test]
     fn bt_led_report_has_colour_and_crc() {
-        let r = led_report(true, 3, true, [10, 20, 30]);
+        let r = led_report(true, 3, [10, 20, 30]);
         assert_eq!(r.len(), 78);
-        assert_eq!((r[0], r[1], r[2]), (0x31, 0x30, 0x10));
+        assert_eq!(
+            (r[0], r[1], r[2], r[3], r[4]),
+            (0x31, 0x30, 0x10, 0xFF, 0xF7)
+        );
         assert_eq!(&r[47..50], &[10, 20, 30]);
+        assert_eq!((r[41], r[44]), (0, 0));
         let crc = u32::from_le_bytes([r[74], r[75], r[76], r[77]]);
         assert_eq!(crc, crc32(0xA2, &r[..74]));
-        let usb = led_report(false, 0, true, [10, 20, 30]);
-        assert_eq!(&usb[45..48], &[10, 20, 30]);
+
+        let setup = bt_setup_report(4);
+        assert_eq!((setup[3], setup[41], setup[44]), (0, 0x02, 0x02));
+
+        // raport USB bajt w bajt taki jak przed zmianą
+        let usb = led_report(false, 0, [10, 20, 30]);
+        let mut old = [0u8; 48];
+        old[0] = 0x02;
+        old[1] = 0xFF;
+        old[2] = 0xF7;
+        old[45..48].copy_from_slice(&[10, 20, 30]);
+        assert_eq!(usb, old.to_vec());
     }
 }
