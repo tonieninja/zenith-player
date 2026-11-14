@@ -8,6 +8,8 @@ type ActionHandler = (action: DualSenseAction) => void;
 
 let actionHandler: ActionHandler | null = null;
 let unlistenHid: (() => void) | null = null;
+let unlistenStatus: (() => void) | null = null;
+let hidConnected = false;
 let gamepadRaf = 0;
 let lastButtonSnapshot = '';
 let lastGestureAt = 0;
@@ -58,6 +60,8 @@ function flashLed(r: number, g: number, b: number) {
 }
 
 function pollGamepad() {
+  // przyciski czyta już Rust z HID, Gamepad API zostaje na wypadek braku dostępu do HID
+  if (hidConnected) return;
   const pads = navigator.getGamepads?.() ?? [];
   let sawPad = false;
   for (const pad of pads) {
@@ -74,15 +78,17 @@ function pollGamepad() {
 
     const pressed = (i: number) => buttons[i] === '1' && prev[i] !== '1';
 
-    if (pressed(0) || pressed(9) || pressed(17)) {
-      flashLed(160, 40, 255);
-      fire('toggle-play');
-    } else if (pressed(5) || pressed(15)) {
-      flashLed(0, 220, 80);
-      fire('next');
-    } else if (pressed(4) || pressed(14)) {
-      flashLed(220, 40, 40);
-      fire('prev');
+    const action: DualSenseAction | null =
+      pressed(0) || pressed(9) || pressed(17)
+        ? 'toggle-play'
+        : pressed(5) || pressed(15)
+          ? 'next'
+          : pressed(4) || pressed(14)
+            ? 'prev'
+            : null;
+    if (action) {
+      flashFor(action);
+      fire(action);
     }
   }
   if (!sawPad) lastButtonSnapshot = '';
@@ -90,8 +96,21 @@ function pollGamepad() {
 
 let hidGen = 0;
 
+function flashFor(action: string) {
+  if (action === 'next') flashLed(0, 220, 80);
+  else if (action === 'prev') flashLed(220, 40, 40);
+  else flashLed(160, 40, 255);
+}
+
 async function startHid() {
   const gen = ++hidGen;
+  if (!unlistenStatus) {
+    const un = await listen<string>('zenith-dualsense-status', (e) => {
+      hidConnected = e.payload === 'connected' || e.payload === 'connected-bt';
+    });
+    if (gen !== hidGen || unlistenStatus) un();
+    else unlistenStatus = un;
+  }
   try {
     await invoke('dualsense_start');
   } catch (err) {
@@ -102,18 +121,11 @@ async function startHid() {
     return;
   }
   if (unlistenHid) return;
-  const un = await listen<string>('zenith-dualsense-gesture', (e) => {
-    const g = e.payload;
-    if (g === 'right') {
-      flashLed(0, 220, 80);
-      fire('next');
-    } else if (g === 'left') {
-      flashLed(220, 40, 40);
-      fire('prev');
-    } else if (g === 'up' || g === 'down') {
-      flashLed(160, 40, 255);
-      fire('toggle-play');
-    }
+  const un = await listen<string>('zenith-dualsense-action', (e) => {
+    const a = e.payload;
+    if (a !== 'next' && a !== 'prev' && a !== 'toggle-play') return;
+    flashFor(a);
+    fire(a);
   });
   if (gen !== hidGen || unlistenHid) {
     un();
@@ -126,6 +138,9 @@ async function stopHid() {
   hidGen += 1;
   unlistenHid?.();
   unlistenHid = null;
+  unlistenStatus?.();
+  unlistenStatus = null;
+  hidConnected = false;
   try {
     await invoke('dualsense_stop');
   } catch (err) {
