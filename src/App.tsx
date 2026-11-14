@@ -182,6 +182,7 @@ import { loadPersistedQueue, savePersistedQueue } from './plugins/queuePersist';
 import { getRememberedVolume, saveRememberedVolume } from './plugins/rememberVolume';
 import { registerKeyboardHandler, setupKeyboardShortcuts } from './plugins/keyboardShortcuts';
 import { copyShareCardToClipboard } from './plugins/shareCard';
+import { copyTrackLink } from './plugins/copyTrackLink';
 import {
   getSleepEndsAt,
   rearmSleepTimer,
@@ -411,7 +412,12 @@ export default function App() {
   const [libError, setLibError] = useState<string | null>(null);
   const [libAccount, setLibAccount] = useState<AccountProfile | null>(null);
   const [pmOpen, setPmOpen] = useState(false);
-  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; track: Track } | null>(null);
+  const [ctxMenu, setCtxMenu] = useState<{
+    x: number;
+    y: number;
+    track: Track;
+    at?: number;
+  } | null>(null);
   const [trackRating, setTrackRatingState] = useState<TrackLikeStatus>('INDIFFERENT');
   const [loginBusy, setLoginBusy] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
@@ -3462,18 +3468,21 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKey, true);
   }, []);
 
+  const currentTrackLatest = useLatest(currentTrack);
   useEffect(() => {
     const onContext = (e: MouseEvent) => {
       const target = e.target as HTMLElement | null;
       if (target?.closest('input, textarea, [contenteditable="true"]')) return;
       e.preventDefault();
       const row = target?.closest<HTMLElement>('[data-ctx-track]');
-      const track = parseCtxTrackAttr(row?.dataset.ctxTrack);
+      const onCover =
+        pluginManager.isEnabled('copy-track-link') && target?.closest('.player-view-cover-wrap');
+      const track = onCover ? currentTrackLatest.current : parseCtxTrackAttr(row?.dataset.ctxTrack);
       if (track) {
         e.stopPropagation();
         const x = Math.min(e.clientX, window.innerWidth - 230);
         const y = Math.min(e.clientY, window.innerHeight - 260);
-        setCtxMenu({ x, y, track });
+        setCtxMenu({ x, y, track, at: onCover ? progressRef.current : undefined });
       } else {
         setCtxMenu(null);
       }
@@ -5718,6 +5727,24 @@ export default function App() {
               role="menu"
               data-testid="track-ctx-menu"
             >
+              {ctxMenu.at !== undefined &&
+                [undefined, ctxMenu.at].map((sec) => (
+                  <button
+                    key={sec === undefined ? 'link' : 'link-at'}
+                    role="menuitem"
+                    onClick={() => {
+                      const id = ctxMenu.track.id;
+                      setCtxMenu(null);
+                      void copyTrackLink(id, sec).then((ok) =>
+                        pushToast(ok ? t.linkCopied : t.linkCopyFailed, ok ? 'success' : 'error')
+                      );
+                    }}
+                  >
+                    {sec === undefined
+                      ? t.ctxCopyLink
+                      : t.ctxCopyLinkAt.replace('{time}', formatTime(sec))}
+                  </button>
+                ))}
               <div className="ctx-menu-label">{t.ctxAddToPlaylist}</div>
               {userPlaylists.filter((p) => isEditablePlaylist(p.id)).length === 0 ? (
                 <div className="ctx-menu-empty">{t.ctxNoPlaylists}</div>

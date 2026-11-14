@@ -7,6 +7,8 @@
 - the pad reconnects by itself after you turn it off and on again
 - Duck on Voice listens to the mic in Rust and has a live meter with the threshold on it,
   so you can see when it kicks in
+- right click the cover in the player to copy a clean link, also from the current time
+- share card copies to the clipboard again, scrolling on the cover no longer scrolls the page
 - support link in Settings, About
 - new update signing key, older builds have to grab 4.1.0 by hand once
 

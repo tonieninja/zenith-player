@@ -54,14 +54,14 @@ used Zenith, your own choices stay exactly as they were.
 
 ### Sharing and services
 
-| Name                  | Id                 | On by default | What it does                                                                                          |
-| --------------------- | ------------------ | ------------- | ----------------------------------------------------------------------------------------------------- |
-| Last.fm Scrobbler     | `lastfm-scrobbler` | no            | Scrobbles what you listen to to your Last.fm profile and shows "now playing" there.                   |
-| Discord Rich Presence | `discord-rpc`      | no            | Shows the currently playing track, artist, cover art and a live progress bar on your Discord profile. |
-| Listening Room        | `listening-room`   | no            | Sync playback with friends over a local WebSocket room (same PC / LAN).                               |
-| Zenith Stage          | `zenith-stage`     | no            | Streamer pack: opens lyrics overlay, turns on karaoke, and enables the share card in one toggle.      |
-| Share Card            | `share-card`       | no            | Makes a 1080×1080 Now Playing card and copies it to the clipboard.                                    |
-| Copy Track Link       | `copy-track-link`  | no            | Copies the YouTube Music link to the clipboard every time a new track starts.                         |
+| Name                  | Id                 | On by default | What it does                                                                                              |
+| --------------------- | ------------------ | ------------- | --------------------------------------------------------------------------------------------------------- |
+| Last.fm Scrobbler     | `lastfm-scrobbler` | no            | Scrobbles what you listen to to your Last.fm profile and shows "now playing" there.                       |
+| Discord Rich Presence | `discord-rpc`      | no            | Shows the currently playing track, artist, cover art and a live progress bar on your Discord profile.     |
+| Listening Room        | `listening-room`   | no            | Sync playback with friends over a local WebSocket room (same PC / LAN).                                   |
+| Zenith Stage          | `zenith-stage`     | no            | Streamer pack: opens lyrics overlay, turns on karaoke, and enables the share card in one toggle.          |
+| Share Card            | `share-card`       | no            | Makes a 1080×1080 Now Playing card and copies it to the clipboard.                                        |
+| Copy Track Link       | `copy-track-link`  | no            | Right click the cover in the player to copy a clean YouTube Music link, with or without the current time. |
 
 ### Window and stats
 

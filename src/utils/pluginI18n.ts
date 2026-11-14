@@ -226,11 +226,11 @@ const CATALOG: Record<string, Record<Language, PluginText>> = {
   'copy-track-link': {
     en: {
       name: 'Copy track link',
-      desc: 'Copies the YouTube Music link whenever a new track starts.',
+      desc: 'Right click the cover in the player to copy a clean link, also from the current time.',
     },
     pl: {
       name: 'Kopiowanie linku',
-      desc: 'Kopiuje link do YouTube Music przy każdym nowym utworze.',
+      desc: 'Prawy przycisk na okładce w odtwarzaczu kopiuje czysty link, też od bieżącego momentu.',
     },
   },
   'system-tray': {
