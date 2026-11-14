@@ -9,6 +9,7 @@ export interface HeadlessPlan {
   queue: Track[];
   index: number;
   loopMode?: string;
+  shuffle?: boolean;
   playingFrom?: string | null;
   playingFromId?: string | null;
 }
@@ -17,6 +18,8 @@ export interface AudioRestore {
   plan: HeadlessPlan | null;
   played: { index: number; id: string; at: number }[];
   moved: boolean;
+  pending?: boolean;
+  volume?: number | null;
   snap: EngineSnapshot & { muted?: boolean };
   disk: {
     plan: HeadlessPlan | null;

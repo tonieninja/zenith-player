@@ -11,6 +11,7 @@ export interface EngineSnapshot {
   hasSource: boolean;
   crossfading: boolean;
   ended: boolean;
+  buffering?: boolean;
 }
 
 type Cmd =
@@ -50,6 +51,8 @@ export class NativeAudio {
   private target = new EventTarget();
   private seq = 0;
   private volQueued = false;
+  private heard = new Map<string, number>();
+  private missed = new Map<string, string>();
 
   static async available(): Promise<boolean> {
     try {
@@ -62,9 +65,23 @@ export class NativeAudio {
   constructor(initial?: EngineSnapshot | null) {
     if (initial) this.take(initial);
     void listen<{ type: string; snap: EngineSnapshot }>('zaudio', (e) => {
-      this.take(e.payload.snap);
-      this.target.dispatchEvent(new Event(e.payload.type));
+      this.receive(e.payload.type, e.payload.snap);
+    }).then(() => {
+      // koniec utworu między zaudio_attach a podpięciem nasłuchu nie przyszedłby wcale
+      if (initial?.ended) return;
+      void invoke<EngineSnapshot>('zaudio_snapshot').then((s) => {
+        if (s.ended && !this.s.ended) this.receive('ended', s);
+      });
     });
+  }
+
+  private receive(type: string, snap: EngineSnapshot) {
+    this.take(snap);
+    // po odbudowie okna z zasobnika koniec utworu potrafi przyjść, zanim App podepnie obsługę
+    if ((type === 'ended' || type === 'error') && !this.heard.get(type)) {
+      this.missed.set(type, this.s.src);
+    }
+    this.target.dispatchEvent(new Event(type));
   }
 
   private take(s: EngineSnapshot) {
@@ -81,7 +98,8 @@ export class NativeAudio {
 
   get currentTime() {
     const s = this.s;
-    if (s.paused || s.ready < 4) return s.t;
+    // w trakcie przycięcia sieci Rust milknie, więc ekstrapolacja pchałaby tekst do przodu
+    if (s.paused || s.ready < 4 || s.buffering) return s.t;
     const t = s.t + ((performance.now() - this.at) / 1000) * this.rate;
     return s.d != null ? Math.min(t, s.d) : t;
   }
@@ -205,10 +223,16 @@ export class NativeAudio {
 
   addEventListener(type: string, fn: EventListenerOrEventListenerObject) {
     this.target.addEventListener(type, fn);
+    this.heard.set(type, (this.heard.get(type) ?? 0) + 1);
+    const src = this.missed.get(type);
+    if (src === undefined) return;
+    this.missed.delete(type);
+    if (src === this.s.src) queueMicrotask(() => this.target.dispatchEvent(new Event(type)));
   }
 
   removeEventListener(type: string, fn: EventListenerOrEventListenerObject) {
     this.target.removeEventListener(type, fn);
+    this.heard.set(type, Math.max(0, (this.heard.get(type) ?? 0) - 1));
   }
 
   abortAll() {
