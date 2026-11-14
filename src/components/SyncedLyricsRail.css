@@ -152,7 +152,7 @@
   padding: 11px 10px 11px 4px;
   opacity: 0.2;
   color: rgba(255, 255, 255, 0.42);
-  font-weight: 560;
+  font-weight: 720;
   transform: translate3d(0, 6px, 0) scale(0.96);
   will-change: transform, opacity;
   backface-visibility: hidden;
@@ -170,7 +170,6 @@
 .synced-lyrics-rail--full .lyric-row.is-past {
   opacity: 0.22;
   color: rgba(255, 255, 255, 0.38);
-  font-weight: 540;
   transform: translate3d(0, -3px, 0) scale(0.94);
 }
 
@@ -183,7 +182,6 @@
 .synced-lyrics-rail--full .lyric-row.is-next {
   opacity: 0.72;
   color: rgba(255, 255, 255, 0.78);
-  font-weight: 650;
   transform: translate3d(0, 3px, 0) scale(0.985);
   text-shadow: 0 0 18px rgba(255, 255, 255, 0.08);
 }
@@ -191,20 +189,11 @@
 .synced-lyrics-rail--full .lyric-row.is-active {
   opacity: 1;
   color: #ffffff;
-  font-weight: 780;
   transform: translate3d(0, 0, 0) scale(1.04);
   text-shadow:
     0 1px 2px rgba(0, 0, 0, 0.75),
     0 0 24px rgba(255, 255, 255, 0.22),
     0 0 48px rgba(140, 190, 255, 0.28);
-}
-
-.synced-lyrics-rail--full.is-sliding .lyric-row.is-active {
-  animation: lyricLineBounce 640ms cubic-bezier(0.22, 1.12, 0.36, 1);
-}
-
-.synced-lyrics-rail--full.is-sliding .lyric-row.is-active .lyric-row-text {
-  animation: lyricTextDrop 640ms cubic-bezier(0.22, 1.12, 0.36, 1);
 }
 
 .synced-lyrics-rail--full .lyric-row.is-active .lyric-row-text {

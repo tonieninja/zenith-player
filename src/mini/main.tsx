@@ -1,7 +1,8 @@
-import { StrictMode, useEffect, useRef, useState } from 'react';
+import { StrictMode, useEffect, useRef, useState, type CSSProperties } from 'react';
 import { createRoot } from 'react-dom/client';
 import { emit, listen } from '@tauri-apps/api/event';
 import { imgErr, isYouTubeVideoId } from '../utils/imgError';
+import { coverLedColor } from '../utils/coverTheme';
 import {
   AUX_STRINGS,
   closeThisWindow,
@@ -79,6 +80,23 @@ function MiniApp() {
     });
   }, [data]);
 
+  const [grad, setGrad] = useState<[string, string] | null>(null);
+  const coverUrl = data?.coverUrl;
+  useEffect(() => {
+    if (!coverUrl) return setGrad(null);
+    let alive = true;
+    void coverLedColor(coverUrl).then((c) => {
+      if (!alive) return;
+      if (!c) return setGrad(null);
+      // drugi przystanek rozjaśniony w stronę bieli, jak w domyślnym fiolet -> biel
+      const lift = (v: number) => Math.round(v + (255 - v) * 0.6);
+      setGrad([`rgb(${c.join(', ')})`, `rgb(${c.map(lift).join(', ')})`]);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [coverUrl]);
+
   const act = (action: string) => emit('zenith-mini-action', action);
 
   if (!data?.title) {
@@ -105,7 +123,12 @@ function MiniApp() {
       <div className="mini-info">
         <div className="mini-title">{data.title}</div>
         <div className="mini-artist">{data.artist}</div>
-        <div className="mini-progress">
+        <div
+          className="mini-progress"
+          style={
+            grad ? ({ '--mini-c1': grad[0], '--mini-c2': grad[1] } as CSSProperties) : undefined
+          }
+        >
           <div className="mini-progress-fill" ref={fillRef} />
         </div>
       </div>

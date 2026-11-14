@@ -194,9 +194,11 @@ const en = {
   overlayPosCenter: 'Center',
   overlayHideMeta: 'Lyrics only',
   overlayHideMetaDesc: 'Hide cover, title and artist - show only lyrics on the panel.',
+  secondScreenHideMeta: 'Hide title and artists',
+  secondScreenHideMetaDesc: 'Only the lyrics on the second screen, no cover, title or artists.',
   lyricsSyncOffset: 'Lyrics sync offset',
   lyricsSyncOffsetDesc:
-    'Shift line timing. Positive = lines appear earlier. Negative = hold the current line longer. The player already delays a bit so the sung line stays highlighted.',
+    'Shift line timing. Positive = lines appear earlier. Negative = hold the current line longer. Handy for Bluetooth headphones or lyrics with shifted timestamps.',
   durationLabel: 'Duration',
   remainingLabel: 'Time left',
   preloadDepth: 'Tracks to preload',
@@ -728,9 +730,12 @@ const pl: Record<keyof typeof en, string> = {
   overlayPosCenter: 'Środek',
   overlayHideMeta: 'Tylko tekst',
   overlayHideMetaDesc: 'Ukryj okładkę, tytuł i wykonawcę, zostaw sam tekst i tło.',
+  secondScreenHideMeta: 'Ukryj tytuł i wykonawców',
+  secondScreenHideMetaDesc:
+    'Na drugim ekranie zostaje sam tekst, bez okładki, tytułu i wykonawców.',
   lyricsSyncOffset: 'Korekta synchronizacji',
   lyricsSyncOffsetDesc:
-    'Przesuwa timing linii. Dodatnie = wcześniej. Ujemne = dłużej trzyma aktualną linię. Aplikacja i tak lekko opóźnia zmianę, żeby podświetlać to, co jest śpiewane.',
+    'Przesuwa timing linii. Dodatnie = wcześniej. Ujemne = dłużej trzyma aktualną linię. Przydaje się przy słuchawkach Bluetooth albo tekście z przesuniętymi znacznikami.',
   durationLabel: 'Długość',
   remainingLabel: 'Pozostało',
   preloadDepth: 'Liczba wczytywanych utworów',
