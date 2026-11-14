@@ -8,12 +8,23 @@ import { initAudioBackend } from './audio/engine';
 import { initCoverCache } from './utils/covers';
 import { initFavoritesStore } from './utils/favorites';
 import { initPrefsMirror } from './utils/prefsMirror';
+import { initSpotifyToken } from './api/spotify';
 import { pluginManager } from './plugins';
 
 void initCoverCache();
 
-void Promise.all([initAudioBackend(), initPrefsMirror(), initFavoritesStore()]).finally(() => {
-  pluginManager.reloadFromStorage();
+void Promise.all([
+  initAudioBackend(),
+  initPrefsMirror(),
+  initFavoritesStore(),
+  initSpotifyToken(),
+]).finally(() => {
+  // pełny localStorage przy zapisie stanu wtyczek nie może zostawić pustego okna
+  try {
+    pluginManager.reloadFromStorage();
+  } catch {
+    /* wtyczki zostają przy domyślnych ustawieniach */
+  }
   ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
     <ErrorBoundary>
       <App />

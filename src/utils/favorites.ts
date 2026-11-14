@@ -30,6 +30,8 @@ export function mergeFavoriteTracks(local: Track[], account: Track[]): Track[] {
 }
 
 const KEY = 'zenith_saved_tracks';
+// ten sam limit sprawdza Rust w prefs.rs; starsze ulubione ponad niego odpadają przy zapisie
+export const FAVORITES_MAX = 2000;
 
 export async function initFavoritesStore(): Promise<void> {
   const disk = await invoke<string>('favorites_load').catch(() => null);
@@ -37,9 +39,13 @@ export async function initFavoritesStore(): Promise<void> {
   const fromDisk = readSavedTracks(disk);
   const local = readSavedTracks(localStorage.getItem(KEY));
   if (local.length === 0 && fromDisk.length > 0) {
-    localStorage.setItem(KEY, JSON.stringify(fromDisk));
+    try {
+      localStorage.setItem(KEY, JSON.stringify(fromDisk));
+    } catch {
+      /* pełny localStorage: ulubione zostają na dysku i wrócą przy następnym starcie */
+    }
   } else if (local.length > 0 && fromDisk.length === 0) {
-    persistFavorites(JSON.stringify(local.slice(0, 500)));
+    persistFavorites(JSON.stringify(local.slice(0, FAVORITES_MAX)));
   }
 }
 

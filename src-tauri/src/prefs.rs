@@ -8,8 +8,8 @@ static LOCK: Mutex<()> = Mutex::new(());
 
 const MAX_KEYS: usize = 400;
 const MAX_VALUE: usize = 4096;
-const FAVORITES_MAX_BYTES: usize = 1_500_000;
-const FAVORITES_MAX_TRACKS: usize = 500;
+const FAVORITES_MAX_BYTES: usize = 4_000_000;
+const FAVORITES_MAX_TRACKS: usize = 2000;
 
 fn file(app: &AppHandle) -> Option<PathBuf> {
     Some(app.path().app_local_data_dir().ok()?.join("prefs.json"))
@@ -68,10 +68,18 @@ pub fn sanitize(map: HashMap<String, String>) -> HashMap<String, String> {
         .filter(|(k, _)| {
             let l = k.to_ascii_lowercase();
             ![
-                "token", "secret", "session", "password", "apikey", "api_key", "cookie",
+                "token",
+                "secret",
+                "session",
+                "password",
+                "apikey",
+                "api_key",
+                "cookie",
+                "webhook_url",
             ]
             .iter()
             .any(|s| l.contains(s))
+                && !l.ends_with("_pin")
         })
         .take(MAX_KEYS)
         .collect()
@@ -88,7 +96,12 @@ pub fn prefs_load(app: AppHandle) -> HashMap<String, String> {
 }
 
 #[tauri::command]
-pub fn prefs_save(app: AppHandle, prefs: HashMap<String, String>) -> Result<(), String> {
+pub fn prefs_save(
+    app: AppHandle,
+    webview: tauri::Webview,
+    prefs: HashMap<String, String>,
+) -> Result<(), String> {
+    crate::auth_store::main_window_only(&webview)?;
     let _g = LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let path = file(&app).ok_or("no data dir")?;
     if let Some(dir) = path.parent() {
