@@ -1,9 +1,9 @@
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use discord_rich_presence::activity::{Activity, ActivityType, Assets, Button, Timestamps};
 use discord_rich_presence::{DiscordIpc, DiscordIpcClient};
 use serde::Deserialize;
+use serde_json::json;
 use tauri::command;
 
 static CLIENT: Mutex<Option<(String, DiscordIpcClient)>> = Mutex::new(None);
@@ -19,6 +19,28 @@ pub struct PresencePayload {
     pub is_playing: bool,
     pub cover_url: Option<String>,
     pub track_url: Option<String>,
+    #[serde(default)]
+    pub context: Option<String>,
+}
+
+const YTM_ICON: &str =
+    "https://raw.githubusercontent.com/walkxcode/dashboard-icons/main/png/youtube-music.png";
+
+// Discord odrzuca całe SET_ACTIVITY, gdy tekst ma mniej niż 2 albo więcej niż 128 jednostek UTF-16
+fn fit(s: &str) -> String {
+    let mut n = 0;
+    let mut out: String = s
+        .trim()
+        .chars()
+        .take_while(|c| {
+            n += c.len_utf16();
+            n <= 128
+        })
+        .collect();
+    while out.chars().count() < 2 {
+        out.push('\u{2800}');
+    }
+    out
 }
 
 fn url_encode(input: &str) -> String {
@@ -72,62 +94,71 @@ pub fn discord_update_presence(payload: PresencePayload) -> Result<(), String> {
     ensure_connected(&mut guard, &payload.client_id)?;
     let (_, client) = guard.as_mut().expect("client connected above");
 
-    let title = if payload.title.trim().len() < 2 {
-        format!("{}  ", payload.title)
-    } else {
-        payload.title.clone()
-    };
-    let artist = if payload.artist.trim().len() < 2 {
-        format!("{}  ", payload.artist)
-    } else {
-        payload.artist.clone()
-    };
-
-    let mut activity = Activity::new()
-        .activity_type(ActivityType::Listening)
-        .details(&title)
-        .state(&artist);
-
-    let large_text = format!("{title} - {artist}");
-    let small_image =
-        "https://raw.githubusercontent.com/walkxcode/dashboard-icons/main/png/youtube-music.png";
-    let small_text = if payload.is_playing {
-        "Playing on Zenith"
+    let title = fit(&payload.title);
+    let artist = fit(&payload.artist);
+    let https = |u: Option<&str>| u.filter(|u| u.starts_with("https://")).map(str::to_string);
+    let track_url = https(payload.track_url.as_deref());
+    let has_artist = !payload.artist.trim().is_empty();
+    let artist_url = format!(
+        "https://music.youtube.com/search?q={}",
+        url_encode(payload.artist.trim())
+    );
+    let context = payload
+        .context
+        .as_deref()
+        .filter(|c| !c.trim().is_empty())
+        .unwrap_or("Zenith Player");
+    let large_text = fit(if payload.is_playing {
+        context
     } else {
         "Paused"
-    };
-    let mut assets = Assets::new()
-        .large_text(&large_text)
-        .small_image(small_image)
-        .small_text(small_text);
-    if let Some(cover) = payload.cover_url.as_deref() {
-        assets = assets.large_image(cover);
-    }
-    activity = activity.assets(assets);
+    });
 
-    if payload.is_playing && payload.duration > 0.0 && payload.duration.is_finite() {
-        let now = now_millis();
-        let start = now - (payload.position.max(0.0) * 1000.0) as i64;
+    // status_display_type 2: lista członków pokazuje "Słucha <tytuł>" zamiast nazwy aplikacji
+    let mut activity = json!({
+        "type": 2,
+        "status_display_type": 2,
+        "details": title,
+        "state": artist,
+        "assets": { "large_text": large_text },
+    });
+    if let Some(cover) = https(payload.cover_url.as_deref()) {
+        activity["assets"]["large_image"] = json!(cover);
+    }
+    if payload.is_playing {
+        activity["assets"]["small_image"] = json!(YTM_ICON);
+        activity["assets"]["small_text"] = json!("Zenith Player");
+    }
+    if let Some(u) = &track_url {
+        activity["details_url"] = json!(u);
+        activity["assets"]["large_url"] = json!(u);
+    }
+    if has_artist {
+        activity["state_url"] = json!(artist_url);
+    }
+    if payload.is_playing && payload.duration.is_finite() && payload.duration > 0.0 {
+        let start = now_millis() - (payload.position.max(0.0) * 1000.0) as i64;
         let end = start + (payload.duration * 1000.0) as i64;
-        activity = activity.timestamps(Timestamps::new().start(start).end(end));
+        activity["timestamps"] = json!({ "start": start, "end": end });
     }
-
-    let mut buttons: Vec<Button> = Vec::new();
-    if let Some(url) = payload.track_url.as_deref() {
-        if url.starts_with("https://") {
-            buttons.push(Button::new("▶ Listen on YouTube Music", url));
-        }
+    let mut buttons = Vec::new();
+    if let Some(u) = &track_url {
+        buttons.push(json!({ "label": "Listen on YouTube Music", "url": u }));
     }
-    let artist_query: String = url_encode(&payload.artist);
-    let artist_url = format!("https://music.youtube.com/search?q={artist_query}");
-    if buttons.len() < 2 && !payload.artist.trim().is_empty() {
-        buttons.push(Button::new("More from this artist", &artist_url));
+    if has_artist {
+        buttons.push(json!({ "label": "More from this artist", "url": artist_url }));
     }
     if !buttons.is_empty() {
-        activity = activity.buttons(buttons);
+        activity["buttons"] = json!(buttons);
     }
 
-    if let Err(e) = client.set_activity(activity) {
+    // surowe SET_ACTIVITY, bo builder w crate nie zna pól *_url ani status_display_type
+    let data = json!({
+        "cmd": "SET_ACTIVITY",
+        "args": { "pid": std::process::id(), "activity": activity },
+        "nonce": now_millis().to_string(),
+    });
+    if let Err(e) = client.send(data, 1) {
         if let Some((_, mut dead)) = guard.take() {
             let _ = dead.close();
         }
@@ -161,4 +192,17 @@ pub fn discord_disconnect() -> Result<(), String> {
         let _ = client.close();
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::fit;
+
+    #[test]
+    fn fit_keeps_discord_text_limits() {
+        assert_eq!(fit("A").chars().count(), 2);
+        assert_eq!(fit("  Song  "), "Song");
+        assert_eq!(fit(&"x".repeat(300)).len(), 128);
+        assert!(fit(&"🎵".repeat(100)).encode_utf16().count() <= 128);
+    }
 }

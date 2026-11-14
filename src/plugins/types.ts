@@ -6,6 +6,7 @@ export interface NowPlayingInfo {
   position: number;
   isPlaying: boolean;
   coverUrl?: string;
+  context?: string;
 }
 
 export type PluginCategory =
