@@ -30,17 +30,10 @@ pub fn host_allowed(host: &str) -> bool {
         "youtube-nocookie.com",
         "ytimg.com",
         "gstatic.com",
-        "googleusercontent.com",
-        "googleapis.com",
-        "googlesyndication.com",
-        "googletagmanager.com",
-        "google-analytics.com",
-        "doubleclick.net",
         "recaptcha.net",
         "gvt1.com",
         "gvt2.com",
         "ggpht.com",
-        "withgoogle.com",
     ];
     ROOTS
         .iter()
@@ -48,11 +41,36 @@ pub fn host_allowed(host: &str) -> bool {
         || is_google_country_host(&h)
 }
 
+// hosty Google z cudzą treścią lub reklamami: okno bez paska adresu pokazałoby tam fałszywą stronę logowania;
+// blokada zamiast przeglądarki, bo na macOS i Linuksie tędy idą też ramki reklam
+fn hosts_user_content(host: &str) -> bool {
+    let h = host.trim().trim_end_matches('.').to_ascii_lowercase();
+    const HOSTS: &[&str] = &[
+        "googleusercontent.com",
+        "googleapis.com",
+        "googlesyndication.com",
+        "googletagmanager.com",
+        "google-analytics.com",
+        "doubleclick.net",
+        "withgoogle.com",
+        "sites.google.com",
+        "docs.google.com",
+        "drive.google.com",
+        "script.google.com",
+    ];
+    HOSTS
+        .iter()
+        .any(|r| h == *r || h.ends_with(&format!(".{r}")))
+}
+
 pub fn decide(url: &url::Url) -> NavDecision {
     match url.scheme() {
         "about" | "data" | "blob" | "javascript" => NavDecision::Allow,
         "http" | "https" => match url.host_str() {
-            Some(h) if host_allowed(h) => NavDecision::Allow,
+            Some(h) if hosts_user_content(h) => NavDecision::Block,
+            // strona po zwykłym http mogła zostać podmieniona w sieci, a wyglądałaby jak logowanie Google
+            Some(h) if host_allowed(h) && url.scheme() == "https" => NavDecision::Allow,
+            Some(h) if host_allowed(h) => NavDecision::Block,
             Some(_) => NavDecision::OpenExternal,
             None => NavDecision::Block,
         },
@@ -152,6 +170,32 @@ mod tests {
         );
         assert_eq!(decide(&u("file:///etc/passwd")), NavDecision::Block);
         assert_eq!(decide(&u("tauri://localhost/")), NavDecision::Block);
+        assert_eq!(
+            decide(&u("https://storage.googleapis.com/bucket/x.html")),
+            NavDecision::Block
+        );
+        assert_eq!(
+            decide(&u("https://bucket.storage.googleapis.com/x.html")),
+            NavDecision::Block
+        );
+        assert_eq!(
+            decide(&u("https://sites.google.com/view/x")),
+            NavDecision::Block
+        );
+        for s in [
+            "https://n-abc123-0lu-script.googleusercontent.com/userCodeAppPanel",
+            "https://1.2.3.4.bc.googleusercontent.com/",
+            "https://firebasestorage.googleapis.com/v0/b/x/o/a.html",
+            "https://tpc.googlesyndication.com/sadbundle/x.html",
+            "https://script.google.com/macros/s/x/exec",
+            "http://accounts.google.com/signin",
+        ] {
+            assert_eq!(decide(&u(s)), NavDecision::Block, "{s}");
+        }
+        assert_eq!(
+            decide(&u("https://accounts.google.com/signin")),
+            NavDecision::Allow
+        );
     }
 
     #[test]
