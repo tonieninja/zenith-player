@@ -190,7 +190,7 @@ function render(){
  if(!volDrag){const v=Math.round((st.volume??0.5)*100);setRange($('vol'),v,100);$('volv').textContent=v}
  const q=st.queue||[],off=st.queueOffset||0,key=q.map(x=>x.id).join()+'|'+st.queueIndex+'|'+off;
  if(key!==lastQueueKey){lastQueueKey=key;
-  $('queue').innerHTML=q.length?q.map((x,i)=>`<button class="it${off+i===st.queueIndex?' cur':''}" data-i="${off+i}">${img(x.cover)}<div class="m"><div class="t">${esc(x.title)}</div><div class="s">${esc(x.artist)}</div></div></button>`).join(''):'<div class="empty">Queue is empty</div>';
+  $('queue').innerHTML=q.length?q.map((x,i)=>`<button class="it${off+i===st.queueIndex?' cur':''}" data-i="${off+i}" data-id="${esc(x.id||'')}">${img(x.cover)}<div class="m"><div class="t">${esc(x.title)}</div><div class="s">${esc(x.artist)}</div></div></button>`).join(''):'<div class="empty">Queue is empty</div>';
   const cur=$('queue').querySelector('.cur');if(cur&&!$('tab-queue').hidden)scrollWithin($('queue'),cur,false)}
  const sl=st.sleepLeft||0;$('sleepbtn').classList.toggle('on',sl>0);$('sleeptxt').textContent=sl>0?'Stops in '+Math.ceil(sl/60)+' min':'Sleep timer';
  clearTimeout(raf);tick();lyrTick();
@@ -225,7 +225,7 @@ function showResults(items){
  $('results').innerHTML=items.length?items.map((x,i)=>`<div class="it" data-r="${i}">${img(x.cover)}<div class="m"><div class="t">${esc(x.title)}</div><div class="s">${esc(x.artist)}</div></div><div class="acts"><button data-a="playTrack" aria-label="Play"><svg viewBox="0 0 24 24"><path d="${ICON_PLAY}"/></svg></button><button data-a="playNextTrack" aria-label="Play next"><svg viewBox="0 0 24 24"><path d="M3 10h11v2H3zm0-4h11v2H3zm0 8h7v2H3zm13-1v8l6-4z"/></svg></button><button data-a="addTrack" aria-label="Add to queue"><svg viewBox="0 0 24 24"><path d="M14 10H3v2h11v-2zm0-4H3v2h11V6zm4 8v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zM3 16h7v-2H3v2z"/></svg></button></div></div>`).join(''):'<div class="empty">No results</div>';
  $('results')._items=items;
 }
-$('toggle').onclick=()=>{st.isPlaying=!st.isPlaying;st.position=pos();st.at=Date.now();render();send({cmd:'toggle'})};
+$('toggle').onclick=()=>{const cmd=st.isPlaying?'pause':'play';st.isPlaying=!st.isPlaying;st.position=pos();st.at=Date.now();render();send({cmd})};
 function holdBtn(el,dir,tap){let t=0,iv=0,scrubbed=false;
  const stop=()=>{clearTimeout(t);clearInterval(iv);el.classList.remove('scrub');t=0;iv=0};
  el.addEventListener('pointerdown',e=>{e.preventDefault();scrubbed=false;try{el.setPointerCapture(e.pointerId)}catch(e){console.debug(e)}
@@ -240,7 +240,7 @@ const sk=$('seek');sk.oninput=()=>{seeking=true;setRange(sk,+sk.value,1000);$('c
 sk.onchange=()=>{const t=sk.value/1000*(st.duration||0);st.position=t;st.at=Date.now();seeking=false;send({cmd:'seek',value:t})};
 const vl=$('vol');let vt=0;vl.oninput=()=>{volDrag=true;setRange(vl,+vl.value,100);$('volv').textContent=vl.value;const now=Date.now();if(now-vt>80){vt=now;send({cmd:'volume',value:vl.value/100})}};
 vl.onchange=()=>{volDrag=false;send({cmd:'volume',value:vl.value/100})};
-$('queue').onclick=e=>{const b=e.target.closest('[data-i]');if(b)send({cmd:'jump',index:+b.dataset.i})};
+$('queue').onclick=e=>{const b=e.target.closest('[data-i]');if(b)send({cmd:'jump',index:+b.dataset.i,id:b.dataset.id})};
 $('results').onclick=e=>{const b=e.target.closest('[data-a]'),row=e.target.closest('[data-r]');if(!row)return;const it=$('results')._items[+row.dataset.r];const a=b?b.dataset.a:'playTrack';send({cmd:a,track:it});toast(a==='playTrack'?'Playing':a==='addTrack'?'Added to queue':'Plays next')};
 let qt=0;$('q').oninput=()=>{clearTimeout(qt);const v=$('q').value.trim();if(!v){showResults([]);return}qt=setTimeout(()=>{req++;send({cmd:'search',query:v,req})},350)};
 document.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>{document.querySelectorAll('.tabs button').forEach(x=>x.classList.toggle('act',x===b));$('tab-queue').hidden=b.dataset.tab!=='queue';$('tab-search').hidden=b.dataset.tab!=='search';$('tab-lyrics').hidden=b.dataset.tab!=='lyrics';if(b.dataset.tab==='lyrics'){lyrIdx=-2;lyrTick()}if(b.dataset.tab==='search')$('q').focus()});

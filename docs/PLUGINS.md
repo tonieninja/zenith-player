@@ -1,6 +1,6 @@
 # Plugins
 
-Zenith ships 36 plugins. Toggle them in the Plugins panel, the enabled set is stored in
+Zenith ships 37 plugins. Toggle them in the Plugins panel, the enabled set is stored in
 `localStorage` key `zenith_plugins_enabled`.
 
 A fresh install turns on the ones marked below (preload, queue and volume memory, smart lyrics
@@ -9,17 +9,18 @@ whatever you had.
 
 ### Playback
 
-| Name                 | Id                  | On by default | What it does                                                                                                                                       |
-| -------------------- | ------------------- | ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Preload next         | `preload-next`      | yes           | Prefetches stream URLs for the next 1-3 tracks in the queue.                                                                                       |
-| Remember queue       | `queue-persist`     | yes           | Restores your queue, position and resumes playback when you reopen Zenith.                                                                         |
-| Remember volume      | `remember-volume`   | yes           | Restores your last volume level between sessions.                                                                                                  |
-| Crossfade            | `crossfade`         | no            | Equal-power blends between tracks near the end and on manual skips (2 to 12 s). Albums play gapless even when this is off (setting in the plugin). |
-| Offline downloads    | `offline-downloads` | no            | Saves tracks to disk (app data folder, `downloads/`) and plays them with no connection. List, play and delete them in the plugin settings.         |
-| Sleep timer          | `sleep-timer`       | no            | Automatically stops playback after a set number of minutes.                                                                                        |
-| Variable speed       | `playback-speed`    | no            | Play tracks faster or slower.                                                                                                                      |
-| A-B loop             | `ab-loop`           | no            | Mark two points in a track and loop between them.                                                                                                  |
-| Pause when unfocused | `auto-pause-blur`   | no            | Pauses playback when you switch to another app or minimize Zenith.                                                                                 |
+| Name                 | Id                  | On by default | What it does                                                                                                                                                                                                                         |
+| -------------------- | ------------------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Preload next         | `preload-next`      | yes           | Prefetches stream URLs for the next 1-3 tracks in the queue.                                                                                                                                                                         |
+| Remember queue       | `queue-persist`     | yes           | Restores your queue, position and resumes playback when you reopen Zenith.                                                                                                                                                           |
+| Remember volume      | `remember-volume`   | yes           | Restores your last volume level between sessions.                                                                                                                                                                                    |
+| Crossfade            | `crossfade`         | no            | Equal-power blends between tracks near the end and on manual skips (2 to 12 s). Albums play gapless even when this is off (setting in the plugin).                                                                                   |
+| Offline downloads    | `offline-downloads` | no            | Saves tracks to disk (app data folder, `downloads/`) and plays them with no connection. Right-click a cover or a track to download; long mixes resume after a dropped connection. List, play and delete them in the plugin settings. |
+| Sleep timer          | `sleep-timer`       | no            | Automatically stops playback after a set number of minutes.                                                                                                                                                                          |
+| Variable speed       | `playback-speed`    | no            | Play tracks faster or slower.                                                                                                                                                                                                        |
+| A-B loop             | `ab-loop`           | no            | Mark two points in a track and loop between them.                                                                                                                                                                                    |
+| SponsorBlock         | `sponsorblock`      | no            | Skips talking, skits and sponsor breaks in music videos as marked by SponsorBlock. Seek back into a part and it plays it.                                                                                                            |
+| Pause when unfocused | `auto-pause-blur`   | no            | Pauses playback when you switch to another app or minimize Zenith.                                                                                                                                                                   |
 
 ### Sound
 
@@ -64,14 +65,14 @@ whatever you had.
 
 ### Window and stats
 
-| Name                 | Id                  | On by default | What it does                                                                                  |
-| -------------------- | ------------------- | ------------- | --------------------------------------------------------------------------------------------- |
-| System tray          | `system-tray`       | yes           | Closing the window keeps Zenith playing in the tray, with play/pause, next and show controls. |
-| Dynamic window title | `window-title`      | no            | Updates the window title to show the current artist and track name.                           |
-| Ambient cover glow   | `ambient-glow`      | no            | Tints the player backdrop with colors sampled from the current album art.                     |
-| Mini player          | `mini-player`       | no            | Compact always-on-top player with cover, progress and transport controls.                     |
-| Listening stats      | `stats-tracker`     | no            | Tracks total listening time and per-track play counts in the background.                      |
-| Listening history    | `listening-history` | no            | Keeps a rolling log of the last 80 tracks you played (stored locally).                        |
+| Name                 | Id                  | On by default | What it does                                                                                                                                                                                    |
+| -------------------- | ------------------- | ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| System tray          | `system-tray`       | yes           | Closing the window keeps Zenith playing in the tray, with play/pause, next and show controls.                                                                                                   |
+| Dynamic window title | `window-title`      | no            | Updates the window title to show the current artist and track name.                                                                                                                             |
+| Ambient cover glow   | `ambient-glow`      | no            | Tints the player backdrop with colors sampled from the current album art.                                                                                                                       |
+| Mini player          | `mini-player`       | no            | Compact always-on-top player: cover, draggable timeline, like, previous, play/pause, next and optional synced lyrics with the karaoke fill. Every control can be hidden in the plugin settings. |
+| Listening stats      | `stats-tracker`     | no            | Tracks total listening time and per-track play counts in the background.                                                                                                                        |
+| Listening history    | `listening-history` | no            | Keeps a rolling log of the last 80 tracks you played (stored locally).                                                                                                                          |
 
 ## Phone remote
 
@@ -82,21 +83,21 @@ a loopback, private (RFC 1918), CGNAT or link-local address.
 | Route                                                         | What                                                                                                                              |
 | ------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
 | `GET /`                                                       | The remote page (`src-tauri/remote/index.html`, compiled into the binary)                                                         |
-| `GET /api/state?pin=`                                         | Last state snapshot as JSON (`401` wrong PIN, `429` locked for 60 s after 8 misses)                                               |
+| `GET /api/state?pin=`                                         | Last state snapshot as JSON (`401` wrong PIN, `429` per address after 8 misses, 60 s doubling up to 64 min)                       |
 | `GET /api/pair?t=`                                            | One-time link mode: trades the single-use QR token for a per-device key (`{key}`), then rotates the token                         |
 | `GET /manifest.webmanifest`, `/icon-256.png`, `/icon-512.png` | Home-screen app (PWA) manifest and icons                                                                                          |
 | `GET /ws?pin=`                                                | WebSocket. Server → phone: `{"type":"state",...}` on every change, `{"type":"search","req",items}`. Phone → server: `{"cmd":...}` |
 
 Commands (validated and clamped in Rust, then emitted to the main window as `zenith-remote-cmd`):
 `toggle`, `play`, `pause`, `next`, `prev`, `like`, `mute`, `shuffle`, `loop`, `volume {value 0-1}`,
-`seek {value s}`, `jump {index}`, `sleep {minutes 0-600}`, `search {query, req}`, `playTrack|playNextTrack|addTrack {track}`.
+`seek {value s}`, `jump {index, id}`, `sleep {minutes 0-600}`, `search {query, req}`, `playTrack|playNextTrack|addTrack {track}`.
 
 State is pushed by `App.tsx` only when something visible changes (track, play/pause, seek,
 volume, mute, like, shuffle, queue, duration); progress is a timestamped anchor the page
 interpolates, so a connected but idle phone costs nothing. Turning the plugin off stops the server
 and closes every socket. Settings (port, PIN, pair mode) live in `localStorage` (`zenith_remote_port`,
-`zenith_remote_pin`, `zenith_remote_pair`). Every request authenticates with `?key=` (paired device),
-`?pin=`, or nothing when there is no PIN and pair mode is off. Paired device keys are stored in
+`zenith_remote_pin`, `zenith_remote_pair`). Every request authenticates with `?key=` (paired device); with pair mode off also with
+`?pin=`, or with nothing when there is no PIN. Paired device keys are stored in
 `remote_devices.json` in the app data folder (max 32; _Forget all devices_ clears it). Synced
 lyrics are pushed once per track as `{"type":"lyrics",synced:[{t,x}],plain}`. The server announces
 `zenith.local` / `_http._tcp` "Zenith Remote" over mDNS (`ZENITH_REMOTE_MDNS=0` disables it).

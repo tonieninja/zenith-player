@@ -38,7 +38,7 @@ test('PIN gate, state and controls', async ({ page }) => {
         .slice(before)
         .map((c) => c.cmd)
     )
-    .toEqual(expect.arrayContaining(['toggle', 'next']));
+    .toEqual(expect.arrayContaining(['pause', 'next']));
 });
 
 test('hold next to scrub forward', async ({ page }) => {

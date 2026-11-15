@@ -38,7 +38,8 @@ lazy_static::lazy_static! {
     static ref LAST_STATE: Mutex<String> = Mutex::new(String::from("{}"));
     static ref TX: tokio::sync::broadcast::Sender<String> = tokio::sync::broadcast::channel(32).0;
     static ref APP: Mutex<Option<AppHandle>> = Mutex::new(None);
-    static ref FAILS: Mutex<(u32, Option<Instant>)> = Mutex::new((0, None));
+    // licznik na adres: jeden host z błędnym PIN-em nie blokuje pilota wszystkim pozostałym
+    static ref FAILS: Mutex<Fails> = Mutex::new(Fails::new());
         static ref CLIENTS: Mutex<u32> = Mutex::new(0);
     static ref LAST_LYRICS: Mutex<String> = Mutex::new(String::new());
     static ref DEVICE_KEYS: Mutex<std::collections::HashSet<String>> = Mutex::new(Default::default());
@@ -57,6 +58,29 @@ fn is_lan(ip: IpAddr) -> bool {
                 || (v6.segments()[0] & 0xfe00) == 0xfc00
         }
     }
+}
+
+// obca domena wskazująca na ten adres (DNS rebinding) i cudza strona w przeglądarce nie dostają odpowiedzi
+fn same_site(headers: &axum::http::HeaderMap) -> bool {
+    let host = headers
+        .get(axum::http::header::HOST)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    let bare = match host.strip_prefix('[') {
+        Some(rest) => rest.split(']').next().unwrap_or(""),
+        None => host.split(':').next().unwrap_or(""),
+    };
+    if bare != "localhost" && !bare.ends_with(".local") && bare.parse::<IpAddr>().is_err() {
+        return false;
+    }
+    headers
+        .get(axum::http::header::ORIGIN)
+        .and_then(|v| v.to_str().ok())
+        .is_none_or(|o| {
+            o.strip_prefix("http://")
+                .or_else(|| o.strip_prefix("https://"))
+                .is_some_and(|rest| rest == host)
+        })
 }
 
 fn lan_v4(v4: Ipv4Addr) -> bool {
@@ -99,10 +123,12 @@ fn save_keys() {
         .map(|k| k.iter().cloned().collect())
         .unwrap_or_default();
     if let Some(p) = path {
-        let _ = std::fs::write(
-            p,
-            serde_json::to_string(&keys).unwrap_or_else(|_| "[]".into()),
-        );
+        // ucięty plik przy awarii wylogowałby wszystkie sparowane telefony
+        let tmp = p.with_extension("tmp");
+        let body = serde_json::to_string(&keys).unwrap_or_else(|_| "[]".into());
+        if std::fs::write(&tmp, body).is_ok() {
+            let _ = std::fs::rename(&tmp, &p);
+        }
     }
 }
 
@@ -120,7 +146,9 @@ fn load_keys(path: std::path::PathBuf) {
     }
 }
 
-fn auth_ok(q: &PinQuery) -> Result<(), StatusCode> {
+type Fails = std::collections::HashMap<IpAddr, (u32, Option<Instant>)>;
+
+fn auth_ok(q: &PinQuery, ip: IpAddr) -> Result<(), StatusCode> {
     if let Some(k) = q.key.as_deref() {
         if !k.is_empty() && DEVICE_KEYS.lock().map(|s| s.contains(k)).unwrap_or(false) {
             return Ok(());
@@ -131,36 +159,43 @@ fn auth_ok(q: &PinQuery) -> Result<(), StatusCode> {
         .ok()
         .and_then(|g| g.as_ref().map(|s| (s.pin.clone(), s.pair)))
         .unwrap_or_default();
-    if pin.is_empty() && !pair {
-        return Ok(());
-    }
-    if pin.is_empty() {
+    // w trybie QR wpuszcza tylko klucz z parowania, jak obiecuje opis przełącznika; PIN dałby drugą furtkę
+    if pair {
         return Err(StatusCode::UNAUTHORIZED);
     }
-    pin_ok(q.pin.as_deref())
+    if pin.is_empty() {
+        return Ok(());
+    }
+    pin_ok(q.pin.as_deref(), ip)
 }
 
-fn note_fail(f: &mut (u32, Option<Instant>)) {
-    f.0 += 1;
-    if f.0 >= 8 {
-        f.1 = Some(Instant::now() + Duration::from_secs(60));
+fn note_fail(f: &mut Fails, ip: IpAddr) {
+    if f.len() > 256 {
+        f.retain(|_, e| e.1.is_some());
+    }
+    let e = f.entry(ip).or_default();
+    e.0 += 1;
+    if e.0.is_multiple_of(8) {
+        // każda kolejna seria 8 błędów podwaja blokadę (do ~1 h), więc 4-cyfrowy PIN nie pada w jedną noc
+        let secs = 60 << (e.0 / 8 - 1).min(6);
+        e.1 = Some(Instant::now() + Duration::from_secs(secs));
     }
 }
 
-fn locked() -> Result<std::sync::MutexGuard<'static, (u32, Option<Instant>)>, StatusCode> {
-    let mut f = FAILS
+fn locked(ip: IpAddr) -> Result<std::sync::MutexGuard<'static, Fails>, StatusCode> {
+    let f = FAILS
         .lock()
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    if let Some(until) = f.1 {
-        if Instant::now() < until {
-            return Err(StatusCode::TOO_MANY_REQUESTS);
-        }
-        *f = (0, None);
+    if f.get(&ip)
+        .and_then(|e| e.1)
+        .is_some_and(|until| Instant::now() < until)
+    {
+        return Err(StatusCode::TOO_MANY_REQUESTS);
     }
     Ok(f)
 }
 
-fn pin_ok(given: Option<&str>) -> Result<(), StatusCode> {
+fn pin_ok(given: Option<&str>, ip: IpAddr) -> Result<(), StatusCode> {
     let want = SERVER
         .lock()
         .ok()
@@ -169,15 +204,7 @@ fn pin_ok(given: Option<&str>) -> Result<(), StatusCode> {
     if want.is_empty() {
         return Ok(());
     }
-    let mut f = FAILS
-        .lock()
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    if let Some(until) = f.1 {
-        if Instant::now() < until {
-            return Err(StatusCode::TOO_MANY_REQUESTS);
-        }
-        *f = (0, None);
-    }
+    let mut f = locked(ip)?;
     let g = given.unwrap_or("").as_bytes();
     let w = want.as_bytes();
     let mut diff = (g.len() ^ w.len()) as u8;
@@ -185,13 +212,10 @@ fn pin_ok(given: Option<&str>) -> Result<(), StatusCode> {
         diff |= b ^ g.get(i).copied().unwrap_or(0);
     }
     if diff == 0 {
-        f.0 = 0;
+        f.remove(&ip);
         Ok(())
     } else {
-        f.0 += 1;
-        if f.0 >= 8 {
-            f.1 = Some(Instant::now() + Duration::from_secs(60));
-        }
+        note_fail(&mut f, ip);
         Err(StatusCode::UNAUTHORIZED)
     }
 }
@@ -207,8 +231,12 @@ struct PairQuery {
     t: Option<String>,
 }
 
-async fn api_pair(Query(q): Query<PairQuery>) -> Response {
-    let mut f = match locked() {
+async fn api_pair(
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    Query(q): Query<PairQuery>,
+) -> Response {
+    let ip = addr.ip();
+    let mut f = match locked(ip) {
         Ok(f) => f,
         Err(c) => return c.into_response(),
     };
@@ -229,10 +257,10 @@ async fn api_pair(Query(q): Query<PairQuery>) -> Response {
         }
     };
     if !ok {
-        note_fail(&mut f);
+        note_fail(&mut f, ip);
         return StatusCode::UNAUTHORIZED.into_response();
     }
-    f.0 = 0;
+    f.remove(&ip);
     drop(f);
     let Some(key) = random_hex(24) else {
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
@@ -299,7 +327,12 @@ fn sanitize(v: &Value) -> Option<Value> {
         "volume" => json!({ "cmd": cmd, "value": num("value")?.clamp(0.0, 1.0) }),
         "seek" => json!({ "cmd": cmd, "value": num("value")?.max(0.0) }),
         "sleep" => json!({ "cmd": cmd, "minutes": num("minutes")?.clamp(0.0, 600.0).floor() }),
-        "jump" => json!({ "cmd": cmd, "index": num("index")?.max(0.0).floor() }),
+        // id chroni przed skokiem w zły utwór, gdy kolejka zmieniła się, zanim telefon dostał stan
+        "jump" => json!({
+            "cmd": cmd,
+            "index": num("index")?.max(0.0).floor(),
+            "id": s("id", 64).filter(|id| id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')),
+        }),
         "search" => {
             json!({ "cmd": cmd, "query": s("query", 200)?, "req": num("req").unwrap_or(0.0) })
         }
@@ -379,8 +412,11 @@ async fn icon() -> Response {
         .into_response()
 }
 
-async fn api_state(Query(q): Query<PinQuery>) -> Response {
-    if let Err(code) = auth_ok(&q) {
+async fn api_state(
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    Query(q): Query<PinQuery>,
+) -> Response {
+    if let Err(code) = auth_ok(&q, addr.ip()) {
         return code.into_response();
     }
     let s = LAST_STATE.lock().map(|g| g.clone()).unwrap_or_default();
@@ -394,8 +430,12 @@ async fn api_state(Query(q): Query<PinQuery>) -> Response {
         .into_response()
 }
 
-async fn ws_upgrade(ws: WebSocketUpgrade, Query(q): Query<PinQuery>) -> Response {
-    if let Err(code) = auth_ok(&q) {
+async fn ws_upgrade(
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    ws: WebSocketUpgrade,
+    Query(q): Query<PinQuery>,
+) -> Response {
+    if let Err(code) = auth_ok(&q, addr.ip()) {
         return code.into_response();
     }
     ws.max_message_size(16 * 1024)
@@ -515,11 +555,13 @@ fn info() -> RemoteInfo {
 #[tauri::command]
 pub async fn remote_start(
     app: AppHandle,
+    webview: tauri::Webview,
     port: u16,
     pin: String,
     pair: Option<bool>,
 ) -> Result<RemoteInfo, String> {
     use tauri::Manager;
+    crate::auth_store::main_window_only(&webview)?;
     if let Ok(dir) = app.path().app_data_dir() {
         let _ = std::fs::create_dir_all(&dir);
         load_keys(dir.join("remote_devices.json"));
@@ -593,7 +635,7 @@ async fn start_server(port: u16, pin: String, pair: bool) -> Result<RemoteInfo, 
             |ConnectInfo(addr): ConnectInfo<SocketAddr>,
              req: axum::extract::Request,
              next: axum::middleware::Next| async move {
-                if !is_lan(addr.ip()) {
+                if !is_lan(addr.ip()) || !same_site(req.headers()) {
                     return StatusCode::FORBIDDEN.into_response();
                 }
                 next.run(req).await
@@ -623,7 +665,7 @@ async fn start_server(port: u16, pin: String, pair: bool) -> Result<RemoteInfo, 
         shutdown: Some(tx),
         mdns,
     });
-    *FAILS.lock().map_err(|e| e.to_string())? = (0, None);
+    FAILS.lock().map_err(|e| e.to_string())?.clear();
     Ok(info())
 }
 
@@ -722,12 +764,6 @@ pub async fn remote_firewall_status() -> FirewallStatus {
     #[cfg(windows)]
     {
         tokio::task::spawn_blocking(|| {
-            let rule_ok = hidden_cmd("netsh")
-                .args(["advfirewall", "firewall", "show", "rule"])
-                .arg(format!("name={FIREWALL_RULE}"))
-                .output()
-                .map(|o| o.status.success())
-                .unwrap_or(false);
             let public_network = hidden_cmd("powershell")
                 .args([
                     "-NoProfile",
@@ -740,6 +776,22 @@ pub async fn remote_firewall_status() -> FirewallStatus {
                 .and_then(|o| String::from_utf8_lossy(&o.stdout).trim().parse::<u32>().ok())
                 .map(|n| n > 0)
                 .unwrap_or(false);
+            // reguła tylko dla sieci prywatnych nie wpuści telefonu w publicznej; netsh filtruje po dokładnym
+            // zestawie profili, więc pytamy o każdy zestaw zawierający bieżącą sieć
+            let sets: &[&str] = if public_network {
+                &["public", "private,public", "domain,public", "any"]
+            } else {
+                &["private", "private,public", "domain,private", "any"]
+            };
+            let rule_ok = sets.iter().any(|p| {
+                hidden_cmd("netsh")
+                    .args(["advfirewall", "firewall", "show", "rule"])
+                    .arg(format!("name={FIREWALL_RULE}"))
+                    .arg(format!("profile={p}"))
+                    .output()
+                    .map(|o| o.status.success())
+                    .unwrap_or(false)
+            });
             FirewallStatus { windows: true, rule_ok, public_network }
         })
         .await
@@ -752,13 +804,23 @@ pub async fn remote_firewall_status() -> FirewallStatus {
 }
 
 #[tauri::command]
-pub async fn remote_firewall_allow() -> Result<bool, String> {
+pub async fn remote_firewall_allow(
+    webview: tauri::Webview,
+    public_network: Option<bool>,
+) -> Result<bool, String> {
+    crate::auth_store::main_window_only(&webview)?;
     #[cfg(windows)]
     {
         let exe = std::env::current_exe().map_err(|e| e.to_string())?;
         let exe = exe.to_string_lossy().replace('\'', "''");
+        // sieć publiczna (hotel, kawiarnia) tylko po kliknięciu pod ostrzeżeniem, które to opisuje
+        let profile = if public_network.unwrap_or(false) {
+            "private,public"
+        } else {
+            "private"
+        };
         let args = format!(
-            "advfirewall firewall add rule name=\"{FIREWALL_RULE}\" dir=in action=allow program=\"{exe}\" profile=private,public remoteip=localsubnet protocol=TCP enable=yes"
+            "advfirewall firewall add rule name=\"{FIREWALL_RULE}\" dir=in action=allow program=\"{exe}\" profile={profile} remoteip=localsubnet protocol=TCP enable=yes"
         );
         let script = format!(
             "try {{ Start-Process netsh -Verb RunAs -Wait -WindowStyle Hidden -ArgumentList '{args}'; exit 0 }} catch {{ exit 1 }}"
@@ -779,6 +841,7 @@ pub async fn remote_firewall_allow() -> Result<bool, String> {
     }
     #[cfg(not(windows))]
     {
+        let _ = public_network;
         Ok(true)
     }
 }
@@ -813,10 +876,12 @@ mod tests {
         remote_push("{\"type\":\"state\",\"isPlaying\":true}".into());
         let r = tokio::task::spawn_blocking(move || {
             (
-                http(port, "GET / HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n"),
-                http(port, "GET /api/state HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n"),
-                http(port, "GET /api/state?pin=1234 HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n"),
-                http(port, "GET /ws?pin=1234 HTTP/1.1\r\nHost: x\r\nConnection: Upgrade\r\nUpgrade: websocket\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n"),
+                http(port, "GET / HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n"),
+                http(port, "GET /api/state HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n"),
+                http(port, "GET /api/state?pin=1234 HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n"),
+                http(port, "GET /api/state?pin=1234 HTTP/1.1\r\nHost: evil.example\r\nConnection: close\r\n\r\n"),
+                http(port, "GET /api/state?pin=1234 HTTP/1.1\r\nHost: 127.0.0.1\r\nOrigin: https://evil.example\r\nConnection: close\r\n\r\n"),
+                http(port, "GET /ws?pin=1234 HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: Upgrade\r\nUpgrade: websocket\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n"),
             )
         })
         .await
@@ -832,7 +897,9 @@ mod tests {
             "{}",
             r.2
         );
-        assert!(r.3.starts_with("HTTP/1.1 101"), "{}", r.3);
+        assert!(r.5.starts_with("HTTP/1.1 101"), "{}", r.5);
+        assert!(r.3.starts_with("HTTP/1.1 403"), "{}", r.3);
+        assert!(r.4.starts_with("HTTP/1.1 403"), "{}", r.4);
         let i = info();
         let svg = i.qr_svg.unwrap();
         assert!(i.running && svg.contains("<svg"));
@@ -852,15 +919,15 @@ mod tests {
         let r = tokio::task::spawn_blocking(move || {
             let a = http(
                 port,
-                "GET /api/state HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n",
+                "GET /api/state HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n",
             );
             let b = http(
                 port,
-                &format!("GET /api/pair?t={tok} HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n"),
+                &format!("GET /api/pair?t={tok} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n"),
             );
             let c = http(
                 port,
-                &format!("GET /api/pair?t={tok} HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n"),
+                &format!("GET /api/pair?t={tok} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n"),
             );
             let key = b
                 .split("\"key\":\"")
@@ -870,12 +937,12 @@ mod tests {
             let d = http(
                 port,
                 &format!(
-                    "GET /api/state?key={key} HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n"
+                    "GET /api/state?key={key} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n"
                 ),
             );
             let m = http(
                 port,
-                "GET /manifest.webmanifest HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n",
+                "GET /manifest.webmanifest HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n",
             );
             (a, b, c, d, m)
         })
@@ -894,7 +961,47 @@ mod tests {
         );
         assert!(r.3.starts_with("HTTP/1.1 200"), "{}", r.3);
         assert!(r.4.contains("Zenith Remote"), "{}", r.4);
+        start_server(port, "1234".into(), true).await.unwrap();
+        let r = tokio::task::spawn_blocking(move || {
+            http(
+                port,
+                "GET /api/state?pin=1234 HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n",
+            )
+        })
+        .await
+        .unwrap();
+        assert!(
+            r.starts_with("HTTP/1.1 401"),
+            "pin must not bypass pairing: {r}"
+        );
         remote_stop();
+    }
+
+    #[test]
+    fn lockout_doubles() {
+        let mut f = Fails::new();
+        let ip: IpAddr = "192.168.1.9".parse().unwrap();
+        let left = |f: &Fails| {
+            f[&ip]
+                .1
+                .unwrap()
+                .saturating_duration_since(Instant::now())
+                .as_secs()
+        };
+        for _ in 0..7 {
+            note_fail(&mut f, ip);
+        }
+        assert!(f[&ip].1.is_none());
+        note_fail(&mut f, ip);
+        assert!((55..=60).contains(&left(&f)));
+        for _ in 0..8 {
+            note_fail(&mut f, ip);
+        }
+        assert!((115..=120).contains(&left(&f)));
+        for _ in 0..800 {
+            note_fail(&mut f, ip);
+        }
+        assert!(left(&f) <= 3840);
     }
 
     #[test]
@@ -905,6 +1012,10 @@ mod tests {
         );
         assert!(sanitize(&json!({"cmd":"rm -rf"})).is_none());
         assert!(sanitize(&json!({"cmd":"playTrack","track":{"id":"../x"}})).is_none());
+        let j = sanitize(&json!({"cmd":"jump","index":3,"id":"a/b"})).unwrap();
+        assert!(j["id"].is_null() && j["index"] == 3.0);
+        let j = sanitize(&json!({"cmd":"jump","index":3,"id":"dQw4w9WgXcQ"})).unwrap();
+        assert_eq!(j["id"], "dQw4w9WgXcQ");
         assert!(sanitize(&json!({"cmd":"playTrack","track":{"id":"dQw4w9WgXcQ"}})).is_some());
     }
 

@@ -28,7 +28,7 @@ export interface RemoteTrack {
 export type RemoteCommand =
   | { cmd: 'toggle' | 'play' | 'pause' | 'next' | 'prev' | 'like' | 'mute' | 'shuffle' | 'loop' }
   | { cmd: 'volume' | 'seek'; value: number }
-  | { cmd: 'jump'; index: number }
+  | { cmd: 'jump'; index: number; id?: string | null }
   | { cmd: 'sleep'; minutes: number }
   | { cmd: 'search'; query: string; req: number }
   | { cmd: 'playTrack' | 'addTrack' | 'playNextTrack'; track: RemoteTrack };
@@ -209,9 +209,10 @@ export async function getFirewallStatus(): Promise<FirewallStatus | null> {
   }
 }
 
-export async function allowThroughFirewall(): Promise<boolean> {
+// publicNetwork = true otwiera pilota także w sieci publicznej, więc tylko po kliknięciu pod tym ostrzeżeniem
+export async function allowThroughFirewall(publicNetwork: boolean): Promise<boolean> {
   try {
-    return await invoke<boolean>('remote_firewall_allow');
+    return await invoke<boolean>('remote_firewall_allow', { publicNetwork });
   } catch {
     return false;
   }

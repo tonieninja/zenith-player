@@ -481,7 +481,8 @@ Function ZenithFinishLeave
   ${If} $ZenithFwMissing = 1
     ${NSD_GetState} $ZenithFwCheckbox $0
     ${If} $0 = ${BST_CHECKED}
-      ExecShellWait "runas" "$SYSDIR\netsh.exe" 'advfirewall firewall add rule name="${ZENITH_FW_RULE}" dir=in action=allow program="$INSTDIR\${MAINBINARYNAME}.exe" profile=private,public remoteip=localsubnet protocol=TCP enable=yes' SW_HIDE
+      ; Tylko sieci prywatne; na publiczną (hotel, kawiarnia) użytkownik zgadza się osobno w ustawieniach pilota
+      ExecShellWait "runas" "$SYSDIR\netsh.exe" 'advfirewall firewall add rule name="${ZENITH_FW_RULE}" dir=in action=allow program="$INSTDIR\${MAINBINARYNAME}.exe" profile=private remoteip=localsubnet protocol=TCP enable=yes' SW_HIDE
     ${EndIf}
   ${EndIf}
 FunctionEnd
