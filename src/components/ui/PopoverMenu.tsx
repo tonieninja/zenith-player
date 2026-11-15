@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import type { ReactNode } from 'react';
+import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from 'react';
 import { createPortal } from 'react-dom';
+
+function enabledItems(list: HTMLElement | null): HTMLElement[] {
+  return Array.from(
+    list?.querySelectorAll<HTMLElement>('[role="menuitem"]:not([aria-disabled="true"])') ?? []
+  );
+}
 
 export type PopoverItem = {
   key: string;
@@ -56,6 +62,7 @@ export function PopoverMenu({
   const [coords, setCoords] = useState<PopoverCoords | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const listRef = useRef<HTMLUListElement | null>(null);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
 
   const place = useCallback(() => {
     const r = rootRef.current?.getBoundingClientRect();
@@ -71,6 +78,11 @@ export function PopoverMenu({
     place();
   }, [open, place]);
 
+  const close = useCallback(() => {
+    setOpen(false);
+    triggerRef.current?.focus();
+  }, []);
+
   useEffect(() => {
     if (!open) return;
     const onDown = (e: MouseEvent) => {
@@ -78,23 +90,52 @@ export function PopoverMenu({
       if (rootRef.current?.contains(t) || listRef.current?.contains(t)) return;
       setOpen(false);
     };
+    // faza przechwytywania: okno pod spodem (np. menedżer playlist) ma zobaczyć defaultPrevented
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.preventDefault();
-        setOpen(false);
+        close();
       }
     };
     window.addEventListener('mousedown', onDown, true);
-    window.addEventListener('keydown', onKey);
+    window.addEventListener('keydown', onKey, true);
     window.addEventListener('resize', place);
     window.addEventListener('scroll', place, true);
     return () => {
       window.removeEventListener('mousedown', onDown, true);
-      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('keydown', onKey, true);
       window.removeEventListener('resize', place);
       window.removeEventListener('scroll', place, true);
     };
-  }, [open, place]);
+  }, [open, place, close]);
+
+  const shown = open && coords !== null;
+  useEffect(() => {
+    if (shown) enabledItems(listRef.current)[0]?.focus();
+  }, [shown]);
+
+  const onListKey = (e: ReactKeyboardEvent<HTMLUListElement>) => {
+    const els = enabledItems(listRef.current);
+    const i = els.indexOf(document.activeElement as HTMLElement);
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Home' || e.key === 'End') {
+      e.preventDefault();
+      if (!els.length) return;
+      const d = e.key === 'ArrowDown' ? 1 : -1;
+      const next =
+        e.key === 'Home'
+          ? 0
+          : e.key === 'End' || (i < 0 && d < 0)
+            ? els.length - 1
+            : (i + d + els.length) % els.length;
+      els[next].focus();
+    } else if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      els[i]?.click();
+    } else if (e.key === 'Tab') {
+      // bez preventDefault: Tab przechodzi dalej od przycisku menu, jak przy zwykłym przycisku
+      close();
+    }
+  };
 
   const list =
     open && coords ? (
@@ -104,6 +145,7 @@ export function PopoverMenu({
         role="menu"
         aria-label={ariaLabel}
         data-zen-popover-menu="true"
+        onKeyDown={onListKey}
         style={{
           position: 'fixed',
           top: coords.dropUp ? undefined : coords.top,
@@ -131,7 +173,7 @@ export function PopoverMenu({
             onClick={(e) => {
               e.stopPropagation();
               if (item.disabled) return;
-              setOpen(false);
+              close();
               item.onSelect();
             }}
           >
@@ -149,6 +191,7 @@ export function PopoverMenu({
       } ${className}`}
     >
       <button
+        ref={triggerRef}
         type="button"
         className={`zen-popover-trigger ${triggerClassName}`}
         aria-haspopup="menu"

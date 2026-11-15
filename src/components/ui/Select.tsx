@@ -63,6 +63,11 @@ export function Select<T extends string | number>({
     return () => window.removeEventListener('mousedown', onDown, true);
   }, [open, options, value]);
 
+  useEffect(() => {
+    if (open)
+      document.getElementById(`${listId}-${active}`)?.scrollIntoView?.({ block: 'nearest' });
+  }, [open, active, listId]);
+
   const pick = useCallback(
     (idx: number) => {
       const opt = options[idx];
@@ -110,6 +115,7 @@ export function Select<T extends string | number>({
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-controls={listId}
+        aria-activedescendant={open ? `${listId}-${active}` : undefined}
         aria-label={ariaLabel}
         onClick={() => setOpen((o) => !o)}
       >
@@ -127,6 +133,7 @@ export function Select<T extends string | number>({
           {options.map((opt, idx) => (
             <li
               key={String(opt.value)}
+              id={`${listId}-${idx}`}
               role="option"
               aria-selected={opt.value === value}
               className={`zen-select-option${idx === active ? ' active' : ''}${
