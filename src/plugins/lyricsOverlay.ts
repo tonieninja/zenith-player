@@ -100,6 +100,29 @@ export function setSecondScreenHideMeta(hide: boolean) {
   notifySettingsChanged();
 }
 
+export type OverlaySettings = Pick<
+  OverlayPayload,
+  | 'fontSize'
+  | 'align'
+  | 'opacity'
+  | 'highContrast'
+  | 'secondScreen'
+  | 'hideTrackMeta'
+  | 'syncOffsetMs'
+>;
+
+export function overlaySettings(secondScreen: boolean): OverlaySettings {
+  return {
+    fontSize: getOverlayFontSize(),
+    align: secondScreen ? 'center' : getOverlayAlign(),
+    opacity: getOverlayOpacity(),
+    highContrast: isHighContrastLyrics(),
+    secondScreen,
+    hideTrackMeta: secondScreen ? getSecondScreenHideMeta() : getOverlayHideMeta(),
+    syncOffsetMs: getLyricsSyncOffset(),
+  };
+}
+
 async function openOverlayWindow() {
   const existing = await WebviewWindow.getByLabel('lyrics-overlay').catch(() => null);
   const shown = await existing?.show().then(
@@ -119,6 +142,14 @@ async function closeOverlayWindow() {
 }
 
 let lastOverlaySig = '';
+let lastLyricsKey = '';
+let miniTarget = false;
+
+export function setMiniLyricsTarget(on: boolean) {
+  // świeżo włączony tekst w mini oknie potrzebuje pełnej paczki, nie samego zegara
+  if (on && !miniTarget) lastOverlaySig = lastLyricsKey = '';
+  miniTarget = on;
+}
 
 export async function pushLyricsOverlay(
   payload: Omit<
@@ -139,29 +170,34 @@ export async function pushLyricsOverlay(
   ].join('|');
   if (!opts?.force && sig === lastOverlaySig) return;
   lastOverlaySig = sig;
+  const lines = payload.synced;
+  const lyricsKey = [
+    payload.trackId ?? payload.title,
+    lines?.length ?? 0,
+    payload.text?.length ?? 0,
+    lines?.[0]?.time ?? '',
+    lines?.at(-1)?.time ?? '',
+    lines?.at(-1)?.text ?? '',
+  ].join('|');
+  // tekst z czasami słów to dziesiątki KB, a paczka idzie co sekundę, więc wysyłamy go tylko po zmianie
+  const lyricsSame = !opts?.force && lyricsKey === lastLyricsKey;
+  lastLyricsKey = lyricsKey;
 
   const full: OverlayPayload = {
     ...payload,
-    fontSize: getOverlayFontSize(),
-    align: getOverlayAlign(),
-    opacity: getOverlayOpacity(),
-    highContrast: isHighContrastLyrics(),
-    secondScreen: false,
-    hideTrackMeta: getOverlayHideMeta(),
-    syncOffsetMs: getLyricsSyncOffset(),
+    ...(lyricsSame ? { synced: undefined, text: undefined, lyricsSame: true } : {}),
+    ...overlaySettings(false),
   };
   try {
+    // osobna nazwa zdarzenia, bo listen w nakładce łapie paczki wysłane do każdego okna
+    if (miniTarget) await emitTo('mini-player', 'zenith-mini-lyrics', full);
     await emitTo('lyrics-overlay', 'zenith-lyrics-overlay', full);
     if (opts?.secondScreen) {
-      await emitTo('lyrics-second', 'zenith-lyrics-overlay', {
-        ...full,
-        secondScreen: true,
-        align: 'center',
-        hideTrackMeta: getSecondScreenHideMeta(),
-      });
+      await emitTo('lyrics-second', 'zenith-lyrics-overlay', { ...full, ...overlaySettings(true) });
     }
   } catch {
     lastOverlaySig = '';
+    lastLyricsKey = '';
   }
 }
 

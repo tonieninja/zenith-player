@@ -56,4 +56,7 @@ export const sleepTimerPlugin: ZenithPlugin = {
   onNowPlaying(info) {
     if (info?.isPlaying && !timer) armTimer();
   },
+  onPlayStateChange(playing) {
+    if (playing && !timer) armTimer();
+  },
 };
