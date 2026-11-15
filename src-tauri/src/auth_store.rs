@@ -12,6 +12,15 @@ pub fn set_login_popup_sync_ready(ready: bool) {
     LOGIN_POPUP_SYNC_READY.store(ready, Ordering::SeqCst);
 }
 
+// mini-player i okna tekstu nie potrzebują sesji ani serwerów; błąd XSS w nich nie sięgnie dalej
+pub(crate) fn main_window_only(webview: &tauri::Webview) -> Result<(), String> {
+    if webview.label() == "main" {
+        Ok(())
+    } else {
+        Err("main window only".into())
+    }
+}
+
 const AUTH_URLS: &[&str] = &[
     "https://music.youtube.com/",
     "https://www.youtube.com/",
@@ -362,7 +371,8 @@ pub async fn sync_ytm_auth_to_main(app: AppHandle) -> Result<bool, String> {
 }
 
 #[tauri::command]
-pub async fn persist_ytm_session(app: AppHandle) -> Result<(), String> {
+pub async fn persist_ytm_session(app: AppHandle, webview: tauri::Webview) -> Result<(), String> {
+    main_window_only(&webview)?;
     let app2 = app.clone();
     let cookies: Vec<StoredCookie> = tauri::async_runtime::spawn_blocking(move || {
         with_webview_on_main(&app2, |app| {
@@ -386,7 +396,8 @@ pub async fn persist_ytm_session(app: AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub async fn restore_ytm_session(app: AppHandle) -> Result<bool, String> {
+pub async fn restore_ytm_session(app: AppHandle, webview: tauri::Webview) -> Result<bool, String> {
+    main_window_only(&webview)?;
     let path = session_path(&app)?;
     let load_path = if path.exists() {
         path.clone()
@@ -404,7 +415,10 @@ pub async fn restore_ytm_session(app: AppHandle) -> Result<bool, String> {
     let (cookies, was_legacy) = match parsed {
         Ok(v) => v,
         Err(_) => {
-            let _ = fs::remove_file(&load_path);
+            // plik zablokowany chwilowo (np. przez antywirusa) nie może wylogować; kasujemy tylko zepsuty
+            if fs::read(&load_path).is_ok() {
+                let _ = fs::remove_file(&load_path);
+            }
             return Ok(false);
         }
     };

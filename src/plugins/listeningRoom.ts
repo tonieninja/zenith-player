@@ -161,6 +161,12 @@ export const listeningRoomPlugin: ZenithPlugin = {
   category: 'integrations',
   description: 'Sync playback with friends over a local WebSocket room (same PC / LAN).',
   defaultEnabled: false,
+  async onEnable() {
+    // rola z localStorage przeżywa restart, a pokój i gniazdo gościa nie; okno nie zwalniało się w zasobniku
+    if (guestSocket || !getRoomCode()) return;
+    const live = await invoke<string | null>('room_get_code').catch(() => null);
+    if (!live) setRole('', '');
+  },
   async onDisable() {
     unregisterRoomSyncHandler();
     await leaveRoom();

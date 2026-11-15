@@ -82,16 +82,66 @@ fn msg(text: &str, flags: u32) {
     };
 }
 
+// aplikacja bez konsoli: bez okienka start, który się nie udał, wygląda jak brak reakcji na kliknięcie
+pub fn fatal(err: &str) -> ! {
+    msg(
+        &format!("Zenith nie mógł się uruchomić.\n\n{err}\n\nJeśli to się powtarza, zainstaluj ponownie WebView2: {MANUAL_URL}"),
+        MB_ICONERROR,
+    );
+    std::process::exit(1)
+}
+
+// shortcut: sprawdza podpis Authenticode, nie wydawcę; wystarcza, bo plik idzie tylko z go.microsoft.com po https
+fn signed(path: &std::path::Path) -> bool {
+    use windows_sys::Win32::Security::WinTrust::{
+        WinVerifyTrust, WINTRUST_ACTION_GENERIC_VERIFY_V2, WINTRUST_DATA, WINTRUST_FILE_INFO,
+        WTD_CHOICE_FILE, WTD_REVOKE_NONE, WTD_STATEACTION_CLOSE, WTD_STATEACTION_VERIFY,
+        WTD_UI_NONE,
+    };
+    let p = wide(&path.to_string_lossy());
+    let mut file = WINTRUST_FILE_INFO {
+        cbStruct: std::mem::size_of::<WINTRUST_FILE_INFO>() as u32,
+        pcwszFilePath: p.as_ptr(),
+        hFile: std::ptr::null_mut(),
+        pgKnownSubject: std::ptr::null_mut(),
+    };
+    let mut data: WINTRUST_DATA = unsafe { std::mem::zeroed() };
+    data.cbStruct = std::mem::size_of::<WINTRUST_DATA>() as u32;
+    data.dwUIChoice = WTD_UI_NONE;
+    data.fdwRevocationChecks = WTD_REVOKE_NONE;
+    data.dwUnionChoice = WTD_CHOICE_FILE;
+    data.Anonymous.pFile = &mut file;
+    data.dwStateAction = WTD_STATEACTION_VERIFY;
+    let mut action = WINTRUST_ACTION_GENERIC_VERIFY_V2;
+    let mut call = |d: &mut WINTRUST_DATA| unsafe {
+        WinVerifyTrust(
+            std::ptr::null_mut(),
+            &mut action,
+            (d as *mut WINTRUST_DATA).cast(),
+        )
+    };
+    let r = call(&mut data);
+    data.dwStateAction = WTD_STATEACTION_CLOSE;
+    call(&mut data);
+    r == 0
+}
+
 fn install() -> Result<(), String> {
-    let path = std::env::temp_dir().join("MicrosoftEdgeWebview2Setup.exe");
+    // nazwa z PID-em: inny program nie podłoży wcześniej pliku o znanej nazwie w %TEMP%
+    let path = std::env::temp_dir().join(format!("zenith-wv2-{}.exe", std::process::id()));
     let bytes = reqwest::blocking::Client::builder()
         .timeout(std::time::Duration::from_secs(300))
+        .https_only(true)
         .build()
         .and_then(|c| c.get(BOOTSTRAPPER_URL).send())
         .and_then(|r| r.error_for_status())
         .and_then(|r| r.bytes())
         .map_err(|e| format!("download: {e}"))?;
     std::fs::write(&path, &bytes).map_err(|e| format!("write: {e}"))?;
+    if !signed(&path) {
+        let _ = std::fs::remove_file(&path);
+        return Err("installer signature check failed".into());
+    }
     let st = std::process::Command::new(&path)
         .args(["/silent", "/install"])
         .status()

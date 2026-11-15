@@ -84,23 +84,9 @@ async fn ensure_ws_server() -> Result<u16, String> {
 
             let port = listener.local_addr().map_err(|e| e.to_string())?.port();
 
+            // tylko /ws: każda inna trasa bez kontroli Origin zdradzałaby stronom w przeglądarce, że Zenith działa
             let hub = HUB.clone();
-            let app = Router::new()
-                .route("/ws", get(ws_handler))
-                .route("/health", get(|| async { "zenith-room-ok" }))
-                .route(
-                    "/peers",
-                    get(|| async {
-                        let n = HUB
-                            .room
-                            .lock()
-                            .ok()
-                            .and_then(|g| g.as_ref().map(|r| r.clients.len()))
-                            .unwrap_or(0);
-                        n.to_string()
-                    }),
-                )
-                .with_state(hub);
+            let app = Router::new().route("/ws", get(ws_handler)).with_state(hub);
 
             tokio::spawn(async move {
                 if let Err(e) = axum::serve(listener, app).await {
@@ -115,6 +101,13 @@ async fn ensure_ws_server() -> Result<u16, String> {
     Ok(port)
 }
 
+fn app_origin(o: &str) -> bool {
+    matches!(
+        o,
+        "http://tauri.localhost" | "https://tauri.localhost" | "tauri://localhost"
+    ) || (cfg!(debug_assertions) && o == "http://localhost:1420")
+}
+
 #[derive(Deserialize)]
 struct WsQuery {
     code: String,
@@ -124,8 +117,25 @@ async fn ws_handler(
     ws: WebSocketUpgrade,
     Query(q): Query<WsQuery>,
     State(hub): State<Arc<Hub>>,
-) -> impl IntoResponse {
+    headers: axum::http::HeaderMap,
+) -> axum::response::Response {
+    // łączy się tylko sama aplikacja; cudza strona nie może zgadywać kodu ani sprawdzać, czy Zenith działa
+    let origin_ok = headers
+        .get(axum::http::header::ORIGIN)
+        .and_then(|v| v.to_str().ok())
+        .is_none_or(app_origin);
+    let wanted = q.code.trim().to_uppercase();
+    let code_ok = hub
+        .room
+        .lock()
+        .ok()
+        .and_then(|g| g.as_ref().map(|r| r.code == wanted))
+        .unwrap_or(false);
+    if !origin_ok || !code_ok {
+        return axum::http::StatusCode::FORBIDDEN.into_response();
+    }
     ws.on_upgrade(move |socket| client_loop(socket, q.code, hub))
+        .into_response()
 }
 
 async fn client_loop(socket: WebSocket, code: String, hub: Arc<Hub>) {
@@ -277,4 +287,16 @@ pub fn room_broadcast(app: AppHandle, state: RoomState) -> Result<(), String> {
     let _ = app.emit("zenith-room-sync", &state);
     let _ = app.emit("zenith-room-peers", room_peer_count().unwrap_or(0));
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn only_app_origin() {
+        assert!(super::app_origin("http://tauri.localhost"));
+        assert!(super::app_origin("tauri://localhost"));
+        assert!(!super::app_origin("http://evil-tauri.localhost"));
+        assert!(!super::app_origin("https://evil.example"));
+        assert!(!super::app_origin("null"));
+    }
 }

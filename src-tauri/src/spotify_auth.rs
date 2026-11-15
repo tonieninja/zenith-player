@@ -53,7 +53,10 @@ fn wait(port: u16, state: String, timeout: Duration) -> Result<String, String> {
         if ok {
             return Ok(get("code").unwrap_or_default());
         }
-        return Err(get("error").unwrap_or_else(|| "state mismatch".into()));
+        // dowolna strona może trafić w ten port; logowanie przerywa tylko odmowa z naszym state
+        if get("state").as_deref() == Some(state.as_str()) {
+            return Err(get("error").unwrap_or_else(|| "state mismatch".into()));
+        }
     }
 }
 
@@ -94,5 +97,39 @@ mod tests {
         let _ = c.read_to_string(&mut out);
         assert!(out.contains("Spotify is connected"));
         assert_eq!(h.join().unwrap().unwrap(), "C0DE");
+    }
+}
+
+// tokeny Spotify pozwalają zmieniać playlisty, więc leżą zaszyfrowane jak sesje Last.fm i YouTube
+fn token_path(app: &tauri::AppHandle) -> Option<std::path::PathBuf> {
+    use tauri::Manager;
+    let dir = app.path().app_data_dir().ok()?;
+    let _ = std::fs::create_dir_all(&dir);
+    Some(dir.join("spotify.bin"))
+}
+
+#[tauri::command]
+pub fn spotify_token_load(app: tauri::AppHandle, webview: tauri::Webview) -> Option<String> {
+    crate::auth_store::main_window_only(&webview).ok()?;
+    let p = token_path(&app)?;
+    crate::secret_store::read_session(&p)
+        .ok()
+        .map(|(json, _)| json)
+}
+
+#[tauri::command]
+pub fn spotify_token_save(
+    app: tauri::AppHandle,
+    webview: tauri::Webview,
+    body: Option<String>,
+) -> Result<(), String> {
+    crate::auth_store::main_window_only(&webview)?;
+    let p = token_path(&app).ok_or("no app data dir")?;
+    match body {
+        Some(b) => crate::secret_store::write_session(&p, &b),
+        None => {
+            let _ = std::fs::remove_file(p);
+            Ok(())
+        }
     }
 }
