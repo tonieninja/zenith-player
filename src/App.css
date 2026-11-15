@@ -328,7 +328,7 @@ html.window-occluded * {
   background: rgba(255, 255, 255, 0.1);
 }
 .settings-text-input::placeholder {
-  color: rgba(255, 255, 255, 0.25);
+  color: var(--text-muted);
 }
 
 .app-main-layout {
@@ -1547,6 +1547,15 @@ button.nav-item {
   letter-spacing: -0.016em;
 }
 
+/* rodzic ucina przelew dla szyny z czasami, a tekst bez czasów musi się dać przewinąć */
+.lyrics-plain {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+
 @keyframes slideUpFade {
   from {
     opacity: 0;
@@ -1650,7 +1659,22 @@ button.nav-item {
   transform: scale(1.15);
 }
 
+/* ujemny margines oddaje padding, więc większe pole kliknięcia nie rozsuwa przycisków */
+button.control-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: -3px;
+  padding: 3px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  font: inherit;
+}
+
 .main-play-pause-circle {
+  border: none;
+  padding: 0;
   width: 40px;
   height: 40px;
   background: linear-gradient(135deg, #ffffff, var(--accent-1));
@@ -1828,6 +1852,22 @@ svg.lucide {
   height: 6px;
 }
 
+/* pasek ma 4 px; niewidoczny pas nad i pod nim łapie klik i przeciąganie */
+.volume-bar-track {
+  position: relative;
+}
+
+.volume-bar-track::before {
+  content: '';
+  position: absolute;
+  inset: -8px 0;
+}
+
+.progress-bar-track:focus-visible .progress-bar-handle {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
+}
+
 .volume-bar-track:hover .volume-bar-fill {
   background: linear-gradient(90deg, #ffffff, rgba(255, 255, 255, 0.6));
 }
@@ -1993,6 +2033,14 @@ svg.lucide {
 .modal-close-icon:hover {
   color: var(--text-primary);
   transform: rotate(90deg);
+}
+
+button.modal-close-icon {
+  display: inline-flex;
+  padding: 0;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
 }
 
 .settings-row-item {
@@ -2296,7 +2344,8 @@ svg.lucide {
     width: 36px;
     height: 36px;
   }
-  .control-icon-btn {
+  svg.control-icon-btn,
+  .control-icon-btn svg {
     width: 18px;
     height: 18px;
   }
@@ -3705,11 +3754,35 @@ html.has-cover-theme .main-play-pause-circle {
 }
 
 .toast-error {
-  border-color: rgba(255, 100, 100, 0.35);
+  border-color: rgba(255, 100, 100, 0.55);
+  border-left: 4px solid #ff6b6b;
+  background: rgba(48, 18, 22, 0.95);
 }
 
 .toast-success {
   border-color: rgba(100, 220, 150, 0.35);
+}
+
+.toast-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.toast-close {
+  flex: none;
+  display: inline-flex;
+  margin: -4px -6px -4px 0;
+  padding: 4px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.toast-close:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.1);
 }
 
 @keyframes toast-in {
@@ -3752,6 +3825,15 @@ html.has-cover-theme .main-play-pause-circle {
 
 .global-modal-overlay {
   animation: fadeIn 0.2s ease;
+}
+
+.global-modal-overlay:focus {
+  outline: none;
+}
+
+.zen-popover-menu-list .zen-select-option:focus-visible {
+  outline-offset: -2px;
+  background: rgba(255, 255, 255, 0.1);
 }
 
 .glass-modal-container {
@@ -4374,13 +4456,11 @@ html.has-cover-theme .main-play-pause-circle {
   .progress-time-text {
     min-width: 32px;
   }
+  /* A-B i udostępnianie zostają widoczne: nie mają innego wejścia */
   .player-extra-controls-group {
     display: flex;
-    gap: 10px;
+    gap: 6px;
     flex-shrink: 0;
-  }
-  .player-extra-controls-group > .extra-icon-btn:not(.queue-toggle-btn):not(.lyrics-toggle-btn) {
-    display: none;
   }
   .volume-control-block .volume-bar-track {
     width: 56px;
@@ -5018,4 +5098,16 @@ html.window-occluded *::after {
 
 .player-view-actions .ytm-rating-btns {
   margin-right: 4px;
+}
+
+/* systemowe „ogranicz ruch”: animacje i przejścia kończą się od razu */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

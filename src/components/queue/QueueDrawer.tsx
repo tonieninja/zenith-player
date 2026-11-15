@@ -63,6 +63,17 @@ export function QueueDrawer({
     []
   );
 
+  // wiersz po przestawieniu montuje się od nowa (klucz z indeksem), więc fokus wraca do niego ręcznie
+  const focusAfterMove = useRef<number | null>(null);
+  useEffect(() => {
+    const to = focusAfterMove.current;
+    if (to === null) return;
+    focusAfterMove.current = null;
+    listRef.current
+      ?.querySelector<HTMLElement>(`[data-queue-index="${to}"] .queue-drawer-select`)
+      ?.focus();
+  }, [queue]);
+
   const stopAutoScroll = () => {
     if (scrollRaf.current) cancelAnimationFrame(scrollRaf.current);
     scrollRaf.current = 0;
@@ -191,14 +202,22 @@ export function QueueDrawer({
                       .filter(Boolean)
                       .join(' ')}
                     onKeyDown={(e) => {
-                      if (!onReorder || !e.altKey) return;
-                      if (e.key === 'ArrowUp' && idx > 0) {
-                        e.preventDefault();
-                        onReorder(idx, idx - 1);
-                      } else if (e.key === 'ArrowDown' && idx < queue.length - 1) {
-                        e.preventDefault();
-                        onReorder(idx, idx + 1);
+                      if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+                      // także na krańcu listy, inaczej ↑/↓ trafia do globalnego skrótu głośności
+                      e.preventDefault();
+                      const to = e.key === 'ArrowUp' ? idx - 1 : idx + 1;
+                      if (to < 0 || to >= queue.length) return;
+                      if (!e.altKey) {
+                        listRef.current
+                          ?.querySelector<HTMLElement>(
+                            `[data-queue-index="${to}"] .queue-drawer-select`
+                          )
+                          ?.focus();
+                        return;
                       }
+                      if (!onReorder) return;
+                      focusAfterMove.current = to;
+                      onReorder(idx, to);
                     }}
                   >
                     {onReorder && queue.length > 1 && (
@@ -232,8 +251,12 @@ export function QueueDrawer({
                         {...coverAttrs(track, 'thumb')}
                       />
                       <div className="up-next-meta">
-                        <span className="up-next-title">{track.title}</span>
-                        <span className="up-next-artist">{track.artist}</span>
+                        <span className="up-next-title" title={track.title}>
+                          {track.title}
+                        </span>
+                        <span className="up-next-artist" title={track.artist}>
+                          {track.artist}
+                        </span>
                       </div>
                       {idx === queueIndex && (
                         <span className="queue-now-badge">{t.nowPlaying}</span>

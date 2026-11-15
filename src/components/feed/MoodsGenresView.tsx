@@ -2,6 +2,7 @@ import { memo } from 'react';
 import { GENRES, MOODS_AND_MOMENTS } from '../../api/youtube';
 import type { Language } from '../../i18n';
 import { moodLabel } from '../../i18n/plugins';
+import { clickOnKey } from '../ui/keyboard';
 
 export const MoodsGenresView = memo(function MoodsGenresView({
   onCategoryClick,
@@ -23,7 +24,10 @@ export const MoodsGenresView = memo(function MoodsGenresView({
             key={cat.id}
             className="mood-genre-card"
             style={{ '--card-color': cat.color } as React.CSSProperties}
+            role="button"
+            tabIndex={0}
             onClick={() => onCategoryClick(cat.id, cat.browseId)}
+            onKeyDown={clickOnKey}
           >
             {moodLabel(lang, cat.id, cat.title, t)}
           </div>
@@ -37,7 +41,10 @@ export const MoodsGenresView = memo(function MoodsGenresView({
             key={cat.id}
             className="mood-genre-card"
             style={{ '--card-color': cat.color } as React.CSSProperties}
+            role="button"
+            tabIndex={0}
             onClick={() => onCategoryClick(cat.id, cat.browseId)}
+            onKeyDown={clickOnKey}
           >
             {moodLabel(lang, cat.id, cat.title, t)}
           </div>

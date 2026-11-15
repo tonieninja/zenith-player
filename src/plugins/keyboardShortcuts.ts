@@ -25,6 +25,14 @@ export function setupKeyboardShortcuts(enabled: boolean) {
     if (!enabled || !handler) return;
     if (isTypingEvent(e) || isInsideDialog(e)) return;
     if (e.defaultPrevented || (e.repeat && e.code === 'Space')) return;
+    // Spacja na elemencie wybranym z klawiatury naciska go; po kliknięciu myszą dalej przełącza odtwarzanie
+    const el = e.target as HTMLElement | null;
+    if (
+      e.code === 'Space' &&
+      el?.matches?.(':focus-visible') &&
+      el.closest('button, a, [role="button"], [role="slider"], [role="menuitem"], [role="option"]')
+    )
+      return;
     const letterCombo = (e.ctrlKey || e.metaKey || e.altKey) && e.code.startsWith('Key');
     if (letterCombo) return;
 

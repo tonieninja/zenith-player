@@ -162,17 +162,24 @@ export function Onboarding({ lang, open, onClose, onSignIn, libAuthed }: Onboard
         className={`onboarding-root ${leaving ? 'leaving' : ''}`}
         role="dialog"
         aria-modal="true"
+        aria-labelledby="onb-legal-title"
+        aria-describedby="onb-legal-desc"
       >
         <div className="onboarding-backdrop" />
         <div className="onboarding-card">
           <div className="onboarding-hero-icon" aria-hidden>
             <Shield size={42} strokeWidth={1.4} />
           </div>
-          <h2 className="onboarding-title">{t.onbLegalTitle}</h2>
-          <p className="onboarding-desc">{t.onbLegalDesc}</p>
+          <h2 className="onboarding-title" id="onb-legal-title">
+            {t.onbLegalTitle}
+          </h2>
+          <p className="onboarding-desc" id="onb-legal-desc">
+            {t.onbLegalDesc}
+          </p>
           <label className="onboarding-legal-check">
             <input
               type="checkbox"
+              autoFocus
               checked={legalChecked}
               onChange={(e) => setLegalChecked(e.target.checked)}
             />
@@ -203,6 +210,7 @@ export function Onboarding({ lang, open, onClose, onSignIn, libAuthed }: Onboard
         className={`onboarding-root ${leaving ? 'leaving' : ''}`}
         role="dialog"
         aria-modal="true"
+        aria-labelledby="onb-welcome-title"
       >
         <div className="onboarding-backdrop" />
         <div className="onboarding-card">
@@ -212,7 +220,9 @@ export function Onboarding({ lang, open, onClose, onSignIn, libAuthed }: Onboard
           <div className="onboarding-hero-icon" aria-hidden>
             <Icon size={42} strokeWidth={1.4} />
           </div>
-          <h2 className="onboarding-title">{t[current.titleKey as keyof typeof t]}</h2>
+          <h2 className="onboarding-title" id="onb-welcome-title">
+            {t[current.titleKey as keyof typeof t]}
+          </h2>
           <p className="onboarding-desc">{t[current.descKey as keyof typeof t]}</p>
           <div className="onboarding-dots">
             {WELCOME_STEPS.map((_, i) => (

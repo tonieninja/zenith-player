@@ -6,6 +6,7 @@ import { useResponsivePageSize } from '../../hooks/useResponsivePageSize';
 import { coverAttrs } from '../../utils/covers';
 import { currentT } from '../../i18n';
 import { ctxTrackAttr, isPrimaryButton } from '../../utils/tracks';
+import { clickOnKey } from '../ui/keyboard';
 
 export const PAGE_SIZE = 8;
 
@@ -32,7 +33,14 @@ const AlbumCard = memo(function AlbumCard({
     [onClick, track, sectionTitle, sectionItems]
   );
   return (
-    <div className="yt-card" onClick={handleClick} data-ctx-track={ctxTrackAttr(track)}>
+    <div
+      className="yt-card"
+      role="button"
+      tabIndex={0}
+      onClick={handleClick}
+      onKeyDown={clickOnKey}
+      data-ctx-track={ctxTrackAttr(track)}
+    >
       <div className="yt-card-thumb">
         <img
           loading={priority ? 'eager' : 'lazy'}
@@ -49,8 +57,12 @@ const AlbumCard = memo(function AlbumCard({
         </div>
       </div>
       <div className="yt-card-info">
-        <div className="yt-card-title">{track.title}</div>
-        <div className="yt-card-sub">{track.artist}</div>
+        <div className="yt-card-title" title={track.title}>
+          {track.title}
+        </div>
+        <div className="yt-card-sub" title={track.artist}>
+          {track.artist}
+        </div>
       </div>
     </div>
   );

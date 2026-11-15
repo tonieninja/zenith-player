@@ -19,8 +19,12 @@ export const UpNextItem = memo(function UpNextItem({
         {...coverAttrs(track, 'thumb')}
       />
       <div className="up-next-meta">
-        <span className="up-next-title">{track.title}</span>
-        <span className="up-next-artist">{track.artist}</span>
+        <span className="up-next-title" title={track.title}>
+          {track.title}
+        </span>
+        <span className="up-next-artist" title={track.artist}>
+          {track.artist}
+        </span>
       </div>
     </button>
   );
