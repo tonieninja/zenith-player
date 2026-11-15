@@ -1,4 +1,9 @@
-import { mergeFavoriteTracks, readSavedTracks, persistFavorites } from './utils/favorites';
+import {
+  FAVORITES_MAX,
+  mergeFavoriteTracks,
+  readSavedTracks,
+  persistFavorites,
+} from './utils/favorites';
 import { applyWheelVolume, isTypingEvent } from './utils/dom';
 import {
   lazy,
@@ -102,8 +107,11 @@ import {
   sidebarClickPlan,
   ctxTrackAttr,
   parseCtxTrackAttr,
+  withCollectionMeta,
+  isVideoTrackId,
 } from './utils/tracks';
 import { SyncedLyricsRail } from './components/SyncedLyricsRail';
+import { PlainLyrics } from './components/PlainLyrics';
 import { LIB_EMPTY_KEYS, LIBRARY_CATEGORIES, nextLibraryViewState } from './constants/library';
 import {
   MINI_PLAYER_SYNC_MS,
@@ -116,12 +124,13 @@ import { useDebounce } from './hooks/useDebounce';
 import { useScrubBar } from './hooks/useScrubBar';
 import { PopoverMenu } from './components/ui/PopoverMenu';
 import { ModalOverlay } from './components/ui/ModalOverlay';
+import { clickOnKey, sliderKeyValue } from './components/ui/keyboard';
 import { YtmRatingButtons } from './components/player/YtmRatingButtons';
 import { PlaylistManager } from './components/PlaylistManager';
-import { streamStuckMessage, translations, type Language } from './i18n';
+import { errorText, streamStuckMessage, translations, type Language } from './i18n';
 import { AUX_WINDOW_PLUGINS, pluginManager } from './plugins';
 import { syncCloseToTray } from './plugins/systemTray';
-import { pushHotkeyBindings, syncGlobalHotkeys } from './plugins/globalHotkeys';
+import { getHotkeyBindings, pushHotkeyBindings, syncGlobalHotkeys } from './plugins/globalHotkeys';
 import {
   abLoopPhase,
   cycleAbLoop,
@@ -129,6 +138,8 @@ import {
   registerAbLoopSink,
   subscribeAbLoop,
 } from './plugins/abLoop';
+import { sponsorBlockJump } from './plugins/sponsorBlock';
+import { downloadTrack } from './plugins/offlineDownloads';
 import { registerAutoPauseCallback } from './plugins/autoPauseBlur';
 import { Select } from './components/ui/Select';
 import {
@@ -179,9 +190,10 @@ import {
   getLyricsSyncOffset,
   OVERLAY_SETTINGS_EVENT,
   pushLyricsOverlay,
+  setMiniLyricsTarget,
 } from './plugins/lyricsOverlay';
 import { registerMediaSessionHandlers } from './plugins/mediaSession';
-import { pushMiniPlayerState } from './plugins/miniPlayer';
+import { miniLyrics, pushMiniPlayerState } from './plugins/miniPlayer';
 import { getPreloadDepth } from './plugins/preloadNext';
 import { loadPersistedQueue, savePersistedQueue } from './plugins/queuePersist';
 import { getRememberedVolume, saveRememberedVolume } from './plugins/rememberVolume';
@@ -195,7 +207,7 @@ import {
   setSleepTimerMinutes,
 } from './plugins/sleepTimer';
 import { getPlaybackSpeed } from './plugins/playbackSpeed';
-import { rampVolume, rampVolumeAsync } from './plugins/smoothVolume';
+import { cancelRamps, rampVolume, rampVolumeAsync } from './plugins/smoothVolume';
 import type { LoopMode, ViewTab } from './types/views';
 import {
   getActiveLyricIndex,
@@ -204,7 +216,6 @@ import {
   useActiveLyricLine,
 } from './lyrics/active';
 import { applyCoverTheme, resetCoverTheme } from './utils/coverTheme';
-import { isPlaceholderCover } from './utils/covers';
 import {
   barDurationForTrack,
   formatTime,
@@ -216,6 +227,7 @@ import {
 } from './utils/playback';
 import { localizeLyricsReason } from './lyrics/reasons';
 import { setLightLyrics, useLightLyrics } from './lyrics/light';
+import { romanizeLyrics, translateLyrics } from './lyrics/extras';
 import {
   checkGithubUpdate,
   checkSignedUpdate,
@@ -268,6 +280,7 @@ import {
   FolderOpen,
 } from 'lucide-react';
 import { useLatest } from './hooks/useLatest';
+import { restoreScroll, saveUiSnapshot, takeUiSnapshot } from './utils/uiSnapshot';
 import './App.css';
 
 const Onboarding = lazy(() =>
@@ -281,6 +294,19 @@ const appWindow = getCurrentWindow();
 const FAVORITES_ID = '__favorites';
 const MAX_SEARCH_LENGTH = 200;
 const MANUAL_FADE_SECS = 0.35;
+const auxWindowExists = (label: string) =>
+  WebviewWindow.getByLabel(label).then(Boolean, () => false);
+// wtyczki bez odpowiednika w trybie bez okna (Rust gra kolejkę, ale tych zdarzeń nie obsłuży)
+const KEEP_UI_PLUGINS = [
+  'lastfm-scrobbler',
+  'listenbrainz-scrobbler',
+  'webhook',
+  'remote-control',
+  'dualsense-pad',
+  'stats-tracker',
+  'sponsorblock',
+  'smooth-volume',
+];
 
 type FeedLoadTab = 'home' | 'explore' | 'mood' | 'search';
 const FEED_LOADING_INITIAL: Record<FeedLoadTab, boolean> = {
@@ -484,6 +510,8 @@ export default function App() {
   });
   const [rememberLogin, setRememberLoginState] = useState(() => getRememberLogin());
   const lightLyrics = useLightLyrics();
+  const romanize = romanizeLyrics.useValue();
+  const translateLyricsOn = translateLyrics.useValue();
   const [appVersion, setAppVersion] = useState('1.0.0');
   const [updateBusy, setUpdateBusy] = useState(false);
   const [updateStatus, setUpdateStatus] = useState<{
@@ -632,10 +660,20 @@ export default function App() {
     }).then((fn) => {
       unlisten = fn;
     });
-    return () => unlisten?.();
+    const onVisible = () => {
+      if (document.visibilityState === 'visible')
+        void pluginManager.reconcileWindows(auxWindowExists);
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      unlisten?.();
+      document.removeEventListener('visibilitychange', onVisible);
+    };
   }, []);
 
   const crossfadeEnabled = Boolean(pluginStates['crossfade']);
+  const miniLyricsOn = miniLyrics.useValue();
+  const miniLyricsActive = Boolean(pluginStates['mini-player']) && miniLyricsOn;
   const crossfadeSecs = getCrossfadeSeconds();
   const crossfadeEnabledRef = useLatest(crossfadeEnabled);
   const crossfadeSecsRef = useLatest(crossfadeSecs);
@@ -735,6 +773,7 @@ export default function App() {
   const playingFromRef = useLatest<string | null>(playingFrom);
 
   const isSaved = currentTrack ? likedIdSet.has(currentTrack.id) || trackRating === 'LIKE' : false;
+  const isSavedRef = useLatest(isSaved);
 
   const navigateTo = useCallback((tab: ViewTab) => {
     if (tab !== 'player') setPrevTab(tab);
@@ -781,6 +820,15 @@ export default function App() {
     if (activeTab !== 'player') return;
     setActiveLyricLine(activeLyricLineRef.current);
   }, [activeTab]);
+
+  useEffect(() => {
+    // ukryte okno nie przerysowuje tekstu, więc po powrocie dogania bieżącą linię
+    const sync = () => {
+      if (!document.hidden) setActiveLyricLine(activeLyricLineRef.current);
+    };
+    document.addEventListener('visibilitychange', sync);
+    return () => document.removeEventListener('visibilitychange', sync);
+  }, []);
 
   const openMoodsGenres = useCallback(() => navigateTo('moods_genres'), [navigateTo]);
 
@@ -851,7 +899,7 @@ export default function App() {
         })
         .finally(() => {
           window.clearTimeout(safety);
-          setFeedTabLoading('search', false);
+          if (dataSeq === feedSeqRef.current.search) setFeedTabLoading('search', false);
         });
     },
     [lang, navigateTo, setFeedTabLoading]
@@ -907,7 +955,7 @@ export default function App() {
         .catch(() => undefined)
         .finally(() => {
           window.clearTimeout(safety);
-          setFeedTabLoading('home', false);
+          if (dataSeq === feedSeqRef.current.home) setFeedTabLoading('home', false);
         });
     },
     [lang, navigateTo, setFeedTabLoading, prefetchStream, startBackgroundPrefetch]
@@ -945,7 +993,7 @@ export default function App() {
         .catch(() => undefined)
         .finally(() => {
           window.clearTimeout(safety);
-          setFeedTabLoading('explore', false);
+          if (dataSeq === feedSeqRef.current.explore) setFeedTabLoading('explore', false);
         });
     },
     [lang, navigateTo, setFeedTabLoading]
@@ -972,7 +1020,7 @@ export default function App() {
         })
         .finally(() => {
           window.clearTimeout(safety);
-          setFeedTabLoading('mood', false);
+          if (dataSeq === feedSeqRef.current.mood) setFeedTabLoading('mood', false);
         });
     },
     [lang, navigateTo, setFeedTabLoading]
@@ -1023,15 +1071,20 @@ export default function App() {
       navigateTo('mood');
       const safety = window.setTimeout(() => setFeedTabLoading('mood', false), 45000);
       try {
+        const various = translations[lang].variousArtists;
         const res = await loadPlaylistItems(collection.id, lang, (items) => {
           if (dataSeq !== feedSeqRef.current.mood) return;
-          setSections([{ title: collection.title, items }]);
+          setSections([
+            { title: collection.title, items: withCollectionMeta(collection, items, various) },
+          ]);
           setFeedTabLoading('mood', false);
         });
         if (dataSeq !== feedSeqRef.current.mood) return;
         if (res.items.length) {
           setBrowseEmptyKind(null);
-          setSections([{ title: collection.title, items: res.items }]);
+          setSections([
+            { title: collection.title, items: withCollectionMeta(collection, res.items, various) },
+          ]);
           return;
         }
         setSections([]);
@@ -1050,6 +1103,7 @@ export default function App() {
     [lang, navigateTo, setFeedTabLoading]
   );
 
+  const likesAtRef = useRef(0);
   const openFavorites = useCallback(() => {
     const seq = ++feedSeqRef.current.mood;
     navigateTo('mood');
@@ -1059,6 +1113,11 @@ export default function App() {
     setActiveMood(FAVORITES_ID);
     if (savedTracks.length === 0) setFeedTabLoading('mood', true);
     else setFeedTabLoading('mood', false);
+    // pełna lista polubionych to do 51 stron; przy każdym wejściu w zakładkę zapraszało to limit zapytań
+    if (accountLikes.length && Date.now() - likesAtRef.current < 3 * 60_000) {
+      setFeedTabLoading('mood', false);
+      return;
+    }
     void (async () => {
       let remote: Track[] = [];
       try {
@@ -1076,10 +1135,11 @@ export default function App() {
         remote = [];
       }
       if (seq !== feedSeqRef.current.mood) return;
+      likesAtRef.current = remote.length ? Date.now() : 0;
       setAccountLikes(remote);
       setFeedTabLoading('mood', false);
     })();
-  }, [navigateTo, savedTracks.length, setFeedTabLoading, t.favs, lang]);
+  }, [navigateTo, savedTracks.length, setFeedTabLoading, t.favs, lang, accountLikes.length]);
 
   const openMoodById = useCallback(
     (categoryId: string) => {
@@ -1120,13 +1180,16 @@ export default function App() {
     navigateTo,
   ]);
 
+  const userPlaylistsSeqRef = useRef(0);
   const loadUserPlaylists = useCallback(async () => {
+    // odpowiedź sprzed wylogowania albo starsza od nowszego zapytania nie może nadpisać list
+    const seq = ++userPlaylistsSeqRef.current;
     if (!(await isLoggedIn())) {
-      setUserPlaylists([]);
+      if (seq === userPlaylistsSeqRef.current) setUserPlaylists([]);
       return;
     }
     const playlists = await getUserPlaylists(lang);
-    setUserPlaylists(playlists);
+    if (seq === userPlaylistsSeqRef.current) setUserPlaylists(playlists);
   }, [lang]);
 
   const refreshAccountProfile = useCallback(async () => {
@@ -1165,7 +1228,7 @@ export default function App() {
         if (sections.length === 0) {
           await new Promise((r) => setTimeout(r, 400));
           clearAuthCache();
-          sections = await getLibrary(category, lang, { bypassCache: true });
+          sections = await getLibrary(category, lang, { bypassCache: true, strict: true });
         }
         void loadUserPlaylists();
         void refreshAccountProfile();
@@ -1178,8 +1241,12 @@ export default function App() {
           if (reqId !== libReqIdRef.current) return;
           if (more !== sections) setLibSections(more);
         });
-      } catch {
-        if (reqId === libReqIdRef.current && !cached?.length) {
+      } catch (e) {
+        if (reqId === libReqIdRef.current && e instanceof SessionExpiredError) {
+          setLibAuthed(false);
+          setLibSections([]);
+          setSessionExpired(true);
+        } else if (reqId === libReqIdRef.current && !cached?.length) {
           setLibSections([]);
           setLibError(translations[lang].libraryLoadError);
         }
@@ -1257,6 +1324,24 @@ export default function App() {
       }
     })();
   }, [lang, loadUserPlaylists, persistSessionIfWanted, refreshAccountProfile]);
+
+  const homeEmptyRef = useLatest(homeSections.length === 0);
+  // start bez sieci zostawiał wylogowaną bibliotekę i pusty Home aż do ręcznego kliknięcia
+  useEffect(() => {
+    const onOnline = () => {
+      if (homeEmptyRef.current) loadHome(lang, false);
+      if (libAuthedRef.current || !getRememberLogin()) return;
+      void waitForLogin(lang, 4, 1500).then((ok) => {
+        if (!ok || libAuthedRef.current) return;
+        setSessionExpired(false);
+        setLibAuthed(true);
+        void loadUserPlaylists();
+        void refreshAccountProfile();
+      });
+    };
+    window.addEventListener('online', onOnline);
+    return () => window.removeEventListener('online', onOnline);
+  }, [lang, loadHome, loadUserPlaylists, refreshAccountProfile, libAuthedRef, homeEmptyRef]);
 
   const stopLoginPoll = useCallback(() => {
     if (loginPollDelayRef.current) {
@@ -1342,6 +1427,7 @@ export default function App() {
     feedSeqRef.current.mood += 1;
     feedSeqRef.current.search += 1;
     libReqIdRef.current += 1;
+    userPlaylistsSeqRef.current += 1;
 
     clearAuthCache();
     clearCaches();
@@ -1593,7 +1679,8 @@ export default function App() {
   const hydratePanels = useCallback(
     (track: Track) => {
       const provider = lyricsProviderRef.current;
-      lastHydrateKeyRef.current = `${track.id}|${provider}|${lang}`;
+      const smart = pluginManager.isEnabled('smart-lyrics');
+      lastHydrateKeyRef.current = `${track.id}|${provider}|${lang}|${smart}`;
       const reqId = ++lyricsReqIdRef.current;
       setLyricsLoading(true);
       setLyrics(null);
@@ -1664,9 +1751,17 @@ export default function App() {
     async (L: Language) => {
       const kind = await invoke<string | null>('stream_last_failure').catch(() => null);
       const msg = streamStuckMessage(translations[L], kind, libAuthedRef.current);
-      pushToast(msg, 'error');
+      const askSignIn = !libAuthedRef.current && kind !== 'network' && kind !== 'component';
+      pushToast(
+        msg,
+        'error',
+        undefined,
+        askSignIn
+          ? { label: translations[L].signIn, labelKey: 'signIn', onClick: () => void handleLogin() }
+          : undefined
+      );
     },
-    [libAuthedRef]
+    [libAuthedRef, handleLogin]
   );
 
   const resolveStreamUrl = useCallback(
@@ -1689,6 +1784,10 @@ export default function App() {
     (t: number, d = durationRef.current) => {
       const pct = d > 0 ? (t / d) * 100 : 0;
       progressFillRef.current?.style.setProperty('width', `${pct}%`);
+      // wartość suwaka idzie tą samą drogą co pasek, bez renderu Reacta przy każdym timeupdate
+      const seekTrack = progressFillRef.current?.parentElement;
+      seekTrack?.setAttribute('aria-valuenow', String(Math.round(t)));
+      seekTrack?.setAttribute('aria-valuetext', `${formatTime(t)} / ${formatTime(d)}`);
       progressHandleRef.current?.style.setProperty('left', `${pct}%`);
       if (!progressScrubRef.current) {
         progressTimeElRef.current?.replaceChildren(document.createTextNode(formatTime(t)));
@@ -1709,10 +1808,12 @@ export default function App() {
   const playByIndexRef = useRef<(index: number, fadeSeconds?: number) => Promise<void>>(() =>
     Promise.resolve()
   );
+  const extendRadioRef = useRef<() => Promise<number>>(() => Promise.resolve(0));
 
   const loadTrack = useCallback(
     async (track: Track, autoPlay = true, fadeSeconds?: number, startAt = 0) => {
       const gen = ++loadGenRef.current;
+      cancelRamps();
       const switchingTrack = currentTrackIdRef.current !== track.id;
       currentTrackIdRef.current = track.id;
       setCurrentTrack(track);
@@ -1764,6 +1865,14 @@ export default function App() {
       async function loadTrackInner() {
         const skipOnFail = () => {
           const L = (localStorage.getItem('zenith_lang') as Language) || 'en';
+          // po starcie bez autoodtwarzania i bez sieci zostajemy na utworze, żeby kolejka nie uciekła
+          if (!autoPlay || !navigator.onLine) {
+            setBuffering(false);
+            setIsPlaying(false);
+            if (navigator.onLine) pushToast(translations[L].streamUnavailable, 'error');
+            else void showStreamStuck(L);
+            return;
+          }
           prefetchPausedUntilRef.current = Date.now() + PREFETCH_PAUSE_AFTER_FAIL_MS;
           streamFailStreakRef.current += 1;
           const streak = streamFailStreakRef.current;
@@ -1792,6 +1901,10 @@ export default function App() {
               if (loadGenRef.current !== gen) return;
               void playByIndexRef.current(qi + 1);
             }, 700 * streak);
+          } else {
+            void extendRadioRef.current().then((added) => {
+              if (added > 0 && loadGenRef.current === gen) void playByIndexRef.current(qi + 1);
+            });
           }
         };
 
@@ -1864,8 +1977,13 @@ export default function App() {
               audio.releaseInactive();
               scheduleOutputCheck(gen);
               return;
-            } catch {
+            } catch (e) {
               if (stale()) return;
+              // przejęte przez pauzę albo inny utwór: ratowanie twardym startem zagrałoby wbrew pauzie
+              if (/superseded/.test(String(e))) {
+                setBuffering(false);
+                return;
+              }
               audio.abortAll();
               progressRef.current = 0;
               paintKnown(0);
@@ -2010,21 +2128,7 @@ export default function App() {
           return;
         }
 
-        const albumArtist =
-          collection.type === 'album'
-            ? ((collection.artist || '')
-                .split(' • ')
-                .map((x) => x.trim())
-                .find((x) => x && !/^\d{4}$/.test(x) && !/^(album|single|singiel|ep)$/i.test(x)) ??
-              '')
-            : '';
-        const itemsWithCover = items.map((i) => ({
-          ...i,
-          artist: albumArtist && i.artist === L.variousArtists ? albumArtist : i.artist,
-          cover: isPlaceholderCover(i.cover) ? collection.cover : i.cover,
-          coverSmall: isPlaceholderCover(i.coverSmall) ? collection.coverSmall : i.coverSmall,
-          coverLarge: isPlaceholderCover(i.coverLarge) ? collection.coverLarge : i.coverLarge,
-        }));
+        const itemsWithCover = withCollectionMeta(collection, items, L.variousArtists);
 
         setQueue(itemsWithCover);
         setQueueIndex(0);
@@ -2048,7 +2152,9 @@ export default function App() {
     async (track: Track, sectionTitle?: string, sectionItems?: Track[]) => {
       const plan = itemClickPlan(track);
       if (plan.kind === 'browse-page') {
-        openBrowsePage(track);
+        // rustowy parser karuzel nie zna strony albumu i robił z niej sekcję z jednym utworem
+        if (track.type === 'album') void openCollectionPage(track);
+        else openBrowsePage(track);
         return;
       }
       if (plan.kind === 'play-collection') {
@@ -2074,11 +2180,18 @@ export default function App() {
         setQueueIndex(0);
         setPlayingFrom(null);
       }
-      playingFromIdRef.current = null;
-      playingAlbumRef.current = false;
+      // utwór ze strony albumu gra dalej bez przerw, tak jak album puszczony w całości
+      const col = lastCollectionRef.current;
+      const fromAlbum =
+        !!col &&
+        !!sectionTitle &&
+        col.title === sectionTitle &&
+        (col.type === 'album' || isAlbumCollectionId(col.id));
+      playingFromIdRef.current = fromAlbum && col ? toPlainPlaylistId(col.id) : null;
+      playingAlbumRef.current = fromAlbum;
       await loadTrack(track);
     },
-    [openPlayer, loadTrack, handleCollectionClick, openBrowsePage]
+    [openPlayer, loadTrack, handleCollectionClick, openBrowsePage, openCollectionPage]
   );
 
   const togglePlay = useCallback(async () => {
@@ -2086,7 +2199,13 @@ export default function App() {
     const fadeMs = pluginManager.isEnabled('fade-on-pause') ? getFadePauseMs() : 0;
     if (isPlaying) {
       if (fadeMs > 0) {
+        const gen = loadGenRef.current;
         await rampVolumeAsync(audio, 0, fadeMs);
+        // utwór zmieniony w trakcie wyciszania gra dalej; pauza trafiłaby już w nowy
+        if (gen !== loadGenRef.current) {
+          audio.volume = volume;
+          return;
+        }
         audio.pause();
         audio.volume = volume;
       } else {
@@ -2141,8 +2260,9 @@ export default function App() {
           )
         );
       }
-      if (more.length === 0) return 0;
       const latest = queueRef.current;
+      // w trakcie pobierania włączono inną kolejkę; radio starego utworu nie może się do niej dokleić
+      if (more.length === 0 || !latest.some((t) => t.id === cur.id)) return 0;
       const next = [
         ...latest,
         ...more.slice(0, 25).filter((t) => !latest.some((x) => x.id === t.id)),
@@ -2157,6 +2277,8 @@ export default function App() {
     });
     return job;
   }, [queueIndexRef, queueRef, radioLangRef]);
+  const extendRadioLatest = useLatest(extendQueueWithRadio);
+  extendRadioRef.current = extendQueueWithRadio;
 
   const playNext = useCallback(() => {
     const idx = queueIndexRef.current;
@@ -2229,14 +2351,14 @@ export default function App() {
     } else {
       const original = originalQueueRef.current;
       if (original && original.length > 0) {
-        const idx = currentTrack
-          ? Math.max(
-              0,
-              original.findIndex((i) => i.id === currentTrack.id)
-            )
-          : 0;
-        setQueue(original);
-        setQueueIndex(idx);
+        // dodane po włączeniu (radio, telefon, pokój) zostają, a usunięte z kolejki nie wracają
+        const now = new Set(queue.map((t) => t.id));
+        const kept = original.filter((t) => now.has(t.id));
+        const keptIds = new Set(kept.map((t) => t.id));
+        const merged = [...kept, ...queue.filter((t) => !keptIds.has(t.id))];
+        const idx = currentTrack ? merged.findIndex((t) => t.id === currentTrack.id) : 0;
+        setQueue(merged);
+        setQueueIndex(Math.max(0, idx));
       }
       originalQueueRef.current = null;
       playHistoryRef.current = [];
@@ -2265,6 +2387,8 @@ export default function App() {
     if (id && likedIdSet.has(id)) setTrackRatingState((r) => (r === 'DISLIKE' ? r : 'LIKE'));
   }, [likedIdSet, currentTrack?.id]);
 
+  const ratingWantRef = useRef(new Map<string, TrackLikeStatus>());
+  const ratingChainRef = useRef(new Map<string, Promise<unknown>>());
   const applyTrackRating = useCallback(
     (next: TrackLikeStatus) => {
       if (!currentTrack) return;
@@ -2286,18 +2410,38 @@ export default function App() {
         );
       }
       if (next === 'LIKE' && !wasSaved) {
-        pushToast(t.addedToFavs, 'success', 1800);
+        pushToast(
+          savedTracks.length >= FAVORITES_MAX ? t.favsFull : t.addedToFavs,
+          'success',
+          1800
+        );
         setSavedTracks((prev) => [track, ...prev]);
       } else if (next !== 'LIKE' && wasSaved) {
         pushToast(t.removedFromFavs, 'success', 1800);
         setSavedTracks((prev) => prev.filter((x) => x.id !== track.id));
       }
+      likesAtRef.current = 0;
       if (libAuthed && /^[\w-]{11}$/.test(track.id)) {
-        setTrackRating(track.id, next, lang).catch(() => {
-          pushToast(
-            translations[lang][next === 'DISLIKE' ? 'dislikeSyncFailed' : 'likeSyncFailed'],
-            'error'
-          );
+        // szybkie podwójne kliknięcie wysyłało like i removelike naraz; serwer mógł skończyć na złym
+        const want = ratingWantRef.current;
+        want.set(track.id, next);
+        const prev = ratingChainRef.current.get(track.id) ?? Promise.resolve();
+        const job = prev
+          .then(() => (want.get(track.id) === next ? setTrackRating(track.id, next, lang) : null))
+          .catch((e) => {
+            if (e instanceof SessionExpiredError) {
+              setSessionExpired(true);
+              pushToast(translations[lang].sessionExpired, 'error');
+              return;
+            }
+            pushToast(
+              translations[lang][next === 'DISLIKE' ? 'dislikeSyncFailed' : 'likeSyncFailed'],
+              'error'
+            );
+          });
+        ratingChainRef.current.set(track.id, job);
+        void job.then(() => {
+          if (ratingChainRef.current.get(track.id) === job) ratingChainRef.current.delete(track.id);
         });
       }
     },
@@ -2427,7 +2571,7 @@ export default function App() {
       paintProgressUi(time);
       const idx = getActiveLyricIndex(lyricsRef.current?.synced, time, lyricsSyncOffsetRef.current);
       activeLyricLineRef.current = idx;
-      if (activeTabRef.current === 'player' || overlayPluginsOnRef.current) {
+      if (!document.hidden && (activeTabRef.current === 'player' || overlayPluginsOnRef.current)) {
         setActiveLyricLine(idx);
       }
       pluginManager.notifySeek(time);
@@ -2567,7 +2711,10 @@ export default function App() {
       const lineChanged = lyricIdx !== activeLyricLineRef.current;
       if (lineChanged) {
         activeLyricLineRef.current = lyricIdx;
-        if (activeTabRef.current === 'player' || overlayPluginsOnRef.current) {
+        if (
+          !document.hidden &&
+          (activeTabRef.current === 'player' || overlayPluginsOnRef.current)
+        ) {
           setActiveLyricLine(lyricIdx);
         }
       }
@@ -2622,6 +2769,8 @@ export default function App() {
         (crossfadeEnabledRef.current || playingAlbumRef.current) &&
         !audio.isCrossfading &&
         loopModeRef.current !== 'one' &&
+        // pętla A-B przy końcu utworu nie może zostać przerwana przez przejście do następnego
+        !getAbLoop().active &&
         d > 0 &&
         isPlayingRef.current
       ) {
@@ -2680,6 +2829,20 @@ export default function App() {
 
       if (progressScrubRef.current) return;
 
+      // pętla A-B wygrywa, bo fragment wybrał człowiek; gość pokoju dostaje skok od gospodarza
+      if (
+        pluginManager.isEnabled('sponsorblock') &&
+        isPlayingRef.current &&
+        !getAbLoop().active &&
+        !(pluginManager.isEnabled('listening-room') && getRoomCode() && !isRoomHost())
+      ) {
+        const jump = sponsorBlockJump(currentTrackIdRef.current ?? '', t, trusted ? d : 0);
+        if (jump != null) {
+          seekTo(jump);
+          return;
+        }
+      }
+
       if (pluginManager.isEnabled('listening-room') && isRoomHost() && currentTrackIdRef.current) {
         const roomNow = Date.now();
         if (roomNow - lastRoomPushRef.current >= 5000) {
@@ -2725,6 +2888,8 @@ export default function App() {
       }
     };
     const onEnded = () => {
+      // stara ścieżka kończy się w trakcie ręcznego przełączania; bez tego przeskoczylibyśmy o dwa utwory
+      if (trackSwitchingRef.current) return;
       if (audio.isCrossfading) return;
       if (autoFadePendingRef.current) {
         autoFadePendingRef.current = false;
@@ -2762,7 +2927,11 @@ export default function App() {
       tick();
       startTicker = window.setInterval(tick, 100);
     };
-    const onPause = () => setIsPlaying(false);
+    // spauzowany zastój nie dostanie już canplay, a kręcący się wskaźnik rysowałby klatki bez końca
+    const onPause = () => {
+      setIsPlaying(false);
+      setBuffering(false);
+    };
     const onWaiting = () => setBuffering(true);
     const onCanPlay = () => setBuffering(false);
     const onDurationReady = () => {
@@ -2770,12 +2939,25 @@ export default function App() {
       syncDurationFromAudio();
     };
     const onError = () => {
-      if (!audio.hasSource) return;
+      // błąd startu obsługuje catch w loadTrack; dwie ścieżki naraz ścigały się o audio.src
+      if (!audio.hasSource || trackSwitchingRef.current) return;
       const id = currentTrackIdRef.current;
       const resumeAt = progressRef.current;
+      // nasłuch zostaje, gdy odświeżony adres nie dojdzie do metadanych; nie może przewinąć następnego utworu
+      const restore = () => {
+        audio.removeEventListener('loadedmetadata', restore);
+        if (currentTrackIdRef.current !== id) return;
+        if (resumeAt > 0.4 && Number.isFinite(audio.duration) && audio.duration > 0) {
+          audio.currentTime = Math.min(resumeAt, Math.max(0, audio.duration - 0.25));
+        }
+      };
       const skipAhead = () => {
         setIsPlaying(false);
         setBuffering(false);
+        if (!navigator.onLine) {
+          void showStreamStuck((localStorage.getItem('zenith_lang') as Language) || 'en');
+          return;
+        }
         const qi = queueIndexRef.current;
         const q = queueRef.current;
         prefetchPausedUntilRef.current = Date.now() + PREFETCH_PAUSE_AFTER_FAIL_MS;
@@ -2790,6 +2972,10 @@ export default function App() {
             if (currentTrackIdRef.current !== id) return;
             void playByIndexRef.current(qi + 1);
           }, 1200 * streamFailStreakRef.current);
+        } else {
+          void extendRadioRef.current().then((added) => {
+            if (added > 0 && currentTrackIdRef.current === id) void playByIndexRef.current(qi + 1);
+          });
         }
       };
       const tryAlternate = async (): Promise<boolean> => {
@@ -2815,6 +3001,7 @@ export default function App() {
         }
       };
       const giveUp = () => {
+        audio.removeEventListener('loadedmetadata', restore);
         void tryAlternate().then((ok) => {
           if (!ok) skipAhead();
         });
@@ -2831,12 +3018,6 @@ export default function App() {
         }
         audio.src = url;
         audio.volume = volumeRef.current;
-        const restore = () => {
-          audio.removeEventListener('loadedmetadata', restore);
-          if (resumeAt > 0.4 && Number.isFinite(audio.duration) && audio.duration > 0) {
-            audio.currentTime = Math.min(resumeAt, Math.max(0, audio.duration - 0.25));
-          }
-        };
         audio.addEventListener('loadedmetadata', restore);
         audio.play().catch(() => {
           giveUp();
@@ -2893,10 +3074,17 @@ export default function App() {
     resolveStreamUrlRef,
     showRemainingRef,
     volumeRef,
+    seekTo,
   ]);
 
+  const favSyncedRef = useRef(false);
   useEffect(() => {
-    const body = JSON.stringify(savedTracks.slice(0, 500));
+    // pusta lista przy starcie to zwykle nieudany odczyt, a jej zapis skasowałby ulubione na dysku
+    if (!favSyncedRef.current) {
+      favSyncedRef.current = true;
+      if (!savedTracks.length) return;
+    }
+    const body = JSON.stringify(savedTracks.slice(0, FAVORITES_MAX));
     localStorage.removeItem('zenith_saved');
     persistFavorites(body);
     try {
@@ -2928,11 +3116,40 @@ export default function App() {
   const hydratePanelsRef = useLatest(hydratePanels);
   const loadHomeRef = useLatest(loadHome);
   const openPlayerRef = useLatest(openPlayer);
+  // migawka widoku po odbudowie okna; nie zależy od tego, czy coś grało
+  const restoreUiRef = useLatest((): boolean => {
+    const ui = isRestoredUi() ? takeUiSnapshot() : null;
+    if (!ui) return false;
+    const bootLang = (localStorage.getItem('zenith_lang') as Language) || 'en';
+    setSections(ui.sections);
+    setHomeSections(ui.homeSections);
+    setExploreSections(ui.exploreSections);
+    setQuickPicks(ui.quickPicks);
+    setActiveMood(ui.activeMood);
+    setBrowseTitle(ui.browseTitle);
+    setBrowseEmptyKind(ui.browseEmptyKind);
+    setSearchQuery(ui.searchQuery);
+    setLibCategory(ui.libCategory);
+    setPanelTab(ui.panelTab);
+    lastCollectionRef.current = ui.collection;
+    setPrevTab(ui.prevTab);
+    setActiveTab(ui.tab);
+    restoreScroll(ui.scrollTop);
+    // feed z migawki jest tym samym, co było na ekranie; pobieramy go tylko, gdy był pusty
+    if (!ui.homeSections.length && !ui.quickPicks.length) loadHomeRef.current(bootLang, false);
+    return true;
+  });
+
   const adoptEngineRef = useLatest<() => boolean>(() => {
     const r = takeAudioRestore();
     if (!r) return false;
     const plan = r.plan;
     const snap = r.snap;
+    // głośność zmieniona skrótem w zasobniku; bez tego okno przywróciłoby starą
+    if (typeof r.volume === 'number' && Math.abs(r.volume - volumeRef.current) > 0.001) {
+      setVolume(r.volume);
+      if (pluginManager.isEnabled('remember-volume')) saveRememberedVolume(r.volume);
+    }
     if (snap?.hasSource && plan?.queue?.length) {
       const idx = Math.min(Math.max(0, plan.index | 0), plan.queue.length - 1);
       const track = plan.queue[idx];
@@ -2942,6 +3159,9 @@ export default function App() {
       queueRef.current = plan.queue;
       setQueueIndex(idx);
       queueIndexRef.current = idx;
+      // okno odbudowane z zasobnika nie może zgubić powtarzania ani shuffle
+      setLoopMode(plan.loopMode === 'all' || plan.loopMode === 'one' ? plan.loopMode : 'off');
+      setShuffleOn(!!plan.shuffle);
       setPlayingFrom(plan.playingFrom ?? null);
       playingFromRef.current = plan.playingFrom ?? null;
       playingFromIdRef.current = plan.playingFromId ?? null;
@@ -2973,11 +3193,15 @@ export default function App() {
       paintProgressUiRef.current(snap.t, d);
       const tab = localStorage.getItem('zenith_ui_tab');
       const bootLang = (localStorage.getItem('zenith_lang') as Language) || 'en';
-      if (tab === 'player' || !isRestoredUi()) {
-        openPlayerRef.current();
-        loadHomeRef.current(bootLang, false);
-      } else loadHomeRef.current();
+      if (!restoreUiRef.current()) {
+        if (tab === 'player' || !isRestoredUi()) {
+          openPlayerRef.current();
+          loadHomeRef.current(bootLang, false);
+        } else loadHomeRef.current();
+      }
       plan.queue.slice(idx + 1, idx + 3).forEach((t) => prefetchStream(t));
+      // Rust przerwał start następnego, bo okno wróciło; dokończyć musi JS
+      if (snap.ended && r.pending) window.setTimeout(() => playNextRef.current(), 0);
       return true;
     }
     const disk = r.disk;
@@ -2997,27 +3221,47 @@ export default function App() {
     return false;
   });
 
-  useEffect(() => {
-    if (!isNativeAudio()) return;
+  // zwykle wycinek 200 utworów; przed zasobnikiem cała kolejka, bo po odbudowie okna zna ją tylko Rust
+  const sendPlanRef = useLatest((full: boolean) => {
     const LIMIT = 200;
     const safeIndex = Math.max(0, Math.min(queueIndex, queue.length - 1));
     const start =
-      queue.length > LIMIT ? Math.max(0, Math.min(safeIndex - 20, queue.length - LIMIT)) : 0;
-    const handle = window.setTimeout(() => {
-      void invoke('zaudio_plan', {
-        plan: {
-          queue: queue.slice(start, start + LIMIT),
-          index: safeIndex - start,
-          loopMode,
-          crossfade: crossfadeEnabled && pluginManager.isEnabled('crossfade') ? crossfadeSecs : 0,
-          playingFrom,
-          playingFromId: playingFromIdRef.current,
-          discordClientId: pluginManager.isEnabled('discord-rpc') ? getDiscordClientId() : null,
-        },
-      }).catch(() => undefined);
-    }, 150);
+      !full && queue.length > LIMIT
+        ? Math.max(0, Math.min(safeIndex - 20, queue.length - LIMIT))
+        : 0;
+    return invoke('zaudio_plan', {
+      plan: {
+        queue: full ? queue : queue.slice(start, start + LIMIT),
+        index: safeIndex - start,
+        loopMode,
+        shuffle: shuffleOn,
+        crossfade: crossfadeEnabled && pluginManager.isEnabled('crossfade') ? crossfadeSecs : 0,
+        playingFrom,
+        playingFromId: playingFromIdRef.current,
+        discordClientId: pluginManager.isEnabled('discord-rpc') ? getDiscordClientId() : null,
+        mediaSession: pluginManager.isEnabled('media-session'),
+        // okno usunięte w trakcie zmiany utworu: Rust musi wiedzieć, że ma grać dalej
+        playing: isPlayingRef.current || trackSwitchingRef.current,
+      },
+    }).catch(() => undefined);
+  });
+
+  useEffect(() => {
+    if (!isNativeAudio()) return;
+    const handle = window.setTimeout(() => void sendPlanRef.current(document.hidden), 150);
     return () => window.clearTimeout(handle);
-  }, [queue, queueIndex, loopMode, crossfadeEnabled, crossfadeSecs, playingFrom, pluginStates]);
+  }, [
+    queue,
+    queueIndex,
+    loopMode,
+    shuffleOn,
+    crossfadeEnabled,
+    crossfadeSecs,
+    playingFrom,
+    pluginStates,
+    isPlaying,
+    sendPlanRef,
+  ]);
 
   const pluginsBootstrappedRef = useRef(false);
 
@@ -3034,9 +3278,14 @@ export default function App() {
       for (const p of pluginManager.plugins) {
         if (AUX_WINDOW_PLUGINS[p.id]) continue;
         if (p.id === 'system-tray' || p.id === 'global-hotkeys') continue;
+        // licznik snu rusza z pierwszym odtworzeniem, a nie z uruchomieniem aplikacji
+        if (p.id === 'sleep-timer') continue;
         if (pluginManager.isEnabled(p.id)) started.push((async () => p.onEnable?.())());
       }
       void Promise.allSettled(started);
+      void invoke<string[]>('aux_closed_take')
+        .catch(() => [] as string[])
+        .then((closed) => pluginManager.restoreWindows(isRestoredUi(), closed, auxWindowExists));
     }, 900);
 
     const bootstrap = async () => {
@@ -3075,8 +3324,10 @@ export default function App() {
               setDuration(restoredDur);
             }
             progressRef.current = saved.progress || 0;
-            openPlayerRef.current();
-            loadHomeRef.current((localStorage.getItem('zenith_lang') as Language) || 'en', false);
+            if (!restoreUiRef.current()) {
+              openPlayerRef.current();
+              loadHomeRef.current((localStorage.getItem('zenith_lang') as Language) || 'en', false);
+            }
             hydratePanelsRef.current(track);
             saved.queue.slice(idx, idx + 3).forEach((t) => prefetchStreamRef.current?.(t));
             await loadTrackRef.current(track, saved.wasPlaying, undefined, saved.progress);
@@ -3084,13 +3335,14 @@ export default function App() {
           }
         }
       }
-      loadHomeRef.current();
+      if (!restoreUiRef.current()) loadHomeRef.current();
     };
     void bootstrap();
 
     return () => window.clearTimeout(pluginTimer);
   }, [
     adoptEngineRef,
+    restoreUiRef,
     durationRef,
     hydratePanelsRef,
     loadHomeRef,
@@ -3100,6 +3352,20 @@ export default function App() {
     queueIndexRef,
     queueRef,
   ]);
+
+  const uiSnapRef = useLatest({
+    prevTab,
+    activeMood,
+    browseTitle,
+    browseEmptyKind,
+    sections,
+    homeSections,
+    exploreSections,
+    quickPicks,
+    searchQuery,
+    libCategory,
+    panelTab,
+  });
 
   useEffect(() => {
     let unlisten: (() => void) | undefined;
@@ -3140,6 +3406,39 @@ export default function App() {
     listen('zenith-hidden-to-tray', () => {
       persistQueueNow();
       localStorage.setItem('zenith_ui_tab', activeTabRef.current);
+      saveUiSnapshot({
+        ...uiSnapRef.current,
+        tab: activeTabRef.current,
+        collection: lastCollectionRef.current,
+        scrollTop:
+          document.querySelector<HTMLElement>('.content-area .content-scrollable')?.scrollTop ?? 0,
+      });
+      // te wtyczki działają tylko w JS, więc z nimi okno nie może zniknąć po schowaniu do zasobnika
+      const keep =
+        KEEP_UI_PLUGINS.some((id) => pluginManager.isEnabled(id)) ||
+        // wyciszanie przy mówieniu robi Rust, więc samo okno trzyma tylko silnik z przeglądarki
+        (pluginManager.isEnabled('duck-on-voice') && !isNativeAudio()) ||
+        // po wygaśnięciu licznik uzbraja się od nowa przy odtworzeniu, a to umie tylko JS
+        pluginManager.isEnabled('sleep-timer') ||
+        // polubienie potrzebuje sesji konta z JS, a skrót ma działać także z zasobnika
+        (pluginManager.isEnabled('global-hotkeys') && !!getHotkeyBindings().like) ||
+        (pluginManager.isEnabled('listening-room') && !!getRoomCode());
+      const q = queueRef.current;
+      // bez okna nikt nie dociągnie radia, więc robimy to przed zwolnieniem, póki JS jeszcze żyje
+      const radio = loopModeRef.current !== 'all' && q.length - queueIndexRef.current <= 10;
+      if (!radio) {
+        if (isNativeAudio()) void sendPlanRef.current(true);
+        void invoke('ui_keep', { keep }).catch(() => undefined);
+        return;
+      }
+      void invoke('ui_keep', { keep: true }).catch(() => undefined);
+      void extendRadioLatest.current().finally(() => {
+        // plan kolejki idzie do Rusta po 150 ms, więc puszczamy okno dopiero po nim
+        window.setTimeout(() => {
+          if (isNativeAudio()) void sendPlanRef.current(true);
+          void invoke('ui_keep', { keep }).catch(() => undefined);
+        }, 500);
+      });
     }).then((fn) => {
       unlistenHidden = fn;
     });
@@ -3150,7 +3449,18 @@ export default function App() {
       unlistenHidden?.();
       window.removeEventListener('beforeunload', persistQueueNow);
     };
-  }, [activeTabRef, durationRef, isPlayingRef, playingFromRef, queueIndexRef, queueRef]);
+  }, [
+    activeTabRef,
+    durationRef,
+    extendRadioLatest,
+    isPlayingRef,
+    loopModeRef,
+    playingFromRef,
+    queueIndexRef,
+    queueRef,
+    sendPlanRef,
+    uiSnapRef,
+  ]);
 
   useEffect(() => {
     if (activeTab !== 'search' || !sections.length) return;
@@ -3214,13 +3524,17 @@ export default function App() {
 
   const rehydrateCurrent = useEffectEvent(() => {
     if (!currentTrack) return;
-    if (lastHydrateKeyRef.current === `${currentTrack.id}|${lyricsProvider}|${lang}`) return;
+    const smart = pluginManager.isEnabled('smart-lyrics');
+    if (lastHydrateKeyRef.current === `${currentTrack.id}|${lyricsProvider}|${lang}|${smart}`)
+      return;
     hydratePanels(currentTrack);
   });
+  // wyłączenie Smart Lyrics ma od razu poprawić złe dopasowanie bieżącej piosenki
+  const smartLyricsOn = pluginStates['smart-lyrics'];
   useEffect(() => {
     lyricsProviderRef.current = lyricsProvider;
     rehydrateCurrent();
-  }, [lyricsProvider, lang]);
+  }, [lyricsProvider, lang, smartLyricsOn]);
 
   const presenceSyncRef = useRef({ sentAt: 0, sentPos: 0 });
   const broadcastPlayback = useCallback(() => {
@@ -3406,14 +3720,16 @@ export default function App() {
       if (target?.closest('input, textarea, [contenteditable="true"]')) return;
       e.preventDefault();
       const row = target?.closest<HTMLElement>('[data-ctx-track]');
+      const linkOn = pluginManager.isEnabled('copy-track-link');
       const onCover =
-        pluginManager.isEnabled('copy-track-link') && target?.closest('.player-view-cover-wrap');
+        (linkOn || pluginManager.isEnabled('offline-downloads')) &&
+        target?.closest('.player-view-cover-wrap, .player-mini-cover');
       const track = onCover ? currentTrackLatest.current : parseCtxTrackAttr(row?.dataset.ctxTrack);
       if (track) {
         e.stopPropagation();
         const x = Math.min(e.clientX, window.innerWidth - 230);
-        const y = Math.min(e.clientY, window.innerHeight - 260);
-        setCtxMenu({ x, y, track, at: onCover ? progressRef.current : undefined });
+        const y = Math.min(e.clientY, window.innerHeight - 300);
+        setCtxMenu({ x, y, track, at: onCover && linkOn ? progressRef.current : undefined });
       } else {
         setCtxMenu(null);
       }
@@ -3448,30 +3764,40 @@ export default function App() {
   }, [audio, pluginStates, volumeRef]);
 
   useEffect(() => {
-    let unlistenTray: (() => void) | undefined;
-    let unlistenMini: (() => void) | undefined;
-    listen<string>('zenith-tray-action', (e) => {
+    // jedna subskrypcja na życie okna: ponowne listen przy zmianie głośności dublowało akcje
+    let disposed = false;
+    const offs: (() => void)[] = [];
+    const keep = (p: Promise<() => void>) =>
+      void p.then((fn) => (disposed ? fn() : offs.push(fn))).catch(() => undefined);
+    const tray = listen<string>('zenith-tray-action', (e) => {
       const a = e.payload;
-      if (a === 'toggle-play') togglePlay();
-      else if (a === 'next') playNext();
-      else if (a === 'prev') playPrev();
+      if (a === 'toggle-play') togglePlayRef.current();
+      else if (a === 'next') playNextRef.current();
+      else if (a === 'prev') playPrevRef.current();
       else hotkeyActionRef.current?.(a);
-    }).then((fn) => {
-      unlistenTray = fn;
     });
-    listen<string>('zenith-mini-action', (e) => {
+    const mini = listen<string>('zenith-mini-action', (e) => {
       const a = e.payload;
-      if (a === 'toggle-play') togglePlay();
-      else if (a === 'next') playNext();
-      else if (a === 'prev') playPrev();
-    }).then((fn) => {
-      unlistenMini = fn;
+      if (a === 'toggle-play') togglePlayRef.current();
+      else if (a === 'next') playNextRef.current();
+      else if (a === 'prev') playPrevRef.current();
+      else if (a === 'like') toggleSaveRef.current();
+      else if (a.startsWith('seek:')) {
+        const t = Number(a.slice(5));
+        if (Number.isFinite(t) && t >= 0) seekToRef.current(t);
+      }
     });
+    keep(tray);
+    keep(mini);
+    // Rust trzyma akcje z czasu odbudowy okna, dopóki nie wie, że nasłuchy już stoją
+    void Promise.all([tray, mini])
+      .then(() => invoke('ui_ready'))
+      .catch(() => undefined);
     return () => {
-      unlistenTray?.();
-      unlistenMini?.();
+      disposed = true;
+      offs.forEach((fn) => fn());
     };
-  }, [togglePlay, playNext, playPrev]);
+  }, [togglePlayRef, playNextRef, playPrevRef, toggleSaveRef, seekToRef]);
 
   useEffect(() => {
     registerRoomStatusHandler(() => setRoomSyncTick((n) => n + 1));
@@ -3543,7 +3869,10 @@ export default function App() {
     pushRemoteLyrics(currentTrack?.id ?? null, synced, lyrics?.text);
   }, [remoteEnabled, lyrics, currentTrack?.id]);
   useEffect(() => {
-    if (remoteEnabled) remoteSnapRef.current();
+    if (!remoteEnabled) return;
+    // przeciąganie głośności zmienia stan co klatkę, a migawka niesie do 300 utworów kolejki
+    const id = window.setTimeout(() => remoteSnapRef.current(), 120);
+    return () => window.clearTimeout(id);
   }, [
     remoteEnabled,
     currentTrack,
@@ -3622,9 +3951,12 @@ export default function App() {
         case 'loop':
           cycleLoopRef.current();
           break;
-        case 'jump':
-          void playByIndexRef.current?.(c.index);
+        case 'jump': {
+          const q = queueRef.current;
+          const i = c.id && q[c.index]?.id !== c.id ? q.findIndex((t) => t.id === c.id) : c.index;
+          if (i >= 0) void playByIndexRef.current?.(i);
           break;
+        }
         case 'sleep':
           if (c.minutes > 0) {
             setSleepTimerMinutes(c.minutes);
@@ -3675,7 +4007,8 @@ export default function App() {
         if (!cancelled) remoteSnapRef.current();
       })
       .catch((e) => {
-        pushToast(`${translations[langRef.current].remoteError}: ${String(e)}`, 'error');
+        const tr = translations[langRef.current];
+        pushToast(`${tr.remoteError}: ${errorText(tr, e)}`, 'error');
       });
     return () => {
       cancelled = true;
@@ -3858,7 +4191,10 @@ export default function App() {
       const idx = synced?.length ? getActiveLyricIndex(synced, t, lyricsSyncOffsetRef.current) : -1;
       if (idx !== activeLyricLineRef.current) {
         activeLyricLineRef.current = idx;
-        if (activeTabRef.current === 'player' || overlayPluginsOnRef.current) {
+        if (
+          !document.hidden &&
+          (activeTabRef.current === 'player' || overlayPluginsOnRef.current)
+        ) {
           setActiveLyricLine(idx);
         }
         if (overlayPluginsOnRef.current) {
@@ -3908,7 +4244,8 @@ export default function App() {
       const visible =
         !document.hidden && (activeTabRef.current === 'player' || overlayPluginsOnRef.current);
       if (!visible) {
-        timer = window.setTimeout(tick, 400);
+        // ukryte okno: linię i nakładki prowadzi timeupdate, a powrót budzi visibilitychange
+        if (!document.hidden) timer = window.setTimeout(tick, 400);
         return;
       }
       const rate = audio.playbackRate > 0 ? audio.playbackRate : 1;
@@ -3930,19 +4267,26 @@ export default function App() {
       window.clearTimeout(timer);
       tick();
     };
+    const onVisible = () => {
+      if (!document.hidden) kick();
+    };
     audio.addEventListener('seeked', kick);
     audio.addEventListener('ratechange', kick);
+    document.addEventListener('visibilitychange', onVisible);
     schedule();
     return () => {
       audio.removeEventListener('seeked', kick);
       audio.removeEventListener('ratechange', kick);
+      document.removeEventListener('visibilitychange', onVisible);
       cancelAnimationFrame(raf);
       window.clearTimeout(timer);
     };
   }, [isPlaying, lyrics, audio, activeTabRef, lyricsRef]);
 
   useEffect(() => {
-    const overlayOn = pluginStates['lyrics-overlay'] || pluginStates['second-screen-lyrics'];
+    setMiniLyricsTarget(miniLyricsActive);
+    const overlayOn =
+      pluginStates['lyrics-overlay'] || pluginStates['second-screen-lyrics'] || miniLyricsActive;
     if (!overlayOn || !currentTrack?.id) return;
     const m = overlayMetaRef.current;
     const lyr = lyricsRef.current;
@@ -3960,7 +4304,7 @@ export default function App() {
       },
       { secondScreen: secondScreenLyricsRef.current, force: true }
     );
-  }, [isPlaying, pluginStates, currentTrack?.id, lyricsRef]);
+  }, [isPlaying, pluginStates, currentTrack?.id, lyricsRef, miniLyricsActive]);
 
   useEffect(() => {
     if (!currentTrack) return;
@@ -3976,7 +4320,8 @@ export default function App() {
     meta.syncedLen = syncedLen;
     meta.textLen = textLen;
 
-    const overlayOn = pluginStates['lyrics-overlay'] || pluginStates['second-screen-lyrics'];
+    const overlayOn =
+      pluginStates['lyrics-overlay'] || pluginStates['second-screen-lyrics'] || miniLyricsActive;
     if (overlayOn && changed) {
       pushLyricsOverlay(
         {
@@ -3995,6 +4340,7 @@ export default function App() {
     }
     if (pluginStates['mini-player'] && changed) {
       pushMiniPlayerState({
+        liked: isSavedRef.current,
         title: currentTrack.title,
         artist: currentTrack.artist,
         trackId: currentTrack.id,
@@ -4004,10 +4350,20 @@ export default function App() {
         isPlaying: isPlayingRef.current,
       });
     }
-  }, [pluginStates, currentTrack, lyrics, isPlaying, durationRef, isPlayingRef]);
+  }, [
+    pluginStates,
+    currentTrack,
+    lyrics,
+    isPlaying,
+    durationRef,
+    isPlayingRef,
+    isSavedRef,
+    miniLyricsActive,
+  ]);
 
   useEffect(() => {
-    const overlayOn = pluginStates['lyrics-overlay'] || pluginStates['second-screen-lyrics'];
+    const overlayOn =
+      pluginStates['lyrics-overlay'] || pluginStates['second-screen-lyrics'] || miniLyricsActive;
     overlayPluginsOnRef.current = overlayOn;
     secondScreenLyricsRef.current = Boolean(pluginStates['second-screen-lyrics']);
     const miniOn = pluginStates['mini-player'];
@@ -4018,6 +4374,7 @@ export default function App() {
       if (!track) return;
       const m = overlayMetaRef.current;
       pushMiniPlayerState({
+        liked: isSavedRef.current,
         title: m.title,
         artist: m.artist,
         coverUrl: m.coverUrl,
@@ -4028,6 +4385,7 @@ export default function App() {
         rate: audio.playbackRate,
       });
     };
+    send();
     const iv = setInterval(send, MINI_PLAYER_SYNC_MS);
     const evs = ['play', 'playing', 'pause', 'seeked', 'ratechange'] as const;
     evs.forEach((ev) => audio.addEventListener(ev, send));
@@ -4035,7 +4393,7 @@ export default function App() {
       clearInterval(iv);
       evs.forEach((ev) => audio.removeEventListener(ev, send));
     };
-  }, [pluginStates, audio, currentTrackIdRef, durationRef]);
+  }, [pluginStates, audio, currentTrackIdRef, durationRef, isSaved, isSavedRef, miniLyricsActive]);
 
   useEffect(() => {
     const pushOverlayNow = () => {
@@ -4061,6 +4419,7 @@ export default function App() {
       if (!currentTrackIdRef.current) return;
       const m = overlayMetaRef.current;
       void pushMiniPlayerState({
+        liked: isSavedRef.current,
         title: m.title,
         artist: m.artist,
         coverUrl: m.coverUrl,
@@ -4077,14 +4436,17 @@ export default function App() {
       else unlisteners.push(fn);
     };
     listen('zenith-overlay-ready', pushOverlayNow).then(keep);
-    listen('zenith-mini-ready', pushMiniNow).then(keep);
+    listen('zenith-mini-ready', () => {
+      pushMiniNow();
+      pushOverlayNow();
+    }).then(keep);
     window.addEventListener(OVERLAY_SETTINGS_EVENT, pushOverlayNow);
     return () => {
       disposed = true;
       unlisteners.forEach((fn) => fn());
       window.removeEventListener(OVERLAY_SETTINGS_EVENT, pushOverlayNow);
     };
-  }, [currentTrackIdRef, durationRef, isPlayingRef, lyricsRef]);
+  }, [currentTrackIdRef, durationRef, isPlayingRef, isSavedRef, lyricsRef]);
 
   const handleShareCard = useCallback(async () => {
     if (!currentTrack) return;
@@ -4339,6 +4701,11 @@ export default function App() {
             <div
               className={`nav-item back-btn${activeTab === 'player' ? '' : ' is-placeholder'}`}
               aria-hidden={activeTab !== 'player'}
+              role="button"
+              tabIndex={activeTab === 'player' ? 0 : -1}
+              aria-label={t.back}
+              title={t.back}
+              onKeyDown={clickOnKey}
               onClick={() => {
                 if (activeTab === 'player') leavePlayer();
               }}
@@ -4348,6 +4715,11 @@ export default function App() {
             </div>
             <div
               className={`nav-item ${activeTab === 'home' ? 'active' : ''}`}
+              role="button"
+              tabIndex={0}
+              aria-label={t.home}
+              title={t.home}
+              onKeyDown={clickOnKey}
               onClick={() => loadHome()}
               data-tour="home"
             >
@@ -4356,6 +4728,11 @@ export default function App() {
             </div>
             <div
               className={`nav-item ${activeTab === 'explore' ? 'active' : ''}`}
+              role="button"
+              tabIndex={0}
+              aria-label={t.explore}
+              title={t.explore}
+              onKeyDown={clickOnKey}
               onClick={() => loadExplore()}
             >
               <Compass size={22} />
@@ -4363,6 +4740,11 @@ export default function App() {
             </div>
             <div
               className={`nav-item ${activeTab === 'library' ? 'active' : ''}`}
+              role="button"
+              tabIndex={0}
+              aria-label={t.library}
+              title={t.library}
+              onKeyDown={clickOnKey}
               onClick={() => navigateTo('library')}
               data-tour="library"
             >
@@ -4373,13 +4755,26 @@ export default function App() {
           <div className="playlists-section">
             <span className="section-title">{t.playlistsTitle}</span>
             {libAuthed && (
-              <div className="nav-item playlist-link pm-open-link" onClick={() => setPmOpen(true)}>
+              <div
+                className="nav-item playlist-link pm-open-link"
+                role="button"
+                tabIndex={0}
+                aria-label={t.pmOpen}
+                title={t.pmOpen}
+                onKeyDown={clickOnKey}
+                onClick={() => setPmOpen(true)}
+              >
                 <ListMusic size={18} />
                 <span>{t.pmOpen}</span>
               </div>
             )}
             <div
               className={`nav-item playlist-link ${activeTab === 'mood' && activeMood === FAVORITES_ID ? 'active' : ''}`}
+              role="button"
+              tabIndex={0}
+              aria-label={t.favs}
+              title={t.favs}
+              onKeyDown={clickOnKey}
               onClick={openFavorites}
             >
               <ListMusic size={18} />
@@ -4387,6 +4782,11 @@ export default function App() {
             </div>
             <div
               className={`nav-item playlist-link ${activeTab === 'mood' && activeMood === 'workout' ? 'active' : ''}`}
+              role="button"
+              tabIndex={0}
+              aria-label={t.workout}
+              title={t.workout}
+              onKeyDown={clickOnKey}
               onClick={() => openMoodById('workout')}
             >
               <ListMusic size={18} />
@@ -4394,6 +4794,11 @@ export default function App() {
             </div>
             <div
               className={`nav-item playlist-link ${activeTab === 'mood' && activeMood === 'focus' ? 'active' : ''}`}
+              role="button"
+              tabIndex={0}
+              aria-label={t.nightCode}
+              title={t.nightCode}
+              onKeyDown={clickOnKey}
               onClick={() => openMoodById('focus')}
             >
               <ListMusic size={18} />
@@ -4406,6 +4811,9 @@ export default function App() {
                   className={`nav-item playlist-link user-playlist-link${
                     activeTab === 'mood' && activeMood === browseMoodId(pl.id) ? ' active' : ''
                   }`}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={clickOnKey}
                   onClick={() => {
                     if (sidebarClickPlan(pl).kind === 'browse-page') {
                       void openCollectionPage(pl);
@@ -4468,6 +4876,10 @@ export default function App() {
                     <div key={f.id} className="playlist-folder">
                       <div
                         className="nav-item playlist-link user-playlist-link playlist-folder-head"
+                        role="button"
+                        tabIndex={0}
+                        aria-expanded={!f.collapsed}
+                        onKeyDown={clickOnKey}
                         onClick={() => updateFolders(toggleFolder(plFolders, f.id))}
                         title={f.name}
                       >
@@ -4512,6 +4924,8 @@ export default function App() {
               className="nav-item settings-link"
               data-tour="plugins"
               data-testid="open-plugins"
+              aria-label={t.plugins}
+              title={t.plugins}
               onPointerDown={(e) => {
                 if (e.button !== 0) return;
                 setIsSettingsOpen(false);
@@ -4529,6 +4943,8 @@ export default function App() {
               type="button"
               className="nav-item settings-link"
               data-testid="open-settings"
+              aria-label={t.settings}
+              title={t.settings}
               onPointerDown={(e) => {
                 if (e.button !== 0) return;
                 setIsPluginsOpen(false);
@@ -4756,11 +5172,18 @@ export default function App() {
                           ) : lyrics?.synced && lyrics.synced.length > 0 ? (
                             <PlayerLyricsRail
                               synced={lyrics.synced}
-                              onLineClick={seekTo}
+                              onLineClick={(t) =>
+                                seekTo(Math.max(0, t - lyricsSyncOffsetRef.current / 1000))
+                              }
                               getProgress={getLyricProgress}
+                              translateTo={lang}
                             />
                           ) : lyrics?.text ? (
-                            lyrics.text
+                            <PlainLyrics
+                              text={lyrics.text}
+                              translateTo={lang}
+                              className="lyrics-plain"
+                            />
                           ) : (
                             <div className="lyrics-failures">
                               <div className="lyrics-failures-title">{t.lyricsNotAvailable}</div>
@@ -5119,8 +5542,12 @@ export default function App() {
                     {...coverAttrs(currentTrack, 'thumb')}
                   />
                   <div className="player-mini-info">
-                    <span className="player-title">{currentTrack.title}</span>
-                    <span className="player-artist">{currentTrack.artist}</span>
+                    <span className="player-title" title={currentTrack.title}>
+                      {currentTrack.title}
+                    </span>
+                    <span className="player-artist" title={currentTrack.artist}>
+                      {currentTrack.artist}
+                    </span>
                   </div>
                 </>
               )}
@@ -5128,24 +5555,29 @@ export default function App() {
 
             <div className="player-core-controls">
               <div className="playback-buttons-group">
-                <Shuffle
-                  size={18}
+                <button
+                  type="button"
                   className={`control-icon-btn pb-mode-btn ${shuffleOn ? 'active' : ''}`}
                   aria-label={t.shuffle}
+                  aria-pressed={shuffleOn}
+                  title={t.shuffle}
                   onClick={toggleShuffle}
-                />
-                <SkipBack
-                  size={22}
+                >
+                  <Shuffle size={18} />
+                </button>
+                <button
+                  type="button"
                   className="control-icon-btn"
                   aria-label={t.previousTrack}
+                  title={t.previousTrack}
                   onClick={playPrev}
                 >
-                  <title>{t.previousTrack}</title>
-                </SkipBack>
-                <div
+                  <SkipBack size={22} />
+                </button>
+                <button
+                  type="button"
                   className="main-play-pause-circle"
                   onClick={togglePlay}
-                  role="button"
                   aria-label={isPlaying ? t.pause : t.play}
                   title={isPlaying ? t.pause : t.play}
                 >
@@ -5156,36 +5588,47 @@ export default function App() {
                   ) : (
                     <Play size={24} fill="currentColor" />
                   )}
-                </div>
-                <SkipForward
-                  size={22}
+                </button>
+                <button
+                  type="button"
                   className="control-icon-btn"
                   aria-label={t.nextTrack}
+                  title={t.nextTrack}
                   onClick={playNext}
                 >
-                  <title>{t.nextTrack}</title>
-                </SkipForward>
-                {loopMode === 'one' ? (
-                  <Repeat1
-                    size={18}
-                    className="control-icon-btn pb-mode-btn active"
-                    aria-label={t.loopOne}
-                    onClick={cycleLoop}
-                  />
-                ) : (
-                  <Repeat
-                    size={18}
-                    className={`control-icon-btn pb-mode-btn ${loopMode === 'all' ? 'active' : ''}`}
-                    aria-label={loopMode === 'all' ? t.loopAll : t.loop}
-                    onClick={cycleLoop}
-                  />
-                )}
+                  <SkipForward size={22} />
+                </button>
+                <button
+                  type="button"
+                  className={`control-icon-btn pb-mode-btn ${loopMode === 'off' ? '' : 'active'}`}
+                  aria-label={
+                    loopMode === 'one' ? t.loopOne : loopMode === 'all' ? t.loopAll : t.loop
+                  }
+                  aria-pressed={loopMode !== 'off'}
+                  title={loopMode === 'one' ? t.loopOne : loopMode === 'all' ? t.loopAll : t.loop}
+                  onClick={cycleLoop}
+                >
+                  {loopMode === 'one' ? <Repeat1 size={18} /> : <Repeat size={18} />}
+                </button>
               </div>
               <div className={`progress-bar-wrapper${progressScrubbing ? ' scrubbing' : ''}`}>
                 <span ref={progressTimeElRef} className="progress-time-text" />
                 <div
                   ref={progressTrackRef}
                   className="progress-bar-track"
+                  role="slider"
+                  tabIndex={duration > 0 ? 0 : -1}
+                  aria-label={t.seekLabel}
+                  aria-valuemin={0}
+                  aria-valuemax={Math.round(duration)}
+                  aria-valuenow={0}
+                  onKeyDown={(e) => {
+                    const max = Math.max(0, duration - 0.5);
+                    const next = sliderKeyValue(e.key, progressRef.current, 5, max);
+                    if (next === null || !duration) return;
+                    e.preventDefault();
+                    seekTo(next);
+                  }}
                   onPointerDown={onProgressPointerDown}
                   onPointerMove={onProgressPointerMove}
                   onPointerUp={onProgressPointerUp}
@@ -5296,29 +5739,45 @@ export default function App() {
                 <Mic2 size={20} />
               </button>
               <div className="volume-control-block" ref={volumeBlockRef} data-testid="volume-block">
-                {isMuted || volume === 0 ? (
-                  <VolumeX
-                    size={20}
-                    className="extra-icon-btn volume-muted-icon"
-                    aria-label={t.unmute}
-                    onClick={toggleMute}
-                  />
-                ) : volume < 0.5 ? (
-                  <Volume1
-                    size={20}
-                    className="extra-icon-btn"
-                    aria-label={t.mute}
-                    onClick={toggleMute}
-                  />
-                ) : (
-                  <Volume2
-                    size={20}
-                    className="extra-icon-btn"
-                    aria-label={t.mute}
-                    onClick={toggleMute}
-                  />
-                )}
-                <div className="volume-bar-track" onClick={handleVolumeClick}>
+                <button
+                  type="button"
+                  className={`extra-icon-btn${isMuted || volume === 0 ? ' volume-muted-icon' : ''}`}
+                  aria-label={isMuted || volume === 0 ? t.unmute : t.mute}
+                  title={isMuted || volume === 0 ? t.unmute : t.mute}
+                  onClick={toggleMute}
+                >
+                  {isMuted || volume === 0 ? (
+                    <VolumeX size={20} />
+                  ) : volume < 0.5 ? (
+                    <Volume1 size={20} />
+                  ) : (
+                    <Volume2 size={20} />
+                  )}
+                </button>
+                <div
+                  className="volume-bar-track"
+                  role="slider"
+                  tabIndex={0}
+                  aria-label={t.volume}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={isMuted ? 0 : Math.round(volume * 100)}
+                  aria-valuetext={`${isMuted ? 0 : Math.round(volume * 100)}%`}
+                  onPointerDown={(e) => {
+                    if (e.button !== 0) return;
+                    e.currentTarget.setPointerCapture(e.pointerId);
+                    handleVolumeClick(e);
+                  }}
+                  onPointerMove={(e) => {
+                    if (e.currentTarget.hasPointerCapture(e.pointerId)) handleVolumeClick(e);
+                  }}
+                  onKeyDown={(e) => {
+                    const next = sliderKeyValue(e.key, isMuted ? 0 : volume, 0.05, 1);
+                    if (next === null) return;
+                    e.preventDefault();
+                    setVolumeTo(Math.round(next * 100) / 100);
+                  }}
+                >
                   <div
                     className={`volume-bar-fill ${isMuted ? 'muted' : ''}`}
                     style={{ width: `${isMuted ? 0 : volume * 100}%` }}
@@ -5371,7 +5830,8 @@ export default function App() {
                 setIsPlaying(false);
                 setBuffering(false);
               } else if (wasCurrent && next[newIndex]) {
-                void loadTrack(next[newIndex], isPlayingRef.current);
+                // usunięty był ostatni: poprzedni zostaje wybrany, ale nie gra od nowa
+                void loadTrack(next[newIndex], idx < next.length && isPlayingRef.current);
               }
             }}
             onReorder={(from, to) => {
@@ -5392,6 +5852,8 @@ export default function App() {
               setQueueIndex(newIndex);
             }}
             onClearQueue={() => {
+              const before = queueRef.current;
+              const beforeIndex = queueIndexRef.current;
               const current = queueRef.current[queueIndexRef.current];
               if (current) {
                 setQueue([current]);
@@ -5403,7 +5865,19 @@ export default function App() {
                 queueRef.current = [];
                 setQueueIndex(0);
               }
-              pushToast(t.queueCleared, 'success');
+              pushToast(t.queueCleared, 'success', 6000, {
+                label: t.undo,
+                labelKey: 'undo',
+                onClick: () => {
+                  // cofamy tylko, gdy od wyczyszczenia nikt nie ruszył kolejki
+                  const now = queueRef.current;
+                  if (now.length > 1 || now[0] !== current) return;
+                  queueRef.current = before;
+                  queueIndexRef.current = beforeIndex;
+                  setQueue(before);
+                  setQueueIndex(beforeIndex);
+                },
+              });
             }}
           />
         </div>
@@ -5414,32 +5888,47 @@ export default function App() {
           <div className="glass-modal-container" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h2>{t.generalSettings}</h2>
-              <X size={26} className="modal-close-icon" onClick={() => setIsSettingsOpen(false)} />
+              <button
+                type="button"
+                className="modal-close-icon"
+                aria-label={t.winClose}
+                title={t.winClose}
+                onClick={() => setIsSettingsOpen(false)}
+              >
+                <X size={26} />
+              </button>
             </div>
             <div className="modal-body">
               <div className="settings-row-item settings-toggle-row">
                 <div className="settings-account-info">
-                  <span className="setting-label">{t.offlineDownloads}</span>
+                  <span className="setting-label" id="set-offline-label">
+                    {t.offlineDownloads}
+                  </span>
                   <span className="plugin-desc">{t.offlineDownloadsDesc}</span>
                 </div>
                 <button
                   type="button"
                   className={`lang-option-btn remember-login-toggle${pluginStates['offline-downloads'] ? ' active' : ''}`}
                   aria-pressed={Boolean(pluginStates['offline-downloads'])}
+                  aria-labelledby="set-offline-label"
                   data-testid="offline-downloads-toggle"
                   onClick={() => togglePlugin('offline-downloads')}
                 >
-                  {pluginStates['offline-downloads'] ? t.pluginEnabled : t.pluginDisabled}
+                  {pluginStates['offline-downloads'] ? t.toggleOn : t.toggleOff}
                 </button>
               </div>
               <div className="settings-row-item settings-toggle-row">
                 <div className="settings-account-info">
-                  <span className="setting-label">{t.rememberLogin}</span>
+                  <span className="setting-label" id="set-remember-label">
+                    {t.rememberLogin}
+                  </span>
                   <span className="plugin-desc">{t.rememberLoginDesc}</span>
                 </div>
                 <button
                   type="button"
                   className={`lang-option-btn remember-login-toggle${rememberLogin ? ' active' : ''}`}
+                  aria-pressed={rememberLogin}
+                  aria-labelledby="set-remember-label"
                   onClick={async () => {
                     const next = !rememberLogin;
                     setRememberLoginState(next);
@@ -5451,21 +5940,58 @@ export default function App() {
                     }
                   }}
                 >
-                  {rememberLogin ? t.pluginEnabled : t.pluginDisabled}
+                  {rememberLogin ? t.toggleOn : t.toggleOff}
                 </button>
               </div>
               <div className="settings-row-item settings-toggle-row">
                 <div className="settings-account-info">
-                  <span className="setting-label">{t.lightLyrics}</span>
+                  <span className="setting-label" id="set-light-lyrics-label">
+                    {t.lightLyrics}
+                  </span>
                   <span className="plugin-desc">{t.lightLyricsDesc}</span>
                 </div>
                 <button
                   type="button"
                   className={`lang-option-btn remember-login-toggle${lightLyrics ? ' active' : ''}`}
                   aria-pressed={lightLyrics}
+                  aria-labelledby="set-light-lyrics-label"
                   onClick={() => setLightLyrics(!lightLyrics)}
                 >
-                  {lightLyrics ? t.pluginEnabled : t.pluginDisabled}
+                  {lightLyrics ? t.toggleOn : t.toggleOff}
+                </button>
+              </div>
+              <div className="settings-row-item settings-toggle-row">
+                <div className="settings-account-info">
+                  <span className="setting-label" id="set-romanize-label">
+                    {t.lyricsRomanize}
+                  </span>
+                  <span className="plugin-desc">{t.lyricsRomanizeDesc}</span>
+                </div>
+                <button
+                  type="button"
+                  className={`lang-option-btn remember-login-toggle${romanize ? ' active' : ''}`}
+                  aria-pressed={romanize}
+                  aria-labelledby="set-romanize-label"
+                  onClick={() => romanizeLyrics.set(!romanize)}
+                >
+                  {romanize ? t.toggleOn : t.toggleOff}
+                </button>
+              </div>
+              <div className="settings-row-item settings-toggle-row">
+                <div className="settings-account-info">
+                  <span className="setting-label" id="set-translate-label">
+                    {t.lyricsTranslate}
+                  </span>
+                  <span className="plugin-desc">{t.lyricsTranslateDesc}</span>
+                </div>
+                <button
+                  type="button"
+                  className={`lang-option-btn remember-login-toggle${translateLyricsOn ? ' active' : ''}`}
+                  aria-pressed={translateLyricsOn}
+                  aria-labelledby="set-translate-label"
+                  onClick={() => translateLyrics.set(!translateLyricsOn)}
+                >
+                  {translateLyricsOn ? t.toggleOn : t.toggleOff}
                 </button>
               </div>
               <div className="settings-row-item settings-toggle-row">
@@ -5678,6 +6204,23 @@ export default function App() {
                       : t.ctxCopyLinkAt.replace('{time}', formatTime(sec))}
                   </button>
                 ))}
+              {pluginStates['offline-downloads'] && isVideoTrackId(ctxMenu.track.id) && (
+                <button
+                  role="menuitem"
+                  data-testid="ctx-download"
+                  onClick={() => {
+                    const track = ctxMenu.track;
+                    setCtxMenu(null);
+                    pushToast(t.dlStarted.replace('{title}', track.title), 'info');
+                    void downloadTrack(track, track.durationSec ?? 0).then(
+                      () => pushToast(t.dlSaved, 'success'),
+                      (e) => pushToast(t.dlFailed.replace('{err}', errorText(t, e)), 'error')
+                    );
+                  }}
+                >
+                  {t.ctxDownload}
+                </button>
+              )}
               <div className="ctx-menu-label">{t.ctxAddToPlaylist}</div>
               {userPlaylists.filter((p) => isEditablePlaylist(p.id)).length === 0 ? (
                 <div className="ctx-menu-empty">{t.ctxNoPlaylists}</div>
@@ -5743,7 +6286,15 @@ export default function App() {
           <div className="glass-modal-container" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h2>{plEdit.mode === 'rename' ? t.renamePlaylist : t.deletePlaylist}</h2>
-              <X size={26} className="modal-close-icon" onClick={() => setPlEdit(null)} />
+              <button
+                type="button"
+                className="modal-close-icon"
+                aria-label={t.winClose}
+                title={t.winClose}
+                onClick={() => setPlEdit(null)}
+              >
+                <X size={26} />
+              </button>
             </div>
             <div className="modal-body np-modal-body">
               {plEdit.mode === 'rename' ? (
@@ -5794,7 +6345,15 @@ export default function App() {
           <div className="glass-modal-container" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h2>{fdEdit.mode === 'rename' ? t.renameFolder : t.moveToFolder}</h2>
-              <X size={26} className="modal-close-icon" onClick={() => setFdEdit(null)} />
+              <button
+                type="button"
+                className="modal-close-icon"
+                aria-label={t.winClose}
+                title={t.winClose}
+                onClick={() => setFdEdit(null)}
+              >
+                <X size={26} />
+              </button>
             </div>
             <div className="modal-body np-modal-body">
               {fdEdit.mode === 'move' && (
@@ -5854,7 +6413,15 @@ export default function App() {
           <div className="glass-modal-container" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h2>{t.newPlaylist}</h2>
-              <X size={26} className="modal-close-icon" onClick={() => setNpOpen(false)} />
+              <button
+                type="button"
+                className="modal-close-icon"
+                aria-label={t.winClose}
+                title={t.winClose}
+                onClick={() => setNpOpen(false)}
+              >
+                <X size={26} />
+              </button>
             </div>
             <div className="modal-body np-modal-body">
               <label className="np-field">
