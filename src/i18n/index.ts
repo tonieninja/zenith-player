@@ -136,11 +136,13 @@ const en = {
   plugins: 'Plugins',
   pluginEnabled: 'Enabled',
   pluginDisabled: 'Disabled',
+  toggleOn: 'On',
+  toggleOff: 'Off',
   discordAppId: 'Discord app ID',
   discordAppIdDesc: 'Optional. Your own application ID from the Discord Developer Portal.',
   related: 'Related',
-  save: 'Save',
-  saved: 'Saved ✓',
+  save: 'Add to Favorites',
+  saved: 'In Favorites ✓',
   likeTrack: 'Like',
   dislikeTrack: 'Dislike',
   dislikeSyncFailed: "YouTube Music didn't accept the dislike",
@@ -185,6 +187,8 @@ const en = {
   loopOne: 'Repeat one',
   mute: 'Mute',
   unmute: 'Unmute',
+  volume: 'Volume',
+  seekLabel: 'Seek',
   crossfadeDuration: 'Crossfade duration',
   crossfadeDurationDesc: 'How long the ending track and the next one overlap.',
   sleepTimerDuration: 'Sleep timer',
@@ -277,7 +281,26 @@ const en = {
   dlNothing: 'Play something first',
   dlBusy: 'Downloading... {pct}',
   dlFailed: "Couldn't download: {err}",
+  errAlreadyDownloading: 'it is already downloading',
+  errAlreadyOffline: 'it is already saved',
+  errNoStream: 'no stream for this track',
+  errHttp: 'the server answered {code}',
+  errTimeout: 'the connection timed out',
+  errNetwork: 'no connection',
+  errPortBusy: 'the port is taken by another program',
+  errNotConnected: 'not connected',
+  errCancelled: 'cancelled',
   dlSaved: 'Saved for offline',
+  dlStarted: 'Downloading {title}…',
+  ctxDownload: 'Download for offline',
+  miniLyrics: 'Synced lyrics',
+  miniLyricsDesc:
+    'Shows the current and next line with the karaoke fill under the controls. Same lyrics as the main window.',
+  miniShowPlay: 'Play / pause button',
+  miniShowSeek: 'Timeline (click or drag to seek)',
+  miniShowLike: 'Like button',
+  miniShowPrev: 'Previous button',
+  miniShowNext: 'Next button',
   dlEmpty: 'Nothing downloaded yet.',
   dlTotal: '{n} tracks, {size}',
   dlTotalOne: '1 track, {size}',
@@ -288,7 +311,7 @@ const en = {
   remoteFwMissing:
     "Windows Firewall is blocking phones from reaching Zenith. Allow it once and you're all set.",
   remoteFwPublic:
-    'Windows treats this network as Public, so the firewall blocks your phone. Allowing Zenith only lets in devices on your local network.',
+    "Windows treats this network as Public, so the firewall blocks your phone. If it's your home network, set it to Private in Windows settings. Allow Zenith here only on a network you trust: in a café or hotel anyone on the same Wi-Fi could reach the remote.",
   remoteFwFix: 'Allow in firewall',
   remoteFwBusy: 'Waiting for Windows...',
   pluginOnCount: '{on} of {n} on',
@@ -315,7 +338,8 @@ const en = {
   remotePaired: 'Paired devices',
   remoteForget: 'Forget all',
   remotePin: 'PIN (optional)',
-  remotePinDesc: 'Asked once per device. Leave it blank to skip the PIN.',
+  remotePinDesc:
+    'Asked once per device when the one-time QR link is off. Leave it blank to skip the PIN.',
   remoteClients: 'Connected devices',
   remoteStarting: 'Starting…',
   remoteError: "Couldn't start the server",
@@ -377,6 +401,7 @@ const en = {
   clearQueue: 'Clear',
   removeFromQueue: 'Remove',
   queueCleared: 'Queue cleared',
+  undo: 'Undo',
   streamUnavailable: "Can't play this one, skipping",
   streamBlockedNetwork:
     'This network blocks or filters YouTube (school or work filter, proxy or firewall). Try a different network.',
@@ -479,6 +504,12 @@ const en = {
   lightLyrics: 'Light lyrics mode',
   lightLyricsDesc:
     'Lyrics scroll and the current line gets highlighted, minus the karaoke animation. Easier on the CPU.',
+  lyricsRomanize: 'Romanized lyrics',
+  lyricsRomanizeDesc:
+    'Adds a Latin-letter line under Japanese, Korean, Chinese and Cyrillic lyrics and fills it with the karaoke. Done on your computer; Japanese downloads a 12 MB dictionary once.',
+  lyricsTranslate: 'Translated lyrics',
+  lyricsTranslateDesc:
+    'Adds a translation into the app language under each line in another language. Lines go to Google Translate.',
   updateNow: 'Update',
   updateDownloading: 'Downloading update…',
   updateInstallFailed: 'Update failed. You can download it manually.',
@@ -488,6 +519,7 @@ const en = {
   roomJoinFailed: "Couldn't join. Check the code and your network.",
   removedFromFavs: 'Removed from Favorites',
   addedToFavs: 'Added to Favorites',
+  favsFull: 'Added. Favorites keep the newest 2000 songs, so the oldest one dropped off',
   favsEmptyTitle: 'No favorites yet',
   favsEmptyDesc:
     "Save a track from the player, or like it on YouTube Music. Your account's likes show up here when you're signed in. Saves on this device stick around even if you're not.",
@@ -683,19 +715,21 @@ const pl: Record<keyof typeof en, string> = {
   nowPlaying: 'Teraz gra',
   playingFrom: 'Leci z',
   upNext: 'Następne',
-  upNextEmpty: 'Kolejka jest pusta. Jak lodówka w piątek wieczorem',
+  upNextEmpty: 'Kolejka jest pusta',
   lyrics: 'Tekst',
-  loadingLyrics: 'Ładuję tekst... wokalista jeszcze się rozśpiewuje',
+  loadingLyrics: 'Ładuję tekst...',
   lyricsNotAvailable: 'Tekst niedostępny',
   lyricsWhyFailed: 'Co poszło nie tak u każdego dostawcy:',
   plugins: 'Wtyczki',
   pluginEnabled: 'Włączona',
   pluginDisabled: 'Wyłączona',
+  toggleOn: 'Wł.',
+  toggleOff: 'Wył.',
   discordAppId: 'ID aplikacji Discord',
   discordAppIdDesc: 'Opcjonalnie: ID twojej własnej aplikacji z portalu deweloperskiego Discord.',
   related: 'Powiązane',
-  save: 'Zapisz',
-  saved: 'Zapisane ✓',
+  save: 'Dodaj do ulubionych',
+  saved: 'W ulubionych ✓',
   likeTrack: 'Lubię to',
   dislikeTrack: 'Nie lubię',
   dislikeSyncFailed: 'YouTube Music nie przyjęło łapki w dół',
@@ -715,11 +749,10 @@ const pl: Record<keyof typeof en, string> = {
   libraryEmptyTitle: 'Zajrzyj do ulubionych',
   libraryEmptyDesc:
     'Zaloguj się, żeby zobaczyć polubione i zapisane utwory. Wszystko pojawi się tutaj.',
-  libraryNoItems:
-    'Na razie pusto jak w portfelu przed wypłatą. Polub coś w YouTube Music, a wskoczy tutaj.',
+  libraryNoItems: 'Na razie pusto. Polub coś w YouTube Music, a pojawi się tutaj.',
   signIn: 'Zaloguj się',
   checkAgain: 'Już po logowaniu, odśwież',
-  loadingLibrary: 'Ładuję bibliotekę... bibliotekarka szuka okularów',
+  loadingLibrary: 'Ładuję bibliotekę...',
   newPlaylist: 'Nowa playlista',
   npTitle: 'Tytuł',
   npDesc: 'Opis',
@@ -733,7 +766,7 @@ const pl: Record<keyof typeof en, string> = {
   npError: 'Nie udało się utworzyć playlisty. Sprawdź, czy jesteś zalogowany.',
   relatedTab: 'Powiązane',
   aboutArtist: 'O wykonawcy',
-  relatedEmpty: 'Brak powiązanych treści. Ten utwór to jedynak i nie lubi się dzielić.',
+  relatedEmpty: 'Na razie brak treści powiązanych z tym utworem.',
   loadingRelated: 'Ładuję powiązane...',
   shuffle: 'Losowo',
   loop: 'Zapętlenie',
@@ -741,9 +774,11 @@ const pl: Record<keyof typeof en, string> = {
   loopOne: 'Zapętl utwór',
   mute: 'Wycisz',
   unmute: 'Włącz dźwięk',
+  volume: 'Głośność',
+  seekLabel: 'Przewiń',
   crossfadeDuration: 'Długość przejścia',
   crossfadeDurationDesc: 'Jak długo kończący się utwór nakłada się na następny.',
-  sleepTimerDuration: 'Timer snu',
+  sleepTimerDuration: 'Wyłącznik czasowy',
   sleepTimerDurationDesc: 'Muzyka zatrzyma się po tylu minutach.',
   playbackSpeed: 'Prędkość odtwarzania',
   playbackSpeedDesc: 'Prędkość dla aktualnego silnika audio.',
@@ -782,7 +817,7 @@ const pl: Record<keyof typeof en, string> = {
   eqBassDesc:
     'Czysta półka od 90 Hz w dół. Dudnienie poniżej 22 Hz jest wycinane, żeby bas był zwarty.',
   eqP_flat: 'Płaski',
-  eqP_bass: 'Bass Boost',
+  eqP_bass: 'Wzmocnienie basu',
   eqP_treble: 'Wzmocnienie sopranów',
   eqP_vocal: 'Wokal',
   eqP_rock: 'Rock',
@@ -834,7 +869,26 @@ const pl: Record<keyof typeof en, string> = {
   dlNothing: 'Najpierw coś włącz',
   dlBusy: 'Pobieram... {pct}',
   dlFailed: 'Nie udało się pobrać: {err}',
+  errAlreadyDownloading: 'już się pobiera',
+  errAlreadyOffline: 'jest już zapisany',
+  errNoStream: 'brak strumienia dla tego utworu',
+  errHttp: 'serwer odpowiedział {code}',
+  errTimeout: 'połączenie trwało za długo',
+  errNetwork: 'brak połączenia',
+  errPortBusy: 'port jest zajęty przez inny program',
+  errNotConnected: 'brak połączenia z kontem',
+  errCancelled: 'anulowano',
   dlSaved: 'Zapisano offline',
+  dlStarted: 'Pobieram {title}…',
+  ctxDownload: 'Pobierz offline',
+  miniLyrics: 'Tekst zsynchronizowany',
+  miniLyricsDesc:
+    'Pokazuje bieżącą i następną linię z wypełnieniem karaoke pod przyciskami. Ten sam tekst co w głównym oknie.',
+  miniShowPlay: 'Przycisk odtwórz / pauza',
+  miniShowSeek: 'Pasek czasu (kliknij albo przeciągnij, żeby przewinąć)',
+  miniShowLike: 'Przycisk „Lubię to”',
+  miniShowPrev: 'Przycisk „Poprzedni”',
+  miniShowNext: 'Przycisk „Następny”',
   dlEmpty: 'Nic tu jeszcze nie ma.',
   dlTotal: '{n} utw., {size}',
   dlTotalOne: '1 utwór, {size}',
@@ -844,16 +898,16 @@ const pl: Record<keyof typeof en, string> = {
   lyricsClose: 'Ukryj tekst',
   remoteFwMissing: 'Zapora Windows nie wpuszcza telefonów do Zenith. Zezwól raz i gotowe.',
   remoteFwPublic:
-    'Windows uznaje tę sieć za publiczną i zapora blokuje telefon. Po zezwoleniu wejdą tylko urządzenia z twojej sieci lokalnej.',
+    'Windows uznaje tę sieć za publiczną i zapora blokuje telefon. Jeśli to twoja sieć domowa, ustaw ją w Windows jako prywatną. Zezwalaj tu tylko w zaufanej sieci: w kawiarni czy hotelu do pilota dostałby się każdy z tego samego Wi-Fi.',
   remoteFwFix: 'Zezwól w zaporze',
   remoteFwBusy: 'Czekam na Windows...',
   pluginOnCount: 'włączone: {on} z {n}',
   pluginNoMatch: 'Żadna wtyczka nie pasuje.',
   offlineBadge: 'Offline',
   offlineHint: 'Nie masz internetu. Konto zostaje, a pobrane kawałki grają dalej.',
-  offlineDownloads: 'Pobieranie offline',
+  offlineDownloads: 'Pobrane offline',
   offlineDownloadsDesc:
-    'Zapisuj utwory na dysku i słuchaj ich bez internetu. Pliki ogarniesz w zakładce Wtyczki → Pobieranie offline.',
+    'Zapisuj utwory na dysku i słuchaj ich bez internetu. Zarządzasz nimi w oknie Wtyczki → Pobrane offline.',
   dlPlay: 'Odtwórz',
   dlDelete: 'Usuń',
   dlClearAll: 'Usuń wszystkie pobrane',
@@ -871,7 +925,8 @@ const pl: Record<keyof typeof en, string> = {
   remotePaired: 'Sparowane urządzenia',
   remoteForget: 'Zapomnij wszystkie',
   remotePin: 'PIN (opcjonalny)',
-  remotePinDesc: 'Pytany raz na urządzenie. Zostaw puste, jeśli nie chcesz PIN-u.',
+  remotePinDesc:
+    'Pytany raz na urządzenie, gdy jednorazowy link QR jest wyłączony. Zostaw puste, jeśli nie chcesz PIN-u.',
   remoteClients: 'Połączone urządzenia',
   remoteStarting: 'Uruchamiam…',
   remoteError: 'Nie udało się uruchomić serwera',
@@ -920,7 +975,7 @@ const pl: Record<keyof typeof en, string> = {
   gaming: 'Gry',
   christmas: 'Święta',
   chill: 'Spokój',
-  featured: 'Polecane dla Ciebie',
+  featured: 'Polecane dla ciebie',
   moodsMoments: 'Nastroje i chwile',
   genres: 'Gatunki',
   more: 'Więcej',
@@ -932,6 +987,7 @@ const pl: Record<keyof typeof en, string> = {
   clearQueue: 'Wyczyść',
   removeFromQueue: 'Usuń',
   queueCleared: 'Kolejka wyczyszczona',
+  undo: 'Cofnij',
   streamUnavailable: 'Utwór niedostępny, pomijam',
   streamBlockedNetwork:
     'Ta sieć blokuje albo filtruje YouTube (filtr w szkole/pracy, proxy albo zapora). Spróbuj innej sieci.',
@@ -989,7 +1045,7 @@ const pl: Record<keyof typeof en, string> = {
     'Status na Discordzie, płynne przejścia, nakładka z tekstem, pokój słuchania i więcej.',
   tourLoginTitle: 'Logowanie',
   tourLoginDesc:
-    'Połącz konto Google, żeby mieć swoją bibliotekę. W Ustawieniach włącz „Zapamiętaj logowanie”.',
+    'Połącz konto Google, żeby mieć swoją bibliotekę. W Ustawieniach włącz „Nie wylogowuj mnie”.',
   replayOnboarding: 'Pokaż przewodnik jeszcze raz',
   replayOnboardingDesc: 'Pokaż jeszcze raz ekrany powitalne i przewodnik.',
   loginInProgress: 'Dokończ logowanie w oknie Google...',
@@ -1037,6 +1093,12 @@ const pl: Record<keyof typeof en, string> = {
   lightLyrics: 'Lekki tryb tekstu',
   lightLyricsDesc:
     'Tekst się przewija, a bieżąca linijka jest podświetlona, ale bez animacji karaoke. Mniej obciąża CPU.',
+  lyricsRomanize: 'Romanizacja tekstu',
+  lyricsRomanizeDesc:
+    'Dodaje linię alfabetem łacińskim pod tekstem japońskim, koreańskim, chińskim i cyrylicą, z wypełnieniem karaoke. Liczy się na komputerze; japoński raz pobiera słownik 12 MB.',
+  lyricsTranslate: 'Tłumaczenie tekstu',
+  lyricsTranslateDesc:
+    'Dodaje tłumaczenie na język aplikacji pod każdą linią w innym języku. Linie trafiają do Google Translate.',
   updateNow: 'Aktualizuj',
   updateDownloading: 'Pobieram aktualizację…',
   updateInstallFailed: 'Aktualizacja się nie udała. Możesz pobrać ją ręcznie.',
@@ -1046,6 +1108,7 @@ const pl: Record<keyof typeof en, string> = {
   roomJoinFailed: 'Nie udało się dołączyć. Sprawdź kod i sieć.',
   removedFromFavs: 'Usunięto z ulubionych',
   addedToFavs: 'Dodano do ulubionych',
+  favsFull: 'Dodano. Ulubione mieszczą 2000 najnowszych utworów, więc najstarszy wypadł',
   favsEmptyTitle: 'Nie masz jeszcze ulubionych',
   favsEmptyDesc:
     'Zapisz utwór w odtwarzaczu albo polub go w YouTube Music. Polubienia z konta pokażą się tu po zalogowaniu, a zapisy na tym urządzeniu zostają nawet bez logowania.',
@@ -1082,14 +1145,13 @@ const pl: Record<keyof typeof en, string> = {
   lfmErrNotConnected: 'Brak połączenia z Last.fm.',
   lfmErrNetwork: 'Nie udało się połączyć z Last.fm. Sprawdź internet.',
   lfmErrOther: 'Błąd Last.fm',
-  queueDragHint:
-    'Przeciągnij uchwyt, żeby zmienić kolejność. Działa też Alt+↑/↓. Przestawiasz utwory jak meble u babci, tylko bez wnoszenia.',
+  queueDragHint: 'Przeciągnij uchwyt, żeby zmienić kolejność. Działa też Alt+↑/↓.',
   queueDragHandle: 'Przeciągnij, żeby przestawić',
   statsTotalTime: 'Łączny czas słuchania',
   statsTrackStarts: 'Puszczone utwory',
   statsTopTracks: 'Najczęściej słuchane',
   statsReset: 'Wyzeruj statystyki',
-  historyEmpty: 'Jeszcze nic nie było odtwarzane. Cisza jak po pytaniu „kto chce do tablicy?”',
+  historyEmpty: 'Jeszcze nic nie było odtwarzane.',
   historyClear: 'Wyczyść historię',
   historyTitle: 'Historia słuchania',
   likeSyncFailed: 'Zapisano lokalnie, ale YouTube Music nie przyjęło polubienia',
@@ -1120,6 +1182,23 @@ export function streamStuckMessage(
   if (kind === 'bot') return signedIn ? t.streamBlockedBotSignedIn : t.streamBlockedBot;
   if (kind === 'component') return t.streamBlockedComponent;
   return signedIn ? t.streamUnavailableStuckSignedIn : t.streamUnavailableStuck;
+}
+
+// komunikaty z Rusta i API są po angielsku; znane przypadki tłumaczymy, resztę pokazujemy bez zmian
+export function errorText(t: typeof en, e: unknown): string {
+  const raw = String((e as Error)?.message ?? e);
+  const http = /\bhttp (\d{3})\b/i.exec(raw);
+  if (/already downloading/i.test(raw)) return t.errAlreadyDownloading;
+  if (/already offline/i.test(raw)) return t.errAlreadyOffline;
+  if (/no stream|empty download/i.test(raw)) return t.errNoStream;
+  if (/cancelled/i.test(raw)) return t.errCancelled;
+  if (/not connected/i.test(raw)) return t.errNotConnected;
+  if (/port \d+.*(10048|in use|busy)/i.test(raw)) return t.errPortBusy;
+  if (http) return t.errHttp.replace('{code}', http[1]);
+  if (/timed? ?out/i.test(raw)) return t.errTimeout;
+  if (/error sending request|dns|connection refused|network|offline/i.test(raw))
+    return t.errNetwork;
+  return raw;
 }
 
 export const translations: Record<'en' | 'pl', Record<keyof typeof en, string>> = { en, pl };
