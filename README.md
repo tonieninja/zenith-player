@@ -154,7 +154,8 @@ but that's life. I hack on this on my knees and it's just easier for me with eve
 On Linux most of the RAM with the window open is WebKit itself. Closing to the tray drops the UI
 completely, so the player alone uses a lot less. On NVIDIA under Wayland Zenith turns off NVIDIA
 explicit sync, which WebKitGTK can't start with. If the faster DMA-BUF renderer still doesn't come up,
-the next start uses the slower one by itself until the next update. `ZENITH_RENDER=gpu` skips all of
+the next start uses the slower one by itself until the next update. If WebKit crashes or stops
+responding later on, Zenith restarts on the slower one right away. `ZENITH_RENDER=gpu` skips all of
 that, and anything you set yourself wins.
 
 ## Privacy

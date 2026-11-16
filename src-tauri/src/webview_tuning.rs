@@ -1,8 +1,9 @@
 #[cfg(target_os = "linux")]
 pub fn tune(win: &tauri::WebviewWindow) {
     use webkit2gtk::{CacheModel, SettingsExt, WebContextExt, WebViewExt};
-    // tylko główna instancja: druga kończy się od razu i jej znacznik wyglądałby jak padnięty start gpu
-    if GPU_PROBE.load(std::sync::atomic::Ordering::SeqCst) {
+    // tylko główna instancja: druga kończy się od razu i jej znacznik wyglądałby jak padnięty start gpu;
+    // swap, bo okna pomocnicze nie zgłaszają ui_ready i ich znacznik zostałby do końca sesji
+    if GPU_PROBE.swap(false, std::sync::atomic::Ordering::SeqCst) {
         if let Some((probe, _)) = render_marks() {
             let _ = std::fs::write(probe, std::process::id().to_string());
         }
@@ -12,6 +13,8 @@ pub fn tune(win: &tauri::WebviewWindow) {
         Ok("document") => CacheModel::DocumentBrowser,
         _ => CacheModel::DocumentViewer,
     };
+    let app = tauri::Manager::app_handle(win).clone();
+    let watch = win.label() == "main" && GPU_LEVEL.load(std::sync::atomic::Ordering::SeqCst) < 2;
     let _ = win.with_webview(move |wv| {
         let view = wv.inner();
         if let Some(ctx) = view.context() {
@@ -25,7 +28,42 @@ pub fn tune(win: &tauri::WebviewWindow) {
             #[cfg(not(debug_assertions))]
             settings.set_enable_developer_extras(false);
         }
+        // próba z pid łapie tylko padnięty start; zawieszenie lub crash WebKita później zostawiały martwe okno
+        if watch {
+            use webkit2gtk::WebProcessTerminationReason as Why;
+            let on_crash = app.clone();
+            view.connect_web_process_terminated(move |_, why| {
+                if matches!(why, Why::Crashed | Why::ExceededMemoryLimit) {
+                    step_down_and_restart(&on_crash);
+                }
+            });
+            view.connect_is_web_process_responsive_notify(move |v| {
+                if v.is_web_process_responsive() {
+                    return;
+                }
+                let (v, app) = (v.clone(), app.clone());
+                webkit2gtk::glib::timeout_add_seconds_local_once(10, move || {
+                    let shown = tauri::Manager::get_webview_window(&app, "main")
+                        .is_some_and(|w| w.is_visible().unwrap_or(false));
+                    if shown && !v.is_web_process_responsive() {
+                        step_down_and_restart(&app);
+                    }
+                });
+            });
+        }
     });
+}
+
+// martwy pid w próbie: następny start zejdzie o poziom tą samą drogą co po padniętym starcie
+#[cfg(target_os = "linux")]
+fn step_down_and_restart(app: &tauri::AppHandle) {
+    if crate::windows::is_shutting_down() {
+        return;
+    }
+    if let Some((probe, _)) = render_marks() {
+        let _ = std::fs::write(probe, "0");
+    }
+    app.request_restart();
 }
 
 /// tauri-codegen 2.6 bierze z icon.ico pierwszy wpis (16 px) i pasek zadań go rozciąga;
@@ -74,6 +112,12 @@ pub fn early_init() {
     }
     unsafe {
         libc::mallopt(libc::M_ARENA_MAX, 2);
+        // WebKit 2.50 ze sterownikiem NVIDIA 580 gubi deskryptor na klatkę; przy miękkim limicie 1024 pada po minucie
+        let mut lim: libc::rlimit = std::mem::zeroed();
+        if libc::getrlimit(libc::RLIMIT_NOFILE, &mut lim) == 0 && lim.rlim_cur < lim.rlim_max {
+            lim.rlim_cur = lim.rlim_max.min(65536);
+            libc::setrlimit(libc::RLIMIT_NOFILE, &lim);
+        }
     }
     software_rendering_defaults();
     // bez JIT cały interfejs liczy interpreter JavaScriptCore, wielokrotnie wolniejszy; ZENITH_JIT=0 go wyłącza
@@ -107,15 +151,23 @@ fn software_rendering_defaults() {
         if std::env::var_os("WAYLAND_DISPLAY").is_some() {
             set_default("__NV_DISABLE_EXPLICIT_SYNC", "1");
         }
+        // WebKit 2.54 wgrywa okładki do atlasu przez mapowany dmabuf, co na nvidii wiesza proces strony (Explore)
+        set_default("WEBKIT_DISABLE_DMABUF_ATLAS", "1");
         // dmabuf na części sterowników nvidia nie startuje (błąd 71); FORCE_SHM rysuje dalej na gpu i tylko kopiuje
         // klatkę przez RAM, a DISABLE_DMABUF wyłącza w WebKit 2.54 całe przyspieszenie i rysuje wszystko na CPU
-        match gpu_render_level() {
+        let level = gpu_render_level();
+        GPU_LEVEL.store(level, std::sync::atomic::Ordering::SeqCst);
+        match level {
             0 => GPU_PROBE.store(true, std::sync::atomic::Ordering::SeqCst),
-            1 => {
+            // przy ekranie na zintegrowanej karcie FORCE_SHM przenosi WebKit na EGL nvidii, który potrafi się zawiesić
+            1 if nvidia_drives_display() => {
                 set_default("WEBKIT_DMABUF_RENDERER_FORCE_SHM", "1");
                 GPU_PROBE.store(true, std::sync::atomic::Ordering::SeqCst);
             }
-            _ => set_default("WEBKIT_DISABLE_DMABUF_RENDERER", "1"),
+            _ => {
+                GPU_LEVEL.store(2, std::sync::atomic::Ordering::SeqCst);
+                set_default("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+            }
         }
         return;
     }
@@ -128,6 +180,27 @@ fn software_rendering_defaults() {
 #[cfg(target_os = "linux")]
 static GPU_PROBE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
+// bez nvidii zostaje 2: tam nie ma niższego poziomu, więc nie ma po co restartować
+#[cfg(target_os = "linux")]
+static GPU_LEVEL: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(2);
+
+// laptop hybrydowy: ekran (boot_vga) na intelu/amd, nvidia tylko liczy; brak /sys zostawia dawną ścieżkę
+#[cfg(target_os = "linux")]
+fn nvidia_drives_display() -> bool {
+    std::fs::read_dir("/sys/class/drm").map_or(true, |d| {
+        let read = |p: std::path::PathBuf| std::fs::read_to_string(p).unwrap_or_default();
+        let boot: Vec<_> = d
+            .flatten()
+            .map(|e| e.path().join("device"))
+            .filter(|dev| read(dev.join("boot_vga")).trim() == "1")
+            .collect();
+        boot.is_empty()
+            || boot
+                .iter()
+                .any(|dev| read(dev.join("vendor")).trim() == "0x10de")
+    })
+}
+
 #[cfg(target_os = "linux")]
 fn render_marks() -> Option<(std::path::PathBuf, std::path::PathBuf)> {
     use std::path::PathBuf;
@@ -136,7 +209,16 @@ fn render_marks() -> Option<(std::path::PathBuf, std::path::PathBuf)> {
         .filter(|p| p.is_absolute())
         .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".local/share")))?;
     let dir = base.join("com.zenithplayer.desktop");
-    Some((dir.join("render-probe"), dir.join("render-safe")))
+    // AppImage ma własny WebKit, więc jego padnięty start nie może obniżać poziomu deb/rpm i odwrotnie
+    let tag = if std::env::var_os("APPIMAGE").is_some() {
+        "-appimage"
+    } else {
+        ""
+    };
+    Some((
+        dir.join(format!("render-probe{tag}")),
+        dir.join(format!("render-safe{tag}")),
+    ))
 }
 
 // 0 dmabuf, 1 kopia przez RAM, 2 CPU; próba zostawia znacznik z pid, który po martwym procesie oznacza padnięty start
