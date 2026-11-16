@@ -148,6 +148,12 @@ const CREDIT =
 const LABELLED = /^[^:：]{1,24}\s*[:：]\s*\S/;
 const isLabel = (text: string) =>
   LABELLED.test(text) && text.split(/[:：]/)[0].trim().split(/\s+/).length <= 4;
+const isNameList = (text: string) => {
+  const parts = text.split('/');
+  return (
+    parts.length >= 2 && parts.every((p) => /^\S+( \S+){0,3}$/.test(p.trim()) && p.trim() === p)
+  );
+};
 
 export function stripCredits(lines: LyricsLine[], title?: string): LyricsLine[] {
   const t = (title || '').trim().toLowerCase();
@@ -158,8 +164,8 @@ export function stripCredits(lines: LyricsLine[], title?: string): LyricsLine[] 
     if (i === 0 && t && l.text.toLowerCase().startsWith(t) && /\s[-–]\s/.test(l.text)) {
       return false;
     }
-    // blok opisów przed pierwszą prawdziwą linijką tekstu
-    if (head && isLabel(l.text)) return false;
+    // blok opisów przed pierwszą prawdziwą linijką tekstu, też sama lista autorów "A/B/C"
+    if (head && (isLabel(l.text) || isNameList(l.text))) return false;
     head = false;
     return true;
   });
@@ -171,14 +177,53 @@ export function base64Utf8(s: string): string {
   return new TextDecoder('utf-8').decode(bytes);
 }
 
+// pierwszy niepusty wynik wygrywa; błąd liczy się dopiero, gdy wszystkie zawiodły
+export async function firstHit<T>(tries: Array<() => Promise<T | null>>): Promise<T | null> {
+  return new Promise((resolve, reject) => {
+    let left = tries.length;
+    let error: unknown = null;
+    let failed = 0;
+    const settle = () => {
+      if (--left > 0) return;
+      if (failed === tries.length) reject(error);
+      else resolve(null);
+    };
+    for (const run of tries) {
+      run().then(
+        (hit) => {
+          if (hit) resolve(hit);
+          else settle();
+        },
+        (e) => {
+          error ??= e;
+          failed += 1;
+          settle();
+        }
+      );
+    }
+    if (!tries.length) resolve(null);
+  });
+}
+
+// serwery mają osobne źródła i pamięć; główny po timeoucie źródeł potrafi zapamiętać 404 dla piosenki
+const LYRICSPLUS_HOSTS = ['https://lyricsplus.binimum.org', 'https://lyricsplus.prjktla.my.id'];
+
 export async function getLyricsPlus(q: SourceQuery): Promise<SourceHit | null> {
-  const url = `https://lyricsplus.binimum.org/v2/lyrics/get?${qs({
+  const query = qs({
     title: q.title,
     artist: q.artist,
     album: q.album,
     duration: q.durationSec ? Math.round(q.durationSec) : undefined,
-  })}`;
-  const data = await getJson(url, 'LyricsPlus');
+  });
+  return firstHit(
+    LYRICSPLUS_HOSTS.map(
+      (host) => async () =>
+        lyricsPlusHit(await getJson(`${host}/v2/lyrics/get?${query}`, 'LyricsPlus'), q)
+    )
+  );
+}
+
+function lyricsPlusHit(data: any, q: SourceQuery): SourceHit | null {
   if (!data || !Array.isArray(data.lyrics) || !data.lyrics.length) return null;
   const meta = data.metadata || {};
   let score: number | undefined;
@@ -191,10 +236,13 @@ export async function getLyricsPlus(q: SourceQuery): Promise<SourceHit | null> {
     if (!hit) return null;
     score = hit.score;
   }
-  const lines = normalizeSynced(
-    data.lyrics
-      .map((l: any) => ({ time: Number(l?.time) / 1000, text: String(l?.text ?? '') }))
-      .filter((l: LyricsLine) => Number.isFinite(l.time))
+  const lines = stripCredits(
+    normalizeSynced(
+      data.lyrics
+        .map((l: any) => ({ time: Number(l?.time) / 1000, text: String(l?.text ?? '') }))
+        .filter((l: LyricsLine) => Number.isFinite(l.time))
+    ),
+    q.title
   );
   if (data.type === 'None' || lines.every((l) => l.time === 0)) {
     const text = lines.map((l) => l.text).join('\n');

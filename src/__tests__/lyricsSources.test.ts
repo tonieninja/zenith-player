@@ -157,7 +157,7 @@ describe('LyricsPlus', () => {
   });
 
   it('rejects a different song and treats 404 as no lyrics', async () => {
-    httpFetch.mockResolvedValueOnce(
+    httpFetch.mockResolvedValue(
       json({
         type: 'Line',
         metadata: { title: 'Totally Other Song' },
@@ -165,10 +165,32 @@ describe('LyricsPlus', () => {
       })
     );
     expect(await getLyricsPlus(q)).toBeNull();
-    httpFetch.mockResolvedValueOnce(json({ error: 'nope' }, 404));
+    httpFetch.mockResolvedValue(json({ error: 'nope' }, 404));
     expect(await getLyricsPlus(q)).toBeNull();
-    httpFetch.mockResolvedValueOnce(json({}, 500));
+    httpFetch.mockResolvedValue(json({}, 500));
     await expect(getLyricsPlus(q)).rejects.toThrow('LyricsPlus HTTP 500');
+  });
+
+  it('takes the lyrics from the second server when the first has none, without the writers line', async () => {
+    httpFetch.mockImplementation(async (url: string) =>
+      url.includes('binimum')
+        ? json({ error: 'not found' }, 404)
+        : json({
+            type: 'Word',
+            metadata: { title: 'Blinding Lights' },
+            lyrics: [
+              { time: 120, text: 'Abel Tesfaye/Max Martin/Oscar Holter' },
+              { time: 27395, text: 'I been tryna call' },
+              { time: 30189, text: "I've been on my own for long enough" },
+            ],
+          })
+    );
+    const hit = await getLyricsPlus(q);
+    expect(hit?.synced?.map((l) => l.text)).toEqual([
+      'I been tryna call',
+      "I've been on my own for long enough",
+    ]);
+    expect(httpFetch).toHaveBeenCalledTimes(2);
   });
 });
 
