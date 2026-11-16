@@ -41,7 +41,7 @@ On macOS right click → Open the first time (or System Settings → Privacy & S
 
 ## What it does
 
-<img src="assets/card-lyrics-wide.svg" width="100%" alt="Lyrics from 11 sources: LRCLib, Musixmatch, YouTube Music, LyricsPlus, Boidu, Unison, NetEase, QQ Music, Kugou, Genius and lyrics.ovh. Synced, with karaoke fill, an overlay and a window for your second screen"><img src="assets/card-eq.svg" width="50%" alt="A 15-band EQ in a small Rust audio engine, with loudness normalization next to it"><img src="assets/card-crossfade.svg" width="50%" alt="Crossfade and gapless: 2 to 12 second crossfades, and albums that play through without a gap"><img src="assets/card-remote-wide.svg" width="100%" alt="Your phone is the remote: scan the code on the same Wi-Fi, then skip, like and change the volume from the phone. Queue, live lyrics and search are there too"><img src="assets/card-plugins.svg" width="50%" alt="36 plugins: hotkeys, an A-B loop, Discord, ListenBrainz, a mini player. Turn on what you want"><img src="assets/card-offline.svg" width="50%" alt="Offline, no ads, no telemetry: save tracks and play them without internet, settings stay on your computer">
+<img src="assets/card-lyrics-wide.svg" width="100%" alt="Lyrics from 11 sources: LRCLib, Musixmatch, YouTube Music, LyricsPlus, Boidu, Unison, NetEase, QQ Music, Kugou, Genius and lyrics.ovh. Synced, with karaoke fill, an overlay and a window for your second screen"><img src="assets/card-eq.svg" width="50%" alt="A 15-band EQ in a small Rust audio engine, with loudness normalization next to it"><img src="assets/card-crossfade.svg" width="50%" alt="Crossfade and gapless: 2 to 12 second crossfades, and albums that play through without a gap"><img src="assets/card-remote-wide.svg" width="100%" alt="Your phone is the remote: scan the code on the same Wi-Fi, then skip, like and change the volume from the phone. Queue, live lyrics and search are there too"><img src="assets/card-plugins.svg" width="50%" alt="37 plugins: hotkeys, an A-B loop, Discord, ListenBrainz, a mini player. Turn on what you want"><img src="assets/card-offline.svg" width="50%" alt="Offline, no ads, no telemetry: save tracks and play them without internet, settings stay on your computer">
 
 And the rest:
 
@@ -65,6 +65,22 @@ Full plugin list: [docs/PLUGINS.md](docs/PLUGINS.md).
 <img src="docs/screenshots/01-home.webp" width="50%" alt="Home"><img src="docs/screenshots/02-explore.webp" width="50%" alt="Explore"><img src="docs/screenshots/03-lyrics.webp" width="50%" alt="Lyrics"><img src="docs/screenshots/04-search.webp" width="50%" alt="Search"><img src="docs/screenshots/05-queue.webp" width="50%" alt="Queue"><img src="docs/screenshots/06-plugins.webp" width="50%" alt="Plugins">
 
 </details>
+
+## RAM
+
+<img src="assets/card-ram.svg" width="100%" alt="RAM use while a song plays: main window and mini player about 260 MB, main window alone about 130 MB, in the tray with the mini player about 55 MB, in the tray alone 15 MB">
+
+| What's open               | RAM     |
+| ------------------------- | ------- |
+| Main window + mini player | ~260 MB |
+| Main window               | ~130 MB |
+| Tray + mini player        | ~55 MB  |
+| Tray only, just the music | ~15 MB  |
+
+Closing to the tray drops the main window after 30 s and the Rust engine keeps playing. With the
+mini player closed too there's no WebView2 running at all. Measured on Windows 11 with a Japanese
+song playing, synced lyrics and romanization on, private memory of every Zenith and WebView2
+process added up. The tray numbers settle about a minute after the window goes away.
 
 ## Phone remote
 
@@ -117,7 +133,7 @@ Add `rpm` and `libfuse2` if you want the rpm and the AppImage.
 </details>
 
 CI in `.github/workflows/build.yml` runs the tests, lint, clippy and Playwright, then builds Windows
-x64/x86 (setup, msi and portable), Linux deb/rpm/AppImage and the mac dmg.
+x64/x86/ARM64 (setup, msi and portable), Linux deb/rpm/AppImage and the mac dmg.
 
 Yes, I know `App.tsx` is around 6000 lines. It's a crime and someone should probably shoot me for it,
 but that's life. I hack on this on my knees and it's just easier for me with everything in one place.
@@ -131,8 +147,11 @@ This program will not transfer any information to other networked systems unless
 requested by the user or the person installing or operating it.
 
 Music comes from YouTube Music and lyrics from lyrics sites. Discord, Last.fm, ListenBrainz, Spotify,
-the webhook and the phone remote connect only after you turn them on. On start Zenith asks GitHub if
-there's a newer release. Settings, history and your Google cookies stay on your computer, and the
+the webhook, the phone remote and lyrics translation (lines go to Google Translate) connect only
+after you turn them on. SponsorBlock only gets the first 4 characters of a hash of the video id.
+Japanese romanization downloads its dictionary from jsDelivr once.
+On start Zenith asks GitHub if there's a newer release.
+Settings, history and your Google cookies stay on your computer, and the
 cookies only ever go to Google. The microphone is used only by the Voice ducking plugin while it's on,
 and nothing is recorded.
 
