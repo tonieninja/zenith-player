@@ -7,6 +7,7 @@ import {
   captionsMatchLyrics,
   isAcceptableLyricsMatch,
   pickBestSyncedLyrics,
+  syncAgrees,
   scoreLyricsMatch,
   shouldShowEarlyPlain,
   syncedDurationFits,
@@ -20,6 +21,7 @@ import {
   getQQMusic,
   getKugou,
   getUnison,
+  stripCredits,
   type SourceHit,
   type SourceQuery,
 } from '../lyrics/sources';
@@ -2012,22 +2014,29 @@ async function getLyricsUncached(
     .map((x) => x.res)
     .filter((r): r is LyricsResult => Boolean(r?.synced?.length));
   for (const x of raced) if (x.failure) failures.push(x.failure);
+  const secondWave = () =>
+    settleWithGrace(
+      SECOND_WAVE.map((p) => attempt(p)),
+      (x) => Boolean(x.res?.synced?.length),
+      1200,
+      new Promise<void>((r) => window.setTimeout(r, SECOND_WAVE_MAX_MS))
+    );
+  const syncedOf = (xs: Array<{ res: LyricsResult | null }>) =>
+    xs.map((x) => x.res).filter((r): r is LyricsResult => Boolean(r?.synced?.length));
   if (syncedHits.length) {
-    return pickBestSyncedLyrics(syncedHits);
+    const agreeing = syncedHits.some((a, i) =>
+      syncedHits.some((b, j) => j > i && syncAgrees(a.synced!, b.synced!))
+    );
+    if (syncedHits.length === 1 || agreeing) return pickBestSyncedLyrics(syncedHits);
+    // każde źródło mówi co innego (inna wersja, romaji, przesunięte czasy): druga fala rozstrzyga
+    return pickBestSyncedLyrics([...syncedHits, ...syncedOf(await secondWave())]);
   }
   fallbacks.push(attempt('LyricsGenius'));
 
   // druga fala rusza dopiero po pudle, żeby przy każdej piosence nie pytać ośmiu serwisów
-  const second = await settleWithGrace(
-    SECOND_WAVE.map((p) => attempt(p)),
-    (x) => Boolean(x.res?.synced?.length),
-    1200,
-    new Promise<void>((r) => window.setTimeout(r, SECOND_WAVE_MAX_MS))
-  );
+  const second = await secondWave();
   for (const x of second) if (x.failure) failures.push(x.failure);
-  const secondHits = second
-    .map((x) => x.res)
-    .filter((r): r is LyricsResult => Boolean(r?.synced?.length));
+  const secondHits = syncedOf(second);
   if (secondHits.length) return pickBestSyncedLyrics(secondHits);
 
   for (const x of [...raced, ...second]) {
@@ -2309,7 +2318,7 @@ function pickLrclibHit(
       continue;
     }
     if (item?.syncedLyrics && syncedDurationFits(duration, durationSec)) {
-      const synced = parseLrc(String(item.syncedLyrics));
+      const synced = stripCredits(parseLrc(String(item.syncedLyrics)), candTitle);
       if (
         synced.length >= 2 &&
         (!best ||
@@ -2801,6 +2810,8 @@ function extractDurationSec(r: any): number | undefined {
     r?.fixedColumns?.[1]?.musicResponsiveListItemFixedColumnRenderer?.text?.runs?.[0]?.text,
     r?.fixedColumns?.[1]?.musicResponsiveListItemFixedColumnRenderer?.text?.simpleText,
     ...overlayTimeTexts(r),
+    // wiersz piosenki w wyszukiwarce ma czas tylko w podpisie „Wykonawca • Album • 3:43”
+    r?.flexColumns?.[1]?.musicResponsiveListItemFlexColumnRenderer?.text?.runs?.at(-1)?.text,
   ];
   for (const t of texts) {
     if (typeof t === 'string') {

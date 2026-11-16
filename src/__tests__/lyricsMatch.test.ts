@@ -3,6 +3,7 @@ import {
   captionsMatchLyrics,
   isAcceptableLyricsMatch,
   pickBestSyncedLyrics,
+  syncAlignment,
   scoreLyricsMatch,
   shouldShowEarlyPlain,
   syncedDurationFits,
@@ -133,10 +134,40 @@ describe('lyrics title/artist/duration matching', () => {
 });
 
 describe('Auto lyrics display rules', () => {
+  const song = (shift = 0, words = ['first line here', 'second line here', 'third line here']) =>
+    words.map((text, i) => ({ time: 10 + i * 4 + shift, text }));
+
   it('prefers LRCLib synced lyrics when match scores are equal', () => {
-    const lrclib = { provider: 'LRCLib', matchScore: 15, synced: { length: 40 } };
-    const mxm = { provider: 'Musixmatch', matchScore: 15, synced: { length: 42 } };
+    const lrclib = { provider: 'LRCLib', matchScore: 15, synced: song() };
+    const mxm = { provider: 'Musixmatch', matchScore: 15, synced: [...song(), ...song(20)] };
     expect(pickBestSyncedLyrics([mxm, lrclib])?.provider).toBe('LRCLib');
+  });
+
+  it('drops the source the others disagree with, by timing or by text', () => {
+    const late = { provider: 'LRCLib', matchScore: 15, synced: song(3) };
+    const romaji = {
+      provider: 'LRCLib',
+      matchScore: 15,
+      synced: song(0, ['yume naraba', 'dore hodo', 'yokatta deshou']),
+    };
+    const mxm = { provider: 'Musixmatch', matchScore: 15, synced: song(0.2) };
+    const boidu = { provider: 'Boidu', synced: song() };
+    expect(pickBestSyncedLyrics([late, mxm, boidu])?.provider).toBe('Musixmatch');
+    expect(pickBestSyncedLyrics([romaji, mxm, boidu])?.provider).toBe('Musixmatch');
+  });
+
+  it('lines up a merged line with its split halves', () => {
+    const merged = [
+      { time: 1, text: '強くなれる理由を知った 僕を連れて進め' },
+      { time: 18.8, text: '泥だらけの走馬灯に酔う こわばる心' },
+    ];
+    const split = [
+      { time: 1, text: '強くなれる理由を知った' },
+      { time: 7.5, text: '僕を連れて進め' },
+      { time: 18.9, text: '泥だらけの走馬灯に酔う' },
+      { time: 24.4, text: 'こわばる心' },
+    ];
+    expect(syncAlignment(merged, split)).toEqual({ shared: 1, offset: expect.closeTo(0.1, 5) });
   });
 
   it('does not early-show Lyrics.ovh plain text', () => {

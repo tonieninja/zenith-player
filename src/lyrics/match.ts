@@ -169,18 +169,71 @@ export function isAcceptableLyricsMatch(
   return s >= minAcceptScore(query.title);
 }
 
+type TimedLine = { time: number; text: string };
+
+const MAX_ALIGN_LINES = 200;
+// po początku linijki, bo jedno źródło skleja dwie linijki w jedną, a drugie je rozdziela
+const ALIGN_KEY_CHARS = 10;
+
+// te same linijki w tej samej kolejności (LCS); mediana różnic czasu mówi, o ile jedno źródło przesuwa drugie
+export function syncAlignment(a: TimedLine[], b: TimedLine[]): { shared: number; offset: number } {
+  const keyed = (lines: TimedLine[]) =>
+    lines
+      .map((l) => ({
+        t: l.time,
+        k: normalizeLyricsText(l.text).replace(/\s+/g, '').slice(0, ALIGN_KEY_CHARS),
+      }))
+      .filter((l) => l.k.length >= 4)
+      .slice(0, MAX_ALIGN_LINES);
+  const ka = keyed(a);
+  const kb = keyed(b);
+  const n = ka.length;
+  const m = kb.length;
+  if (!n || !m) return { shared: 0, offset: Infinity };
+  const w = m + 1;
+  const dp = new Uint16Array((n + 1) * w);
+  for (let i = n - 1; i >= 0; i--) {
+    for (let j = m - 1; j >= 0; j--) {
+      dp[i * w + j] =
+        ka[i].k === kb[j].k
+          ? dp[(i + 1) * w + j + 1] + 1
+          : Math.max(dp[(i + 1) * w + j], dp[i * w + j + 1]);
+    }
+  }
+  const diffs: number[] = [];
+  for (let i = 0, j = 0; i < n && j < m;) {
+    if (ka[i].k === kb[j].k) {
+      diffs.push(kb[j].t - ka[i].t);
+      i += 1;
+      j += 1;
+    } else if (dp[(i + 1) * w + j] >= dp[i * w + j + 1]) i += 1;
+    else j += 1;
+  }
+  if (!diffs.length) return { shared: 0, offset: Infinity };
+  diffs.sort((x, y) => x - y);
+  return { shared: diffs.length / Math.min(n, m), offset: diffs[diffs.length >> 1] };
+}
+
+// sekunda luzu: serwisy stawiają znacznik na początku wdechu albo na pierwszej sylabie
+export function syncAgrees(a: TimedLine[], b: TimedLine[]): boolean {
+  const { shared, offset } = syncAlignment(a, b);
+  return shared >= 0.3 && Math.abs(offset) <= 1;
+}
+
 export function pickBestSyncedLyrics<
-  T extends { provider: string; matchScore?: number; synced?: { length: number } },
+  T extends { provider: string; matchScore?: number; synced?: TimedLine[] | null },
 >(hits: T[]): T | null {
   if (!hits.length) return null;
   const bonus = (provider: string) =>
     provider === 'LRCLib' ? 200 : provider === 'Musixmatch' ? 80 : 0;
-  const ranked = [...hits].sort((a, b) => {
-    const qa = (a.matchScore ?? 0) * 1000 + bonus(a.provider) + Math.min(a.synced?.length || 0, 90);
-    const qb = (b.matchScore ?? 0) * 1000 + bonus(b.provider) + Math.min(b.synced?.length || 0, 90);
-    return qb - qa;
-  });
-  return ranked[0];
+  const quality = (h: T) =>
+    (h.matchScore ?? 0) * 1000 + bonus(h.provider) + Math.min(h.synced?.length || 0, 90);
+  // wygrywa tekst, z którym zgadza się najwięcej źródeł; samotny wyjątek to inna wersja albo romaji
+  const votes = hits.map(
+    (h) => hits.filter((o) => o !== h && syncAgrees(h.synced ?? [], o.synced ?? [])).length
+  );
+  const top = Math.max(...votes);
+  return hits.filter((_, i) => votes[i] === top).sort((a, b) => quality(b) - quality(a))[0];
 }
 
 export function shouldShowEarlyPlain(res: {
