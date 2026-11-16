@@ -64,6 +64,11 @@
   font-family: inherit;
 }
 
+/* pola formularzy same nie dziedziczą czcionki, a WebKitGTK daje im systemową zamiast tej z interfejsu */
+:where(input, textarea, select) {
+  font-family: inherit;
+}
+
 body {
   background: linear-gradient(180deg, var(--rich-black-1), var(--rich-black-2));
   color: var(--text-primary);

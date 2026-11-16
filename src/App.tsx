@@ -5584,7 +5584,7 @@ export default function App() {
                   {buffering ? (
                     <Loader2 size={24} className="spin-icon" />
                   ) : isPlaying ? (
-                    <Pause size={24} fill="currentColor" />
+                    <Pause size={24} fill="currentColor" strokeWidth={0} />
                   ) : (
                     <Play size={24} fill="currentColor" />
                   )}

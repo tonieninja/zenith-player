@@ -70,10 +70,8 @@ pub fn early_init() {
         libc::mallopt(libc::M_ARENA_MAX, 2);
     }
     software_rendering_defaults();
-    if std::env::var_os("ZENITH_WEBKIT_MP").is_none() {
-        std::env::set_var("ZENITH_WEBKIT_MP", "100:0.4:0.6:10");
-    }
-    if std::env::var_os("JSC_useJIT").is_none() && std::env::var("ZENITH_JIT").as_deref() != Ok("1")
+    // bez JIT cały interfejs liczy interpreter JavaScriptCore, wielokrotnie wolniejszy; ZENITH_JIT=0 go wyłącza
+    if std::env::var_os("JSC_useJIT").is_none() && std::env::var("ZENITH_JIT").as_deref() == Ok("0")
     {
         std::env::set_var("JSC_useJIT", "0");
     }
@@ -99,11 +97,24 @@ fn software_rendering_defaults() {
     if std::env::var("ZENITH_RENDER").as_deref() == Ok("gpu") {
         return;
     }
+    // sterownik nvidia z rendererem dmabuf WebKitGTK nie startuje na Waylandzie (błąd protokołu 71)
+    if std::path::Path::new("/proc/driver/nvidia/version").exists() {
+        set_default("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+        if std::env::var_os("WAYLAND_DISPLAY").is_some() {
+            set_default("__NV_DISABLE_EXPLICIT_SYNC", "1");
+        }
+        return;
+    }
     if has_render_node() {
         return;
     }
-    if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
-        std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+    set_default("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+}
+
+#[cfg(target_os = "linux")]
+fn set_default(key: &str, value: &str) {
+    if std::env::var_os(key).is_none() {
+        std::env::set_var(key, value);
     }
 }
 

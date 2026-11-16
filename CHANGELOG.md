@@ -21,6 +21,8 @@
 - Polish texts read better, and errors show up in Polish instead of English
 - Spotify import stops on a rate limit instead of quietly matching nothing, adding to a playlist skips songs already in it
 - startup no longer waits for proxy auto-detection
+- Linux: on NVIDIA under Wayland Zenith sets the WebKitGTK workarounds itself and starts natively instead of not starting at all, the JavaScript JIT is back on and the 100 MB WebKit memory cap is gone, both slowed the interface down
+- the pause icon's bars no longer melt into one, text fields use the app font
 - lots of smaller fixes in the library cache, likes, the playlist manager, downloads and the mini player position
 
 ## 4.2.1
