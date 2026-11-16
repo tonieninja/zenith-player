@@ -34,15 +34,21 @@ const deb = findSigned('deb', '.deb');
 if (deb) platforms['linux-x86_64-deb'] = deb;
 const rpm = findSigned('rpm', '.rpm');
 if (rpm) platforms['linux-x86_64-rpm'] = rpm;
-const nsis = findSigned('nsis', '_x64-setup.exe');
-if (nsis) platforms['windows-x86_64'] = platforms['windows-x86_64-nsis'] = nsis;
-const nsis32 = findSigned('nsis', '_x86-setup.exe');
-if (nsis32) platforms['windows-i686'] = platforms['windows-i686-nsis'] = nsis32;
-const nsisArm = findSigned('nsis', '_arm64-setup.exe');
-if (nsisArm) platforms['windows-aarch64'] = platforms['windows-aarch64-nsis'] = nsisArm;
-// sortowanie dałoby arm64 przed x64, a ten wpis jest dla x64
-const msi = findSigned('msi', '_x64_en-US.msi');
-if (msi) platforms['windows-x86_64-msi'] = msi;
+// bez gołego windows-<arch>: czyta go tylko stary portable, który zamiast siebie zainstalowałby NSIS obok
+for (const [arch, suffix] of [
+  ['x86_64', 'x64'],
+  ['i686', 'x86'],
+  ['aarch64', 'arm64'],
+]) {
+  for (const [kind, sub, file] of [
+    ['nsis', 'nsis', `_${suffix}-setup.exe`],
+    ['msi', 'msi', `_${suffix}_en-US.msi`],
+    ['portable', 'portable', `_${suffix}_portable.exe`],
+  ]) {
+    const found = findSigned(sub, file);
+    if (found) platforms[`windows-${arch}-${kind}`] = found;
+  }
+}
 const mac = findSigned('macos', '.app.tar.gz');
 if (mac) platforms['darwin-x86_64'] = platforms['darwin-aarch64'] = mac;
 

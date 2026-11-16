@@ -140,6 +140,10 @@ jobs:
           mkdir -p portable
           V=$(node -p "require('./src-tauri/tauri.conf.json').version")
           cp src-tauri/target/${{ matrix.target }}/release/zenith-player.exe "portable/Zenith_${V}_${{ matrix.arch }}_portable.exe"
+          # portable aktualizuje się sam z tego pliku, więc potrzebuje podpisu jak instalatory
+          if [ -n "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            pnpm tauri signer sign "portable/Zenith_${V}_${{ matrix.arch }}_portable.exe"
+          fi
       - uses: actions/upload-artifact@v7
         with:
           name: bundle-windows-${{ matrix.arch }}
@@ -149,6 +153,7 @@ jobs:
             src-tauri/target/${{ matrix.target }}/release/bundle/msi/*.msi
             src-tauri/target/${{ matrix.target }}/release/bundle/msi/*.sig
             portable/*.exe
+            portable/*.sig
 
   release:
     if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'

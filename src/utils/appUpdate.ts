@@ -1,5 +1,6 @@
 import type { Update } from '@tauri-apps/plugin-updater';
 import { fetch } from '@tauri-apps/plugin-http';
+import { Channel, invoke } from '@tauri-apps/api/core';
 
 export const GITHUB_REPO = 'tonieninja/zenith-player';
 export const GITHUB_RELEASES = `https://github.com/${GITHUB_REPO}/releases`;
@@ -66,11 +67,24 @@ export async function checkGithubUpdate(currentVersion: string): Promise<UpdateC
 }
 
 let pendingUpdate: Update | null = null;
+let portablePending = false;
+let portable: Promise<boolean> | null = null;
+
+export function isPortableApp(): Promise<boolean> {
+  if (!portable) portable = invoke<boolean>('app_is_portable').catch(() => false);
+  return portable;
+}
 
 export async function checkSignedUpdate(
   currentVersion?: string
 ): Promise<{ version: string } | null> {
   try {
+    // zwykły check pobrałby instalator NSIS, który instaluje obok, a plik portable zostaje w starej wersji
+    if (await isPortableApp()) {
+      const version = await invoke<string | null>('portable_update_check');
+      portablePending = !!version && (!currentVersion || isNewerVersion(version, currentVersion));
+      return portablePending && version ? { version } : null;
+    }
     const { check } = await import('@tauri-apps/plugin-updater');
     const upd = await check({ timeout: UPDATE_TIMEOUT_MS });
     if (upd && currentVersion && !isNewerVersion(upd.version, currentVersion)) {
@@ -87,6 +101,12 @@ export async function checkSignedUpdate(
 export async function installPendingUpdate(
   onProgress?: (pct: number | null) => void
 ): Promise<void> {
+  if (portablePending) {
+    const progress = new Channel<number | null>();
+    progress.onmessage = (pct) => onProgress?.(pct);
+    await invoke('portable_update_install', { onProgress: progress });
+    return;
+  }
   const upd = pendingUpdate;
   if (!upd) throw new Error('no update');
   let total = 0;

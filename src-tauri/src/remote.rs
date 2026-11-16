@@ -750,11 +750,18 @@ pub struct FirewallStatus {
 
 #[cfg(windows)]
 pub const FIREWALL_RULE: &str = "Zenith Player (local network)";
-
+// deinstalator wersji z instalatora kasuje reguły po nazwie, więc portable ma własną
 #[cfg(windows)]
-fn hidden_cmd(exe: &str) -> std::process::Command {
+const FIREWALL_RULE_PORTABLE: &str = "Zenith Player portable (local network)";
+
+// sama nazwa szuka najpierw obok exe, a portable leży np. w Pobranych obok dowolnych plików
+#[cfg(windows)]
+pub(crate) fn hidden_powershell() -> std::process::Command {
     use std::os::windows::process::CommandExt;
+    let root = std::env::var_os("SystemRoot").unwrap_or_else(|| r"C:\Windows".into());
+    let exe = std::path::Path::new(&root).join(r"System32\WindowsPowerShell\v1.0\powershell.exe");
     let mut c = std::process::Command::new(exe);
+    c.args(["-NoProfile", "-NonInteractive", "-Command"]);
     c.creation_flags(0x0800_0000);
     c
 }
@@ -764,35 +771,31 @@ pub async fn remote_firewall_status() -> FirewallStatus {
     #[cfg(windows)]
     {
         tokio::task::spawn_blocking(|| {
-            let public_network = hidden_cmd("powershell")
-                .args([
-                    "-NoProfile",
-                    "-NonInteractive",
-                    "-Command",
-                    "(Get-NetConnectionProfile | Where-Object { $_.NetworkCategory -eq 'Public' }).Count",
-                ])
+            let exe = std::env::current_exe()
+                .map(|p| p.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            // reguła musi wpuszczać ten exe w bieżącej sieci (Private=2, Public=4, Any=0); ścieżkę porównuje
+            // PowerShell, bo netsh pisze w stronie OEM i gubi polskie znaki z nazwy konta
+            let script = format!(
+                "$ProgressPreference = 'SilentlyContinue'; \
+                 $pub = @(Get-NetConnectionProfile | Where-Object {{ $_.NetworkCategory -eq 'Public' }}).Count -gt 0; \
+                 $need = if ($pub) {{ 4 }} else {{ 2 }}; \
+                 $ok = @(Get-NetFirewallRule -DisplayName '{FIREWALL_RULE}','{FIREWALL_RULE_PORTABLE}' -ErrorAction SilentlyContinue | \
+                   Where-Object {{ $_.Enabled -eq 'True' -and $_.Direction -eq 'Inbound' -and $_.Action -eq 'Allow' -and ([int]$_.Profile -eq 0 -or ([int]$_.Profile -band $need)) }} | \
+                   Where-Object {{ ($_ | Get-NetFirewallApplicationFilter).Program -eq $env:ZENITH_EXE }}).Count -gt 0; \
+                 '{{0}}{{1}}' -f [int]$pub, [int]$ok"
+            );
+            let out = hidden_powershell()
+                .arg(script)
+                .env("ZENITH_EXE", exe)
                 .output()
-                .ok()
-                .and_then(|o| String::from_utf8_lossy(&o.stdout).trim().parse::<u32>().ok())
-                .map(|n| n > 0)
-                .unwrap_or(false);
-            // reguła tylko dla sieci prywatnych nie wpuści telefonu w publicznej; netsh filtruje po dokładnym
-            // zestawie profili, więc pytamy o każdy zestaw zawierający bieżącą sieć
-            let sets: &[&str] = if public_network {
-                &["public", "private,public", "domain,public", "any"]
-            } else {
-                &["private", "private,public", "domain,private", "any"]
-            };
-            let rule_ok = sets.iter().any(|p| {
-                hidden_cmd("netsh")
-                    .args(["advfirewall", "firewall", "show", "rule"])
-                    .arg(format!("name={FIREWALL_RULE}"))
-                    .arg(format!("profile={p}"))
-                    .output()
-                    .map(|o| o.status.success())
-                    .unwrap_or(false)
-            });
-            FirewallStatus { windows: true, rule_ok, public_network }
+                .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_owned())
+                .unwrap_or_default();
+            FirewallStatus {
+                windows: true,
+                public_network: out.starts_with('1'),
+                rule_ok: out.get(1..2) == Some("1"),
+            }
         })
         .await
         .unwrap_or_default()
@@ -812,22 +815,28 @@ pub async fn remote_firewall_allow(
     #[cfg(windows)]
     {
         let exe = std::env::current_exe().map_err(|e| e.to_string())?;
-        let exe = exe.to_string_lossy().replace('\'', "''");
+        let exe = exe.to_string_lossy();
         // sieć publiczna (hotel, kawiarnia) tylko po kliknięciu pod ostrzeżeniem, które to opisuje
         let profile = if public_network.unwrap_or(false) {
             "private,public"
         } else {
             "private"
         };
+        let name = if crate::portable::is_portable() {
+            FIREWALL_RULE_PORTABLE
+        } else {
+            FIREWALL_RULE
+        };
         let args = format!(
-            "advfirewall firewall add rule name=\"{FIREWALL_RULE}\" dir=in action=allow program=\"{exe}\" profile={profile} remoteip=localsubnet protocol=TCP enable=yes"
+            "advfirewall firewall add rule name=\"{name}\" dir=in action=allow program=\"{exe}\" profile={profile} remoteip=localsubnet protocol=TCP enable=yes"
         );
-        let script = format!(
-            "try {{ Start-Process netsh -Verb RunAs -Wait -WindowStyle Hidden -ArgumentList '{args}'; exit 0 }} catch {{ exit 1 }}"
-        );
+        // argumenty idą przez zmienną, bo cudzysłów ’ w nazwie folderu zamknąłby napis w skrypcie
+        let script = "try { Start-Process -FilePath \"$env:SystemRoot\\System32\\netsh.exe\" -Verb RunAs -Wait \
+                      -WindowStyle Hidden -ArgumentList $env:ZENITH_FW_ARGS; exit 0 } catch { exit 1 }";
         let ok = tokio::task::spawn_blocking(move || {
-            hidden_cmd("powershell")
-                .args(["-NoProfile", "-NonInteractive", "-Command", &script])
+            hidden_powershell()
+                .arg(script)
+                .env("ZENITH_FW_ARGS", args)
                 .status()
                 .map(|s| s.success())
                 .unwrap_or(false)

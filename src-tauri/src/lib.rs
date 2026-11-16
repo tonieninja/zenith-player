@@ -14,6 +14,7 @@ mod mpris;
 mod native_audio;
 mod player;
 mod player_js;
+mod portable;
 mod potoken;
 mod prefs;
 mod remote;
@@ -714,6 +715,7 @@ pub fn run() {
                 .build(),
         )
         .setup(|app| {
+            portable::cleanup_old_exe();
             cover_cache::init(app.handle());
             if let Ok(dir) = app.path().app_cache_dir() {
                 native_audio::set_spool_dir(dir.join("audio"));
@@ -888,6 +890,9 @@ pub fn run() {
             remote::remote_push,
             remote::remote_firewall_status,
             remote::remote_firewall_allow,
+            portable::app_is_portable,
+            portable::portable_update_check,
+            portable::portable_update_install,
             room::room_create,
             room::room_join,
             room::room_leave,
