@@ -1,5 +1,23 @@
 # Changelog
 
+## 4.4.0
+
+- Linux on NVIDIA: when the fast renderer can't start, the fallback keeps drawing on the graphics card and only copies the frame through RAM. The old fallback drew the whole interface on the CPU, which made Zenith crawl on 4K screens
+- Linux: opening Zenith a second time while it runs no longer pins the next start to the slow renderer
+- Linux: the karaoke fill moves on the graphics card instead of repainting the line 30 times a second
+- remember volume really remembers it, it used to jump back to 80% on every start
+- remember volume can start at a fixed level you pick instead of the last one
+- remember queue can start playing right away, start paused, or do what it did when you closed it
+- auto lyrics pick the version most sources agree on line by line, so a single late or romanized copy no longer wins
+- LyricsPlus asks a second server when the first one has cached a miss, songwriter lines at the top of the lyrics are dropped
+- lyrics glide to the next line again with Windows animations turned off
+- downloads are saved as "artist - title [id].webm" instead of "id.audio"
+- the main window opens bigger on big screens and fits a 1080p screen at 200%
+- covers are sharp on high DPI screens, the blur behind dialogs is lighter
+- Linux: no invisible tray icon on plain GNOME, closing quits when there is no tray to hide in, the tray icon is sharp
+- Linux: global hotkeys show as unavailable on Wayland instead of pretending to work, the lyrics overlay stays clickable there
+- Linux: the phone remote address can be selected and copied, the share card has no hard glow strip, one wheel notch on the volume moves 2%
+
 ## 4.3.0
 
 - the mini player can show the current lyric line with the karaoke fill, and you pick which buttons it has (idea from Grex_Vibra on reddit)
