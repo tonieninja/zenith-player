@@ -237,6 +237,7 @@ import {
   GITHUB_RELEASES,
   installPendingUpdate,
   isPortableApp,
+  isRpmUpdateBlocked,
 } from './utils/appUpdate';
 import { resetOnboarding, shouldShowOnboarding } from './utils/onboarding';
 import { smartShuffle } from './utils/smartShuffle';
@@ -625,9 +626,20 @@ export default function App() {
       void (async () => {
         const version = await getVersion().catch(() => '');
         const u = await checkSignedUpdate(version || undefined);
-        if (!u) return;
         const stored = localStorage.getItem('zenith_lang');
         const tr = translations[stored === 'pl' ? 'pl' : 'en'];
+        if (!u) {
+          // rpm na Fedorze 45+ nie zainstaluje się sam, więc zostaje sam link do wydania
+          if (!version || !(await isRpmUpdateBlocked())) return;
+          const r = await checkGithubUpdate(version);
+          if (r.status !== 'newer') return;
+          setUpdateStatus({ kind: 'newer', tag: r.tag, url: r.url });
+          pushToast(tr.updateAvailableTag.replace('{tag}', r.tag), 'success', 20000, undefined, {
+            key: 'updateAvailableTag',
+            vars: { tag: r.tag },
+          });
+          return;
+        }
         setUpdateStatus({ kind: 'newer', tag: u.version, installable: true });
         pushToast(
           tr.updateAvailableTag.replace('{tag}', u.version),

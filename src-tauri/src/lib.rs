@@ -699,6 +699,22 @@ fn install_edit_menu(app: &tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+// rpm 6 (Fedora 45+) odrzuca niepodpisaną paczkę w `rpm -U` updatera; wtedy zostaje link do wydania i dnf
+#[tauri::command]
+fn rpm_update_blocked() -> bool {
+    use tauri::utils::{config::BundleType, platform::bundle_type};
+    matches!(bundle_type(), Some(BundleType::Rpm))
+        && std::process::Command::new("rpm")
+            .args(["--eval", "%{_pkgverify_level}"])
+            .output()
+            .is_ok_and(|o| {
+                matches!(
+                    String::from_utf8_lossy(&o.stdout).trim(),
+                    "signature" | "all"
+                )
+            })
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     mark("app start");
@@ -856,6 +872,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             mpris_update,
+            rpm_update_blocked,
             native_audio::zaudio_available,
             native_audio::zaudio_duck,
             native_audio::zaudio_duck_meter,

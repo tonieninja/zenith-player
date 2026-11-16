@@ -75,6 +75,13 @@ export function isPortableApp(): Promise<boolean> {
   return portable;
 }
 
+let rpmBlocked: Promise<boolean> | null = null;
+
+export function isRpmUpdateBlocked(): Promise<boolean> {
+  if (!rpmBlocked) rpmBlocked = invoke<boolean>('rpm_update_blocked').catch(() => false);
+  return rpmBlocked;
+}
+
 export async function checkSignedUpdate(
   currentVersion?: string
 ): Promise<{ version: string } | null> {
@@ -85,6 +92,8 @@ export async function checkSignedUpdate(
       portablePending = !!version && (!currentVersion || isNewerVersion(version, currentVersion));
       return portablePending && version ? { version } : null;
     }
+    // null przekazuje sprawdzanie do GitHuba, który pokaże link do wydania zamiast nieudanej instalacji
+    if (await isRpmUpdateBlocked()) return null;
     const { check } = await import('@tauri-apps/plugin-updater');
     const upd = await check({ timeout: UPDATE_TIMEOUT_MS });
     if (upd && currentVersion && !isNewerVersion(upd.version, currentVersion)) {
