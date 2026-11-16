@@ -10,5 +10,5 @@ Icon={{icon}}
 Terminal=false
 Categories=AudioVideo;Audio;Player;
 Keywords=music;player;lyrics;youtube;karaoke;muzyka;odtwarzacz;
-StartupWMClass=zenith-player
+StartupWMClass=Zenith
 StartupNotify=true

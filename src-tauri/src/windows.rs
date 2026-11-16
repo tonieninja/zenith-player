@@ -434,6 +434,56 @@ pub fn aux_windows_use_transparency() -> bool {
     !cfg!(target_os = "linux")
 }
 
+// GTK3 na Waylandzie ignoruje keep_above i skip_taskbar; w KWin ustawia je tylko jego własny skrypt
+#[cfg(target_os = "linux")]
+pub(crate) fn kwin_pin_aux_windows() {
+    std::thread::spawn(|| {
+        let run = || -> Result<(), Box<dyn std::error::Error>> {
+            const KWIN: Option<&str> = Some("org.kde.KWin");
+            const SCRIPTING: Option<&str> = Some("org.kde.kwin.Scripting");
+            let conn = zbus::blocking::Connection::session()?;
+            let file = std::env::var_os("XDG_RUNTIME_DIR")
+                .map(std::path::PathBuf::from)
+                .unwrap_or_else(std::env::temp_dir)
+                .join("zenith-kwin-pin.js");
+            // KWin 6 ma stackingOrder i windowAdded, KWin 5 clientList() i clientAdded
+            const PIN_JS: &str = r#"function pin(w) {
+  if (w && w.pid == ZENITH_PID && /^Zenith (Lyrics|Mini)/.test(w.caption)) {
+    w.keepAbove = true;
+    w.skipTaskbar = true;
+  }
+}
+(workspace.stackingOrder || workspace.clientList()).forEach(pin);
+(workspace.windowAdded || workspace.clientAdded).connect(pin);
+"#;
+            let js = PIN_JS.replace("ZENITH_PID", &std::process::id().to_string());
+            std::fs::write(&file, js)?;
+            let path = file.to_string_lossy().to_string();
+            let _ = conn.call_method(
+                KWIN,
+                "/Scripting",
+                SCRIPTING,
+                "unloadScript",
+                &("zenith-pin",),
+            );
+            conn.call_method(
+                KWIN,
+                "/Scripting",
+                SCRIPTING,
+                "loadScript",
+                &(path.as_str(), "zenith-pin"),
+            )?;
+            conn.call_method(KWIN, "/Scripting", SCRIPTING, "start", &())?;
+            Ok(())
+        };
+        if let Err(e) = run() {
+            if crate::debug_log_enabled() {
+                eprintln!("[zenith] kwin pin unavailable: {e}");
+            }
+        }
+    });
+}
+
 fn style_aux_window<'a, R: tauri::Runtime, M: tauri::Manager<R>>(
     mut b: WebviewWindowBuilder<'a, R, M>,
 ) -> WebviewWindowBuilder<'a, R, M> {
@@ -650,7 +700,13 @@ pub async fn open_lyrics_second_screen(app: AppHandle) -> Result<(), String> {
     } else {
         (mon_x, mon_y + mon_h - h)
     };
-    let (x, y) = saved_position(&app, "lyrics-second").unwrap_or(default_pos);
+    // Wayland ignoruje pozycję okna; drugi monitor da się wskazać tylko pełnym ekranem na jego wyjściu
+    let wl_full = crate::native_wayland() && !single_screen;
+    let (x, y) = if wl_full {
+        default_pos
+    } else {
+        saved_position(&app, "lyrics-second").unwrap_or(default_pos)
+    };
 
     let builder = WebviewWindowBuilder::new(&app, "lyrics-second", app_url("overlay.html")?)
         .additional_browser_args(&merged_webview_args())
@@ -659,7 +715,8 @@ pub async fn open_lyrics_second_screen(app: AppHandle) -> Result<(), String> {
         .resizable(true)
         .min_inner_size(560.0, 260.0)
         .inner_size(w, h)
-        .position(x, y);
+        .position(x, y)
+        .fullscreen(wl_full);
     let win = style_aux_window(builder)
         .build()
         .map_err(|e| e.to_string())?;

@@ -708,6 +708,9 @@ pub fn run() {
         return;
     }
     webview_tuning::early_init();
+    // GTK3 wysyła prgname jako Wayland app_id, a KWin szuka ikony w <app_id>.desktop, czyli Zenith.desktop z paczki
+    #[cfg(target_os = "linux")]
+    webkit2gtk::glib::set_prgname(Some("Zenith"));
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             if windows::ensure_main(app) {
@@ -775,6 +778,10 @@ pub fn run() {
                 }
             }
             apply_global_shortcuts(app.handle(), GLOBAL_HOTKEYS_ON.load(Ordering::SeqCst));
+            #[cfg(target_os = "linux")]
+            if native_wayland() {
+                windows::kwin_pin_aux_windows();
+            }
             native_audio::init(app.handle());
             {
                 use tauri::Listener;
@@ -828,7 +835,8 @@ pub fn run() {
                     }
                 }
             }
-            WindowEvent::Moved(pos) => {
+            // na natywnym Waylandzie tao zgłasza przy każdej zmianie (0,0) i nadpisałby zapisane pozycje
+            WindowEvent::Moved(pos) if !native_wayland() => {
                 windows::remember_position(window.app_handle(), window.label(), *pos);
             }
             WindowEvent::Destroyed => {
