@@ -796,7 +796,13 @@ export default function App() {
   const isSavedRef = useLatest(isSaved);
 
   const navigateTo = useCallback((tab: ViewTab) => {
-    if (tab !== 'player') setPrevTab(tab);
+    if (tab !== 'player') {
+      setPrevTab(tab);
+      // zakładki feedu dzielą jeden przewijany kontener, więc nowa otwierała się na pozycji poprzedniej
+      document
+        .querySelector<HTMLElement>('.content-area .content-scrollable')
+        ?.scrollTo({ top: 0, behavior: 'instant' });
+    }
     setActiveTab(tab);
   }, []);
 

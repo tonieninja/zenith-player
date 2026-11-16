@@ -103,7 +103,7 @@ const ExploreTrendingShelf = memo(function ExploreTrendingShelf({
   section: Section;
   onItemClick: (t: Track, st?: string, si?: Track[]) => void;
 }) {
-  const { ref: listRef, pageSize: cols } = useResponsivePageSize<HTMLDivElement>(
+  const { ref: listRef, pageSize: cols } = useResponsivePageSize<HTMLElement>(
     EXPLORE_TRENDING_COL_W,
     10,
     4
@@ -111,7 +111,8 @@ const ExploreTrendingShelf = memo(function ExploreTrendingShelf({
   const pageSize = Math.max(EXPLORE_TRENDING_MIN, cols * EXPLORE_TRENDING_ROWS);
   const pg = usePager(section.items, pageSize);
   return (
-    <section className="explore-section">
+    // ref na sekcji, bo siatka z key={pg.epoch} po przewinięciu strony to nowy węzeł, którego RO już nie śledzi
+    <section className="explore-section" ref={listRef}>
       <div className="explore-section-header">
         <h2 className="explore-section-title">{section.title}</h2>
         <div className="explore-header-right">
@@ -134,7 +135,6 @@ const ExploreTrendingShelf = memo(function ExploreTrendingShelf({
         </div>
       </div>
       <div
-        ref={listRef}
         key={pg.epoch}
         style={{ '--cols': cols } as CSSProperties}
         className={'explore-trending-list' + (pg.dir ? ' yt-anim yt-slide-' + pg.dir : '')}
