@@ -17,7 +17,7 @@ export function storedFlag(
     return v === null ? null : v === '1';
   };
   let current = read();
-  // bez zapisu liczy się bieżący fallback: WebView2 tuż po starcie okna chwilowo zgłasza „ogranicz ruch”
+  // bez zapisu liczy się bieżący fallback, bo może się zmienić w trakcie działania
   const get = () => current ?? fallback();
 
   // storage łapie przełączenie z innego okna (nakładka, drugi ekran, mini odtwarzacz)

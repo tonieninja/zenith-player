@@ -5104,15 +5104,3 @@ html.window-occluded *::after {
 .player-view-actions .ytm-rating-btns {
   margin-right: 4px;
 }
-
-/* systemowe „ogranicz ruch”: animacje i przejścia kończą się od razu */
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-    scroll-behavior: auto !important;
-  }
-}

@@ -201,8 +201,7 @@ export const ExploreView = memo(function ExploreView({
     if (!scroller) return;
     const top =
       el.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop;
-    const still = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-    scroller.scrollTo({ top: Math.max(0, top - 12), behavior: still ? 'auto' : 'smooth' });
+    scroller.scrollTo({ top: Math.max(0, top - 12), behavior: 'smooth' });
   }, []);
   const heroTrack = sections[0]?.items[0];
   const chartsIdx = sections.findIndex((s) => getExploreLayout(s.title) === 'trending');

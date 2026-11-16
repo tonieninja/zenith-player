@@ -310,13 +310,6 @@ html.opaque-window #root {
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .ov-lines,
-  .ov-line--active {
-    animation: none;
-  }
-}
-
 .overlay-root.align-top .overlay-lyrics-stage {
   align-items: flex-start;
 }

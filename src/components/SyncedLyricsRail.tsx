@@ -31,9 +31,7 @@ function smoothScrollToCenter(
   const end = Math.max(0, Math.min(container.scrollTop + idealDelta, maxScroll));
   container.scrollTop = end;
   const from = end - visual;
-  // systemowe „ogranicz ruch”: tekst przeskakuje od razu, bez dojazdu
-  const still = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-  if (still || Math.abs(from) < 1 || typeof track.animate !== 'function') return;
+  if (Math.abs(from) < 1 || typeof track.animate !== 'function') return;
   scrollAnim.set(
     container,
     track.animate([{ transform: `translate3d(0, ${from}px, 0)` }, { transform: 'none' }], {

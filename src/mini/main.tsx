@@ -250,7 +250,7 @@ function MiniLyrics({
   // stara linia wyjeżdża w górę, nowa rośnie z miejsca szarej następnej (12/15 = 0,8), obie o 22 px naraz
   useLayoutEffect(() => {
     const box = boxRef.current;
-    if (!moved || !box || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    if (!moved || !box) return;
     const page = box.querySelector('.mini-lyrics-page.is-entering');
     const out = box.querySelector('.mini-lyrics-page.is-leaving');
     glide(out, { y: 0, s: 1, o: 1 }, { y: -22, s: 1, o: 0 }, 440, 'forwards');
