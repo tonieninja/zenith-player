@@ -1,5 +1,28 @@
 # Changelog
 
+## 4.3.0
+
+- the mini player can show the current lyric line with the karaoke fill, and you pick which buttons it has (idea from Grex_Vibra on reddit)
+- closing to the tray drops the main window after 30 s while the Rust engine keeps playing, tray, hotkeys and the mini player keep working
+- with the main window and the mini open Zenith takes around 260 MB instead of 500, in the tray with just the mini around 55 MB, and with nothing open 15 MB
+- far fewer wakeups while a song plays: the audio thread, the lyrics view and the phone remote only work when something changes
+- romanized lyrics for Japanese, Korean, Chinese and Cyrillic, worked out on your computer, and translated lyrics through Google Translate
+- plain lyrics without timing scroll and get romanization and translation too
+- SponsorBlock skips talking, skits and sponsor breaks in music videos
+- albums play gapless down to the sample, pausing fades out instead of cutting off
+- right-click a track to download it for offline
+- plain lyrics show as soon as they arrive, long instrumental breaks get a ♪ line, lyrics for the wrong version of a song get rejected more often
+- the karaoke fill follows playback speed, right-to-left lyrics show without it, duet lines sung together share one line
+- auto-generated YouTube captions are no longer shown as lyrics
+- phone remote: the PIN no longer gets in when the one-time QR link is on, wrong PIN lockouts get longer each time, the firewall rule covers private networks only
+- the Google sign-in window only opens Google's own pages
+- player bar, sidebar, menus and dialogs work from the keyboard and with a screen reader, toasts stay up longer and wait while you hover them
+- clearing the queue can be undone
+- Polish texts read better, and errors show up in Polish instead of English
+- Spotify import stops on a rate limit instead of quietly matching nothing, adding to a playlist skips songs already in it
+- startup no longer waits for proxy auto-detection
+- lots of smaller fixes in the library cache, likes, the playlist manager, downloads and the mini player position
+
 ## 4.2.1
 
 - "Open Zenith" at the end of the installer actually opens Zenith now
