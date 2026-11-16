@@ -13,6 +13,11 @@ ManifestDPIAwareness PerMonitorV2
   SetCompressor /SOLID "{{compression}}"
 !endif
 
+; przy podpisywaniu bundler podpisuje kopie wtyczek NSIS i bez tego wbudowane zostałyby niepodpisane
+{{#if signed_plugins_path}}
+!addplugindir "{{signed_plugins_path}}"
+{{/if}}
+
 !include MUI2.nsh
 !include FileFunc.nsh
 !include x64.nsh
@@ -398,9 +403,17 @@ Function PageLeaveReinstall
       Abort
     ${EndIf}
 
-    ; Przy tej samej wersji „Odinstaluj” oznacza koniec, a nie instalację od nowa
+    ; deinstalator uruchomiony z _?= nie skasuje sam siebie ani folderu
+    ${If} $WixMode = 0
+    ${AndIf} $4 != ""
+      Delete "$4\uninstall.exe"
+      RMDir "$4"
+    ${EndIf}
+
+    ; Przy tej samej wersji „Odinstaluj” oznacza koniec, a nie instalację od nowa; /P nie ma wyboru, więc instaluje
     ${If} $R0 = 0
     ${AndIf} $WixMode <> 1
+    ${AndIf} $PassiveMode <> 1
       Quit
     ${EndIf}
   reinst_done:
@@ -1138,10 +1151,22 @@ Section Uninstall
     RmDir /r "$LOCALAPPDATA\${BUNDLEID}"
   ${EndIf}
 
-  nsExec::Exec 'netsh advfirewall firewall delete rule name="${ZENITH_FW_RULE}"'
-  Pop $0
-  nsExec::Exec 'netsh advfirewall firewall delete rule name="Zenith Player (private networks)"'
-  Pop $0
+  ; kasowanie reguły wymaga admina, a deinstalator trybu currentUser działa bez podniesienia uprawnień
+  ${If} $UpdateMode <> 1
+  ${AndIf} $PassiveMode <> 1
+  ${AndIfNot} ${Silent}
+    nsExec::ExecToStack 'netsh advfirewall firewall show rule name="${ZENITH_FW_RULE}"'
+    Pop $0
+    Pop $1
+    nsExec::ExecToStack 'netsh advfirewall firewall show rule name="Zenith Player (private networks)"'
+    Pop $2
+    Pop $1
+    ${If} $0 == "0"
+    ${OrIf} $2 == "0"
+      ; program= zostawia reguły tej samej nazwy z instalacji innych kont Windows
+      ExecShellWait "runas" "$SYSDIR\cmd.exe" '/c netsh advfirewall firewall delete rule name="${ZENITH_FW_RULE}" program="$INSTDIR\${MAINBINARYNAME}.exe" & netsh advfirewall firewall delete rule name="Zenith Player (private networks)"' SW_HIDE
+    ${EndIf}
+  ${EndIf}
 
   !ifmacrodef NSIS_HOOK_POSTUNINSTALL
     !insertmacro NSIS_HOOK_POSTUNINSTALL
