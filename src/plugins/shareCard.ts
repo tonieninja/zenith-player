@@ -19,7 +19,8 @@ export async function generateShareCard(
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, W, H);
 
-  if (coverImg) {
+  // WebKit nie ma ctx.filter: bez rozmycia zostałby ostry pasek okładki zamiast poświaty
+  if (coverImg && 'filter' in ctx) {
     ctx.save();
     ctx.globalAlpha = 0.35;
     ctx.filter = 'blur(60px)';

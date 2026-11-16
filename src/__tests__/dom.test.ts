@@ -71,6 +71,7 @@ describe('keyboard shortcuts stay out of typing', () => {
 describe('wheel volume', () => {
   it('one mouse notch up is +2%, down is -2%', () => {
     expect(applyWheelVolume(0.5, { deltaY: -100, deltaMode: 0 })).toBe(0.52);
+    expect(applyWheelVolume(0.5, { deltaY: -40, deltaMode: 0 })).toBe(0.52);
     expect(applyWheelVolume(0.5, { deltaY: 100, deltaMode: 0 })).toBe(0.48);
     expect(applyWheelVolume(0.5, { deltaY: -3, deltaMode: 1 })).toBe(0.52);
     expect(applyWheelVolume(0.5, { deltaY: -53, deltaMode: 0 })).toBe(0.52);

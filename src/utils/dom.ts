@@ -43,7 +43,8 @@ export function wheelVolumeDelta(e: WheelLike): number {
   const step = e.shiftKey ? WHEEL_FINE_STEP : WHEEL_STEP;
   const notches = e.deltaMode === 1 ? raw / 3 : e.deltaMode === 2 ? raw : raw / 100;
   const n =
-    Math.abs(notches) >= 0.5
+    // WebKitGTK daje 40 px na ząbek kółka, Chromium 100; touchpad sypie po kilka px
+    Math.abs(notches) >= 0.4
       ? Math.sign(notches) * Math.max(1, Math.round(Math.abs(notches)))
       : notches;
   return -n * step;

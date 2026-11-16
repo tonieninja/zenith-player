@@ -886,7 +886,7 @@ export function PluginsPanel({
               {remoteOn && remoteInfo?.url ? (
                 <span
                   className="remote-url"
-                  style={{ userSelect: 'text', fontWeight: 600, textAlign: 'right' }}
+                  style={{ userSelect: 'text', WebkitUserSelect: 'text', fontWeight: 600, textAlign: 'right' }}
                 >
                   {remoteInfo.url}
                   {remoteInfo.mdnsUrl && (
