@@ -90,6 +90,19 @@ same network. Only local addresses get an answer. On Windows tick the firewall o
 installer or use the button in the plugin, on Linux open the port (`sudo ufw allow 8765/tcp`).
 With the plugin off there's no server at all.
 
+## Offline downloads
+
+Downloaded tracks are plain files on your disk, so you can copy them to a USB stick or a phone:
+
+- Windows: `%LOCALAPPDATA%\com.zenithplayer.desktop\downloads`
+- Linux: `~/.local/share/com.zenithplayer.desktop/downloads`
+- macOS: `~/Library/Application Support/com.zenithplayer.desktop/downloads`
+
+Each track is `<video id>.audio`, the same audio YouTube Music streams, usually Opus in WebM and sometimes
+AAC. `index.json` next to them says which id is which song. Rename a copy to `.webm` (or `.m4a` if it won't
+play) and most players open it. They aren't MP3s, so for an old MP3 player convert them first, for example
+`ffmpeg -i <id>.webm -q:a 2 "<title>.mp3"`.
+
 ## Problems
 
 - Window doesn't open on Windows: it needs the WebView2 Runtime. The installer sets it up,
