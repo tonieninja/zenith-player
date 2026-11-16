@@ -506,6 +506,31 @@ pub async fn open_lyrics_overlay(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+// stałe 1280x800 na 1440p czy 4K przy skali 2 to okienko na pół ekranu, w którym treść się nie mieści
+pub fn first_open_size((w, h): (u32, u32), (aw, ah): (u32, u32)) -> (u32, u32) {
+    let fit = |cur: u32, area: u32| (area / 5 * 4).max(cur).min(area);
+    (fit(w, aw), fit(h, ah))
+}
+
+pub(crate) fn fit_first_open(win: &tauri::WebviewWindow) {
+    let Ok(size) = win.inner_size() else {
+        return;
+    };
+    let monitor = win
+        .current_monitor()
+        .ok()
+        .flatten()
+        .or_else(|| win.primary_monitor().ok().flatten())
+        .or_else(|| win.available_monitors().ok()?.into_iter().next());
+    let Some(m) = monitor else { return };
+    let area = m.work_area().size;
+    let want = first_open_size((size.width, size.height), (area.width, area.height));
+    if want != (size.width, size.height) {
+        let _ = win.set_size(tauri::PhysicalSize::new(want.0, want.1));
+        let _ = win.center();
+    }
+}
+
 pub fn clamp_rect(
     (x, y, w, h): (i32, i32, i32, i32),
     (ax, ay, aw, ah): (i32, i32, i32, i32),
@@ -546,7 +571,14 @@ pub(crate) fn keep_on_screen(win: &tauri::WebviewWindow) {
 
 #[cfg(test)]
 mod clamp_tests {
-    use super::clamp_rect;
+    use super::{clamp_rect, first_open_size};
+
+    #[test]
+    fn first_open_takes_most_of_a_big_screen() {
+        assert_eq!(first_open_size((2560, 1600), (3840, 2080)), (3072, 1664));
+        assert_eq!(first_open_size((1280, 800), (1920, 1040)), (1536, 832));
+        assert_eq!(first_open_size((1280, 800), (1366, 728)), (1280, 728));
+    }
 
     #[test]
     fn pulls_a_window_back_from_the_top_left() {

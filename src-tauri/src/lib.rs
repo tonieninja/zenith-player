@@ -700,6 +700,7 @@ pub fn run() {
                 webview_tuning::tune(&main);
                 // 1280x800 z konfiguracji nie mieści się na 1366x768 ani na 1080p przy skali 150%
                 windows::keep_on_screen(&main);
+                windows::fit_first_open(&main);
             }
             tauri::async_runtime::spawn(stream_proxy::start_background());
             potoken::init(app.handle());
