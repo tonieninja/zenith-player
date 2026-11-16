@@ -24,6 +24,8 @@ pub struct DownloadMeta {
     pub size: u64,
     #[serde(default)]
     pub saved_at: u64,
+    #[serde(default)]
+    pub file: String,
 }
 
 static DIR: OnceLock<PathBuf> = OnceLock::new();
@@ -83,6 +85,70 @@ pub fn init_dir(dir: PathBuf) {
         *idx = map;
     }
     let _ = DIR.set(dir);
+    // load_index mógł przemianować stare pliki; bez zapisu indeks dalej wskazywałby <id>.audio
+    save_index();
+}
+
+const AUDIO_EXTS: [&str; 5] = ["webm", "m4a", "ogg", "mp3", "audio"];
+
+fn ext_for(head: &[u8]) -> &'static str {
+    match sniff_mime(head) {
+        "audio/webm" => "webm",
+        "audio/mp4" => "m4a",
+        "audio/ogg" => "ogg",
+        "audio/mpeg" => "mp3",
+        _ => "audio",
+    }
+}
+
+// nazwa jak w yt-dlp: czytelna po skopiowaniu na pendrive, a id w nawiasie zostaje do odszukania utworu
+fn file_name(meta: &DownloadMeta, ext: &str) -> String {
+    let who = if meta.artist.is_empty() {
+        meta.title.clone()
+    } else {
+        format!("{} - {}", meta.artist, meta.title)
+    };
+    format!(
+        "{} [{}].{ext}",
+        crate::export_file::safe_name(&who),
+        meta.id
+    )
+}
+
+// nazwa z index.json trafia do join; ukośnik albo „..” wyprowadziłyby ścieżkę poza folder pobrań
+fn plain_name(name: &str) -> bool {
+    !name.is_empty() && !name.contains(['/', '\\']) && !name.starts_with('.')
+}
+
+fn id_of(name: &str) -> Option<String> {
+    let (stem, ext) = name.rsplit_once('.')?;
+    if !AUDIO_EXTS.contains(&ext) {
+        return None;
+    }
+    let id = match stem.strip_suffix(']').and_then(|s| s.rsplit_once(" [")) {
+        Some((_, id)) => id,
+        None => stem,
+    };
+    valid_id(id).then(|| id.to_string())
+}
+
+// pliki sprzed nazw z tytułem (<id>.audio) dostają tytuł i prawdziwe rozszerzenie przy pierwszym starcie
+fn settle_file(dir: &std::path::Path, meta: &mut DownloadMeta) -> bool {
+    if plain_name(&meta.file) && !meta.file.ends_with(".audio") && dir.join(&meta.file).is_file() {
+        return true;
+    }
+    let old = dir.join(format!("{}.audio", meta.id));
+    let mut head = [0u8; 12];
+    let Ok(n) = std::fs::File::open(&old).and_then(|mut f| f.read(&mut head)) else {
+        return false;
+    };
+    let name = file_name(meta, ext_for(&head[..n]));
+    meta.file = if std::fs::rename(&old, dir.join(&name)).is_ok() {
+        name
+    } else {
+        format!("{}.audio", meta.id)
+    };
+    true
 }
 
 fn load_index(dir: &std::path::Path) -> BTreeMap<String, DownloadMeta> {
@@ -90,12 +156,14 @@ fn load_index(dir: &std::path::Path) -> BTreeMap<String, DownloadMeta> {
     let list: Vec<DownloadMeta> = serde_json::from_str(&raw).unwrap_or_default();
     let mut map: BTreeMap<String, DownloadMeta> = list
         .into_iter()
-        .filter(|m| valid_id(&m.id) && dir.join(format!("{}.audio", m.id)).is_file())
+        .filter_map(|mut m| (valid_id(&m.id) && settle_file(dir, &mut m)).then_some(m))
         .map(|m| (m.id.clone(), m))
         .collect();
     // plik spoza indeksu (zepsuty JSON, zamknięcie przed zapisem) musi dać się usunąć z aplikacji
-    for m in rebuild_index(dir) {
-        map.entry(m.id.clone()).or_insert(m);
+    for mut m in rebuild_index(dir) {
+        if !map.contains_key(&m.id) && settle_file(dir, &mut m) {
+            map.insert(m.id.clone(), m);
+        }
     }
     map
 }
@@ -106,19 +174,19 @@ fn rebuild_index(dir: &std::path::Path) -> Vec<DownloadMeta> {
     };
     rd.flatten()
         .filter_map(|e| {
-            let p = e.path();
-            let id = p.file_stem()?.to_str()?.to_string();
-            if p.extension()? != "audio" || !valid_id(&id) {
-                return None;
-            }
+            let file = e.file_name().to_str()?.to_string();
+            let id = id_of(&file)?;
             let md = e.metadata().ok()?;
             let saved_at = md
                 .modified()
                 .ok()
                 .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
                 .map_or(0, |d| d.as_secs());
+            let title = file
+                .rsplit_once(" [")
+                .map_or(id.clone(), |(t, _)| t.to_string());
             Some(DownloadMeta {
-                title: id.clone(),
+                title,
                 id,
                 artist: String::new(),
                 album: String::new(),
@@ -126,6 +194,7 @@ fn rebuild_index(dir: &std::path::Path) -> Vec<DownloadMeta> {
                 duration: 0.0,
                 size: md.len(),
                 saved_at,
+                file,
             })
         })
         .collect()
@@ -148,7 +217,11 @@ pub fn file_for(id: &str) -> Option<PathBuf> {
     if !valid_id(id) {
         return None;
     }
-    let p = DIR.get()?.join(format!("{id}.audio"));
+    let name = index().lock().ok()?.get(id)?.file.clone();
+    if !plain_name(&name) {
+        return None;
+    }
+    let p = DIR.get()?.join(name);
     p.is_file().then_some(p)
 }
 
@@ -378,14 +451,20 @@ async fn fetch_to_disk(
             return Err(e);
         }
     };
-    if let Err(e) = tokio::fs::rename(&part, dir.join(format!("{}.audio", meta.id))).await {
+    let mut head = [0u8; 12];
+    let n = std::fs::File::open(&part)
+        .and_then(|mut f| f.read(&mut head))
+        .unwrap_or(0);
+    meta.file = file_name(&meta, ext_for(&head[..n]));
+    let path = dir.join(&meta.file);
+    if let Err(e) = tokio::fs::rename(&part, &path).await {
         let _ = tokio::fs::remove_file(&part).await;
         return Err(e.to_string());
     }
     meta.size = done;
     meta.saved_at = crate::now_secs();
     if dropped().lock().is_ok_and(|mut d| d.remove(&meta.id)) {
-        let _ = tokio::fs::remove_file(dir.join(format!("{}.audio", meta.id))).await;
+        let _ = tokio::fs::remove_file(&path).await;
         return Err("cancelled".into());
     }
     if let Ok(mut m) = index().lock() {
@@ -595,6 +674,7 @@ mod tests {
             duration: 1.0,
             size: 4,
             saved_at: 1,
+            file: String::new(),
         };
         std::fs::write(
             dir.join("index.json"),
@@ -602,9 +682,16 @@ mod tests {
         )
         .unwrap();
         let map = load_index(&dir);
-        assert_eq!(map.get("aaaaaaaaaaa"), Some(&known));
+        let renamed = DownloadMeta {
+            file: "known [aaaaaaaaaaa].ogg".into(),
+            ..known
+        };
+        assert_eq!(map.get("aaaaaaaaaaa"), Some(&renamed));
+        assert!(dir.join("known [aaaaaaaaaaa].ogg").is_file());
         let orphan = map.get("bbbbbbbbbbb").unwrap();
         assert_eq!((orphan.title.as_str(), orphan.size), ("bbbbbbbbbbb", 8));
+        assert!(dir.join(&orphan.file).is_file() && orphan.file.ends_with(".ogg"));
+        assert!(!dir.join("bbbbbbbbbbb.audio").exists());
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -624,6 +711,7 @@ mod tests {
             duration: 1.0,
             size: 14,
             saved_at: 1,
+            file: String::new(),
         };
         let ghost = DownloadMeta {
             id: "zzzzzzzzzzz".into(),
@@ -635,7 +723,13 @@ mod tests {
         )
         .unwrap();
         init_dir(dir.clone());
-        assert_eq!(downloads_list(), vec![meta]);
+        let file = format!("t [{id}].ogg");
+        let meta = DownloadMeta { file, ..meta };
+        assert_eq!(downloads_list(), vec![meta.clone()]);
+        let saved: Vec<DownloadMeta> =
+            serde_json::from_str(&std::fs::read_to_string(dir.join("index.json")).unwrap())
+                .unwrap();
+        assert_eq!(saved, vec![meta.clone()]);
         let (st, buf, s, e, len, mime) = read_slice(id, Some("bytes=4-7")).unwrap();
         assert_eq!(
             (st, &buf[..], s, e, len, mime),
@@ -643,7 +737,30 @@ mod tests {
         );
         downloads_delete(id.into()).unwrap();
         assert!(downloads_list().is_empty());
-        assert!(!dir.join(format!("{id}.audio")).exists());
+        assert!(!dir.join(&meta.file).exists());
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn readable_names_keep_the_id() {
+        let meta = DownloadMeta {
+            id: "HyHNuVaZJ-k".into(),
+            title: "Feel Good Inc.".into(),
+            artist: "Gorillaz".into(),
+            album: String::new(),
+            cover: String::new(),
+            duration: 0.0,
+            size: 0,
+            saved_at: 0,
+            file: String::new(),
+        };
+        let name = file_name(&meta, ext_for(&[0x1A, 0x45, 0xDF, 0xA3]));
+        assert_eq!(name, "Gorillaz - Feel Good Inc [HyHNuVaZJ-k].webm");
+        assert_eq!(id_of(&name).as_deref(), Some("HyHNuVaZJ-k"));
+        assert_eq!(id_of("HyHNuVaZJ-k.audio").as_deref(), Some("HyHNuVaZJ-k"));
+        assert_eq!(id_of("notes [HyHNuVaZJ-k].txt"), None);
+        assert_eq!(id_of("x [short].webm"), None);
+        assert!(plain_name(&name));
+        assert!(!plain_name("../index.json") && !plain_name("a/b.webm") && !plain_name("a\\b"));
     }
 }

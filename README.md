@@ -98,10 +98,10 @@ Downloaded tracks are plain files on your disk, so you can copy them to a USB st
 - Linux: `~/.local/share/com.zenithplayer.desktop/downloads`
 - macOS: `~/Library/Application Support/com.zenithplayer.desktop/downloads`
 
-Each track is `<video id>.audio`, the same audio YouTube Music streams, usually Opus in WebM and sometimes
-AAC. `index.json` next to them says which id is which song. Rename a copy to `.webm` (or `.m4a` if it won't
-play) and most players open it. They aren't MP3s, so for an old MP3 player convert them first, for example
-`ffmpeg -i <id>.webm -q:a 2 "<title>.mp3"`.
+Files are named `Artist - Title [video id].webm` (sometimes `.m4a`), the same audio YouTube Music
+streams, and most players and phones open them as they are. Downloads from before 4.3.1 get renamed like
+that the next time Zenith starts. They aren't MP3s, so for an old MP3 player convert them first, for
+example `ffmpeg -i "Artist - Title [id].webm" -q:a 2 "Artist - Title.mp3"`.
 
 ## Problems
 
