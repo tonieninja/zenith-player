@@ -107,11 +107,15 @@ fn software_rendering_defaults() {
         if std::env::var_os("WAYLAND_DISPLAY").is_some() {
             set_default("__NV_DISABLE_EXPLICIT_SYNC", "1");
         }
-        // dmabuf na części sterowników nvidia nie startuje (błąd 71), a bez niego każda klatka idzie przez RAM
-        if gpu_failed_before() {
-            set_default("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
-        } else {
-            GPU_PROBE.store(true, std::sync::atomic::Ordering::SeqCst);
+        // dmabuf na części sterowników nvidia nie startuje (błąd 71); FORCE_SHM rysuje dalej na gpu i tylko kopiuje
+        // klatkę przez RAM, a DISABLE_DMABUF wyłącza w WebKit 2.54 całe przyspieszenie i rysuje wszystko na CPU
+        match gpu_render_level() {
+            0 => GPU_PROBE.store(true, std::sync::atomic::Ordering::SeqCst),
+            1 => {
+                set_default("WEBKIT_DMABUF_RENDERER_FORCE_SHM", "1");
+                GPU_PROBE.store(true, std::sync::atomic::Ordering::SeqCst);
+            }
+            _ => set_default("WEBKIT_DISABLE_DMABUF_RENDERER", "1"),
         }
         return;
     }
@@ -135,58 +139,68 @@ fn render_marks() -> Option<(std::path::PathBuf, std::path::PathBuf)> {
     Some((dir.join("render-probe"), dir.join("render-safe")))
 }
 
-// próba gpu zostawia znacznik z pid, który znika po starcie UI; został po martwym procesie, to start padł
+// 0 dmabuf, 1 kopia przez RAM, 2 CPU; próba zostawia znacznik z pid, który po martwym procesie oznacza padnięty start
 #[cfg(target_os = "linux")]
-fn gpu_failed_before() -> bool {
-    render_marks().is_none_or(|(probe, safe)| {
+fn gpu_render_level() -> u8 {
+    render_marks().map_or(2, |(probe, safe)| {
         if let Some(dir) = probe.parent() {
             let _ = std::fs::create_dir_all(dir);
         }
-        gpu_failed_at(&probe, &safe, env!("CARGO_PKG_VERSION"), |pid| {
+        render_level_at(&probe, &safe, env!("CARGO_PKG_VERSION"), |pid| {
             std::path::Path::new(&format!("/proc/{pid}")).exists()
         })
     })
 }
 
 #[cfg(target_os = "linux")]
-fn gpu_failed_at(
+fn render_level_at(
     probe: &std::path::Path,
     safe: &std::path::Path,
     version: &str,
     alive: impl Fn(u32) -> bool,
-) -> bool {
-    if std::fs::read_to_string(safe).is_ok_and(|v| v == version) {
-        return true;
-    }
+) -> u8 {
+    let cpu = format!("{version} cpu");
+    let level = match std::fs::read_to_string(safe) {
+        Ok(v) if v == cpu => return 2,
+        Ok(v) if v == version => 1,
+        _ => 0,
+    };
     let Ok(owner) = std::fs::read_to_string(probe) else {
-        return false;
+        return level;
     };
     if owner.trim().parse().is_ok_and(&alive) {
-        return false;
+        return level;
     }
     let _ = std::fs::remove_file(probe);
-    let _ = std::fs::write(safe, version);
-    true
+    let _ = std::fs::write(safe, if level == 0 { version } else { cpu.as_str() });
+    level + 1
 }
 
 #[cfg(all(test, target_os = "linux"))]
 mod tests {
     #[test]
-    fn a_failed_gpu_start_switches_to_safe_until_the_next_version() {
+    fn each_failed_gpu_start_steps_down_one_level_until_the_next_version() {
         let dir = std::env::temp_dir().join(format!("zenith-render-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let (probe, safe) = (dir.join("render-probe"), dir.join("render-safe"));
         let dead = |_| false;
-        assert!(!super::gpu_failed_at(&probe, &safe, "1.0.0", dead));
+        let level = |v| super::render_level_at(&probe, &safe, v, dead);
+        assert_eq!(level("1.0.0"), 0);
         // druga instancja przy działającej pierwszej nie może uznać próby za padniętą
         std::fs::write(&probe, "4242").unwrap();
-        assert!(!super::gpu_failed_at(&probe, &safe, "1.0.0", |p| p == 4242));
+        assert_eq!(
+            super::render_level_at(&probe, &safe, "1.0.0", |p| p == 4242),
+            0
+        );
         assert!(probe.exists());
-        assert!(super::gpu_failed_at(&probe, &safe, "1.0.0", dead));
+        assert_eq!(level("1.0.0"), 1);
         assert!(!probe.exists());
-        assert!(super::gpu_failed_at(&probe, &safe, "1.0.0", dead));
-        assert!(!super::gpu_failed_at(&probe, &safe, "1.0.1", dead));
+        assert_eq!(level("1.0.0"), 1);
+        std::fs::write(&probe, "4242").unwrap();
+        assert_eq!(level("1.0.0"), 2);
+        assert_eq!(level("1.0.0"), 2);
+        assert_eq!(level("1.0.1"), 0);
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
