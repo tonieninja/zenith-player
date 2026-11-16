@@ -392,16 +392,36 @@ pub(crate) fn tray_action(app: &tauri::AppHandle, action: &str) {
     }
 }
 
+// zwykły GNOME nie ma zasobnika: appindicator wpada wtedy w niewidoczną GtkStatusIcon, a zamknięcie chowa okno w nicość
+#[cfg(target_os = "linux")]
+fn tray_host_present() -> bool {
+    let has = || -> zbus::Result<bool> {
+        let conn = zbus::blocking::Connection::session()?;
+        let dbus = zbus::blocking::fdo::DBusProxy::new(&conn)?;
+        Ok(dbus.name_has_owner("org.kde.StatusNotifierWatcher".try_into()?)?)
+    };
+    has().unwrap_or(true)
+}
+
 fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+    #[cfg(target_os = "linux")]
+    if !tray_host_present() {
+        return Err("no StatusNotifier host".into());
+    }
     let play = MenuItem::with_id(app, "tray-play", "Play / Pause", true, None::<&str>)?;
     let next = MenuItem::with_id(app, "tray-next", "Next track", true, None::<&str>)?;
     let show = MenuItem::with_id(app, "tray-show", "Show Zenith", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "tray-quit", "Quit", true, None::<&str>)?;
     let menu = Menu::with_items(app, &[&play, &next, &show, &quit])?;
 
-    // na Windows domyślna ikona to wpis 16 px z icon.ico, rozmyty w zasobniku przy skalowaniu powyżej 100%
-    let icon = cfg!(windows)
-        .then(|| tauri::image::Image::from_bytes(include_bytes!("../icons/32x32.png")).ok())
+    // domyślna ikona to 16 px (Windows) albo 32 px (Linux), rozmyta w zasobniku przy skali powyżej 100%
+    let tray_png: &[u8] = if cfg!(windows) {
+        include_bytes!("../icons/32x32.png")
+    } else {
+        include_bytes!("../icons/128x128.png")
+    };
+    let icon = cfg!(not(target_os = "macos"))
+        .then(|| tauri::image::Image::from_bytes(tray_png).ok())
         .flatten()
         .or_else(|| app.default_window_icon().cloned())
         .ok_or("missing default window icon")?;
@@ -578,6 +598,11 @@ fn apply_global_shortcuts(app: &tauri::AppHandle, enabled: bool) -> usize {
             let _ = gs.unregister(sc);
         }
     }
+    // global-hotkey łapie klawisze tylko przez X11; na Waylandzie rejestracja „udaje się”, a skrót nigdy nie działa
+    #[cfg(target_os = "linux")]
+    let enabled = enabled
+        && (std::env::var_os("WAYLAND_DISPLAY").is_none()
+            || std::env::var("GDK_BACKEND").as_deref() == Ok("x11"));
     if !enabled {
         return 0;
     }
