@@ -1,0 +1,3 @@
+# hidraw pada jest domyślnie tylko dla roota; uaccess daje dostęp zalogowanemu użytkownikowi (USB i Bluetooth)
+KERNEL=="hidraw*", KERNELS=="*054C:0CE6*", TAG+="uaccess"
+KERNEL=="hidraw*", KERNELS=="*054C:0DF2*", TAG+="uaccess"

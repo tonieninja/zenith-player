@@ -1,0 +1,26 @@
+#!/bin/sh
+# AppRun podsuwa dzieciom biblioteki i moduły z paczki; systemowa przeglądarka (Firefox z Fedory) na nich nie startuje
+set -f
+here=$(dirname "$0")
+drop_appdir() {
+  out=
+  IFS=:
+  for p in $1; do
+    case $p in '' | "$here" | "$here/") continue ;; esac
+    if [ -n "$APPDIR" ]; then
+      case $p in "$APPDIR"/*) continue ;; esac
+    fi
+    out=${out:+$out:}$p
+  done
+  unset IFS
+  printf '%s' "$out"
+}
+PATH=$(drop_appdir "$PATH")
+XDG_DATA_DIRS=$(drop_appdir "$XDG_DATA_DIRS")
+export PATH XDG_DATA_DIRS
+unset LD_LIBRARY_PATH PYTHONHOME PYTHONPATH PYTHONDONTWRITEBYTECODE PERLLIB QT_PLUGIN_PATH \
+  GSETTINGS_SCHEMA_DIR GIO_MODULE_DIR GI_TYPELIB_PATH GTK_PATH GTK_EXE_PREFIX GTK_DATA_PREFIX GTK_THEME \
+  GTK_IM_MODULE_FILE GDK_PIXBUF_MODULE_FILE GST_PLUGIN_SYSTEM_PATH GST_PLUGIN_SYSTEM_PATH_1_0 \
+  GST_PLUGIN_PATH_1_0 GST_PLUGIN_SCANNER_1_0 GST_PTP_HELPER_1_0 GST_REGISTRY_REUSE_PLUGIN_SCANNER \
+  APPDIR APPIMAGE ARGV0 OWD
+exec xdg-open "$@"

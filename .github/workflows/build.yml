@@ -56,6 +56,8 @@ jobs:
         if: env.BUNDLE == 'true'
         shell: bash
         run: |
+          # bez bitu wykonywania AppImage nie otworzy żadnego linku; repo nie zawsze go przechowuje
+          chmod +x src-tauri/linux/xdg-open
           if [ -z "$TAURI_SIGNING_PRIVATE_KEY" ]; then
             pnpm tauri build --bundles deb,appimage,rpm --config '{"bundle":{"createUpdaterArtifacts":false}}'
           else

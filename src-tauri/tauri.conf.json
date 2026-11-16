@@ -106,24 +106,34 @@
     },
     "linux": {
       "appimage": {
-        "bundleMediaFramework": true
+        "bundleMediaFramework": true,
+        "files": {
+          "/usr/bin/xdg-open": "linux/xdg-open"
+        }
       },
       "rpm": {
         "desktopTemplate": "linux/zenith.desktop",
-        "depends": [
-          "webkit2gtk4.1",
-          "gtk3",
-          "libayatana-appindicator-gtk3",
+        "postInstallScript": "linux/postinst.sh",
+        "files": {
+          "/usr/share/metainfo/com.zenithplayer.desktop.metainfo.xml": "linux/zenith.metainfo.xml",
+          "/usr/lib/udev/rules.d/70-zenith-dualsense.rules": "linux/70-zenith-dualsense.rules"
+        },
+        "recommends": [
           "gstreamer1-plugins-base",
           "gstreamer1-plugins-good",
-          "gstreamer1-plugin-libav"
+          "gstreamer1-plugin-libav",
+          "gstreamer-plugins-base",
+          "gstreamer-plugins-good",
+          "gstreamer-plugins-libav"
         ]
       },
       "deb": {
         "section": "sound",
         "desktopTemplate": "linux/zenith.desktop",
+        "postInstallScript": "linux/postinst.sh",
         "files": {
-          "/usr/share/metainfo/com.zenithplayer.desktop.metainfo.xml": "linux/zenith.metainfo.xml"
+          "/usr/share/metainfo/com.zenithplayer.desktop.metainfo.xml": "linux/zenith.metainfo.xml",
+          "/usr/lib/udev/rules.d/70-zenith-dualsense.rules": "linux/70-zenith-dualsense.rules"
         },
         "depends": [
           "libwebkit2gtk-4.1-0",
