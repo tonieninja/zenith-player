@@ -92,6 +92,12 @@ export function attachOverlayWindowFit(panel: HTMLElement): () => void {
         win.innerPosition(),
         win.scaleFactor(),
       ]);
+      // Wayland podaje kursor i okno jako 0,0: przepuszczanie kliknięć zablokowałoby panel na zawsze
+      if (!cursor.x && !cursor.y && !origin.x && !origin.y) {
+        stopped = true;
+        if (ignoring !== false) await win.setIgnoreCursorEvents(false);
+        return;
+      }
       const hit = cursorHitsOverlayPanel(cursor, origin, scale, panel.getBoundingClientRect());
       if (ignoring !== !hit) {
         ignoring = !hit;
