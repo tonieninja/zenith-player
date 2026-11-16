@@ -48,7 +48,7 @@ const AlbumCard = memo(function AlbumCard({
           decoding="async"
           alt=""
           className="yt-card-img"
-          {...coverAttrs(track)}
+          {...coverAttrs(track, devicePixelRatio > 1 ? 'large' : 'small')}
         />
         <div className="yt-card-overlay">
           <div className="yt-card-play-btn">
