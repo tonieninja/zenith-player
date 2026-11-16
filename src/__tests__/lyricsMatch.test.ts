@@ -3,6 +3,7 @@ import {
   captionsMatchLyrics,
   isAcceptableLyricsMatch,
   pickBestSyncedLyrics,
+  syncAgrees,
   syncAlignment,
   scoreLyricsMatch,
   shouldShowEarlyPlain,
@@ -167,7 +168,22 @@ describe('Auto lyrics display rules', () => {
       { time: 18.9, text: '泥だらけの走馬灯に酔う' },
       { time: 24.4, text: 'こわばる心' },
     ];
-    expect(syncAlignment(merged, split)).toEqual({ shared: 1, offset: expect.closeTo(0.1, 5) });
+    expect(syncAlignment(merged, split)).toEqual({ shared: 1, close: 1 });
+  });
+
+  it('catches a version that drifts even when the middle of the song lines up', () => {
+    const base = Array.from({ length: 20 }, (_, i) => ({
+      time: 10 + i * 8,
+      text: `line number ${i} here`,
+    }));
+    const drift = base.map((l, i) => ({ ...l, time: l.time + (i - 10) * 0.25 }));
+    expect(syncAgrees(base, drift)).toBe(false);
+    expect(
+      syncAgrees(
+        base,
+        base.map((l) => ({ ...l, time: l.time + 0.4 }))
+      )
+    ).toBe(true);
   });
 
   it('does not early-show Lyrics.ovh plain text', () => {

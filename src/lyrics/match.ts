@@ -175,8 +175,8 @@ const MAX_ALIGN_LINES = 200;
 // po początku linijki, bo jedno źródło skleja dwie linijki w jedną, a drugie je rozdziela
 const ALIGN_KEY_CHARS = 10;
 
-// te same linijki w tej samej kolejności (LCS); mediana różnic czasu mówi, o ile jedno źródło przesuwa drugie
-export function syncAlignment(a: TimedLine[], b: TimedLine[]): { shared: number; offset: number } {
+// te same linijki w tej samej kolejności (LCS); close to część, którą oba źródła stawiają w ciągu sekundy
+export function syncAlignment(a: TimedLine[], b: TimedLine[]): { shared: number; close: number } {
   const keyed = (lines: TimedLine[]) =>
     lines
       .map((l) => ({
@@ -189,7 +189,7 @@ export function syncAlignment(a: TimedLine[], b: TimedLine[]): { shared: number;
   const kb = keyed(b);
   const n = ka.length;
   const m = kb.length;
-  if (!n || !m) return { shared: 0, offset: Infinity };
+  if (!n || !m) return { shared: 0, close: 0 };
   const w = m + 1;
   const dp = new Uint16Array((n + 1) * w);
   for (let i = n - 1; i >= 0; i--) {
@@ -209,15 +209,15 @@ export function syncAlignment(a: TimedLine[], b: TimedLine[]): { shared: number;
     } else if (dp[(i + 1) * w + j] >= dp[i * w + j + 1]) i += 1;
     else j += 1;
   }
-  if (!diffs.length) return { shared: 0, offset: Infinity };
-  diffs.sort((x, y) => x - y);
-  return { shared: diffs.length / Math.min(n, m), offset: diffs[diffs.length >> 1] };
+  if (!diffs.length) return { shared: 0, close: 0 };
+  const close = diffs.filter((d) => Math.abs(d) <= 1).length;
+  return { shared: diffs.length / Math.min(n, m), close: close / diffs.length };
 }
 
-// sekunda luzu: serwisy stawiają znacznik na początku wdechu albo na pierwszej sylabie
+// liczy się każda linijka, nie mediana: inne tempo wersji zgadza się w środku piosenki, a rozjeżdża na brzegach
 export function syncAgrees(a: TimedLine[], b: TimedLine[]): boolean {
-  const { shared, offset } = syncAlignment(a, b);
-  return shared >= 0.3 && Math.abs(offset) <= 1;
+  const { shared, close } = syncAlignment(a, b);
+  return shared >= 0.3 && close >= 0.7;
 }
 
 export function pickBestSyncedLyrics<
