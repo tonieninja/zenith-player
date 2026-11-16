@@ -197,6 +197,9 @@ pub fn graceful_shutdown(app: &AppHandle) {
     }
     let _ = app.emit_to("main", "zenith-app-quitting", ());
     unregister_shortcuts(app);
+    if UI_READY.load(Ordering::SeqCst) {
+        crate::webview_tuning::clear_gpu_probe();
+    }
 
     let app = app.clone();
     if app

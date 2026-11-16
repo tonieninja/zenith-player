@@ -1,6 +1,12 @@
 #[cfg(target_os = "linux")]
 pub fn tune(win: &tauri::WebviewWindow) {
     use webkit2gtk::{CacheModel, SettingsExt, WebContextExt, WebViewExt};
+    // tylko główna instancja: druga kończy się od razu i jej znacznik wyglądałby jak padnięty start gpu
+    if GPU_PROBE.load(std::sync::atomic::Ordering::SeqCst) {
+        if let Some((probe, _)) = render_marks() {
+            let _ = std::fs::write(probe, std::process::id().to_string());
+        }
+    }
     let model = match std::env::var("ZENITH_WEBKIT_CACHE").as_deref() {
         Ok("browser") => CacheModel::WebBrowser,
         Ok("document") => CacheModel::DocumentBrowser,
@@ -104,6 +110,8 @@ fn software_rendering_defaults() {
         // dmabuf na części sterowników nvidia nie startuje (błąd 71), a bez niego każda klatka idzie przez RAM
         if gpu_failed_before() {
             set_default("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+        } else {
+            GPU_PROBE.store(true, std::sync::atomic::Ordering::SeqCst);
         }
         return;
     }
@@ -112,6 +120,9 @@ fn software_rendering_defaults() {
     }
     set_default("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
 }
+
+#[cfg(target_os = "linux")]
+static GPU_PROBE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 #[cfg(target_os = "linux")]
 fn render_marks() -> Option<(std::path::PathBuf, std::path::PathBuf)> {
@@ -124,28 +135,38 @@ fn render_marks() -> Option<(std::path::PathBuf, std::path::PathBuf)> {
     Some((dir.join("render-probe"), dir.join("render-safe")))
 }
 
-// próba gpu zostawia znacznik, który znika dopiero po starcie UI; został, to poprzedni start padł
+// próba gpu zostawia znacznik z pid, który znika po starcie UI; został po martwym procesie, to start padł
 #[cfg(target_os = "linux")]
 fn gpu_failed_before() -> bool {
-    render_marks()
-        .is_none_or(|(probe, safe)| gpu_failed_at(&probe, &safe, env!("CARGO_PKG_VERSION")))
+    render_marks().is_none_or(|(probe, safe)| {
+        if let Some(dir) = probe.parent() {
+            let _ = std::fs::create_dir_all(dir);
+        }
+        gpu_failed_at(&probe, &safe, env!("CARGO_PKG_VERSION"), |pid| {
+            std::path::Path::new(&format!("/proc/{pid}")).exists()
+        })
+    })
 }
 
 #[cfg(target_os = "linux")]
-fn gpu_failed_at(probe: &std::path::Path, safe: &std::path::Path, version: &str) -> bool {
+fn gpu_failed_at(
+    probe: &std::path::Path,
+    safe: &std::path::Path,
+    version: &str,
+    alive: impl Fn(u32) -> bool,
+) -> bool {
     if std::fs::read_to_string(safe).is_ok_and(|v| v == version) {
         return true;
     }
-    if probe.exists() {
-        let _ = std::fs::remove_file(probe);
-        let _ = std::fs::write(safe, version);
-        return true;
+    let Ok(owner) = std::fs::read_to_string(probe) else {
+        return false;
+    };
+    if owner.trim().parse().is_ok_and(&alive) {
+        return false;
     }
-    if let Some(dir) = probe.parent() {
-        let _ = std::fs::create_dir_all(dir);
-    }
-    let _ = std::fs::write(probe, "");
-    false
+    let _ = std::fs::remove_file(probe);
+    let _ = std::fs::write(safe, version);
+    true
 }
 
 #[cfg(all(test, target_os = "linux"))]
@@ -154,14 +175,27 @@ mod tests {
     fn a_failed_gpu_start_switches_to_safe_until_the_next_version() {
         let dir = std::env::temp_dir().join(format!("zenith-render-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
         let (probe, safe) = (dir.join("render-probe"), dir.join("render-safe"));
-        assert!(!super::gpu_failed_at(&probe, &safe, "1.0.0"));
+        let dead = |_| false;
+        assert!(!super::gpu_failed_at(&probe, &safe, "1.0.0", dead));
+        // druga instancja przy działającej pierwszej nie może uznać próby za padniętą
+        std::fs::write(&probe, "4242").unwrap();
+        assert!(!super::gpu_failed_at(&probe, &safe, "1.0.0", |p| p == 4242));
         assert!(probe.exists());
-        assert!(super::gpu_failed_at(&probe, &safe, "1.0.0"));
+        assert!(super::gpu_failed_at(&probe, &safe, "1.0.0", dead));
         assert!(!probe.exists());
-        assert!(super::gpu_failed_at(&probe, &safe, "1.0.0"));
-        assert!(!super::gpu_failed_at(&probe, &safe, "1.0.1"));
+        assert!(super::gpu_failed_at(&probe, &safe, "1.0.0", dead));
+        assert!(!super::gpu_failed_at(&probe, &safe, "1.0.1", dead));
         let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+// wyjście zaraz po starcie nie może zostawić znacznika, bo następny start uznałby gpu za zepsute
+pub fn clear_gpu_probe() {
+    #[cfg(target_os = "linux")]
+    if let Some((probe, _)) = render_marks() {
+        let _ = std::fs::remove_file(probe);
     }
 }
 
