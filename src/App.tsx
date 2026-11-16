@@ -3145,8 +3145,12 @@ export default function App() {
     if (!r) return false;
     const plan = r.plan;
     const snap = r.snap;
-    // głośność zmieniona skrótem w zasobniku; bez tego okno przywróciłoby starą
-    if (typeof r.volume === 'number' && Math.abs(r.volume - volumeRef.current) > 0.001) {
+    // głośność zmieniona skrótem w zasobniku; świeży silnik ma domyślne 0.8, które nadpisałoby zapamiętaną
+    if (
+      isRestoredUi() &&
+      typeof r.volume === 'number' &&
+      Math.abs(r.volume - volumeRef.current) > 0.001
+    ) {
       setVolume(r.volume);
       if (pluginManager.isEnabled('remember-volume')) saveRememberedVolume(r.volume);
     }
