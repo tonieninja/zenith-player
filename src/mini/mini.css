@@ -1,3 +1,5 @@
+@import '../components/lyricsTypography.css';
+
 html.opaque-window,
 html.opaque-window body,
 html.opaque-window #root {
@@ -7,87 +9,6 @@ html.opaque-window #root {
 html.opaque-window .mini-root {
   background: #0a0b10;
   border-radius: 0;
-}
-
-.mini-root {
-  width: 100vw;
-  height: 100vh;
-  display: flex;
-  align-items: center;
-  padding: 10px 14px;
-  box-sizing: border-box;
-  background: rgba(10, 11, 16, 0.92);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  border-radius: 16px;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  gap: 12px;
-  position: relative;
-  cursor: grab;
-  overflow: hidden;
-}
-
-.mini-close {
-  position: absolute;
-  top: 5px;
-  right: 5px;
-  width: 18px;
-  height: 18px;
-  display: grid;
-  place-items: center;
-  padding: 0;
-  border: none;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.1);
-  color: rgba(255, 255, 255, 0.75);
-  cursor: pointer;
-  opacity: 0;
-  transition:
-    opacity 0.15s ease,
-    background 0.15s ease;
-  z-index: 2;
-}
-
-.mini-root:hover .mini-close,
-.mini-close:focus-visible {
-  opacity: 1;
-}
-
-.mini-close:hover {
-  background: rgba(255, 80, 80, 0.85);
-  color: #fff;
-}
-
-.mini-cover {
-  width: 56px;
-  height: 56px;
-  border-radius: 10px;
-  object-fit: cover;
-  flex-shrink: 0;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
-}
-
-.mini-info {
-  flex: 1;
-  min-width: 0;
-}
-
-.mini-title {
-  font-size: 13px;
-  font-weight: 800;
-  color: #fff;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.mini-artist {
-  font-size: 11px;
-  font-weight: 600;
-  color: rgba(255, 255, 255, 0.5);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  margin-top: 2px;
 }
 
 @property --mini-c1 {
@@ -102,24 +23,240 @@ html.opaque-window .mini-root {
   initial-value: #ffffff;
 }
 
-.mini-progress {
+.mini-root {
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 11px 14px;
+  box-sizing: border-box;
+  /* prawie kryjące tło, bo przy 0.92 przez okno prześwitywały linie z pulpitu; poświata bierze kolor okładki */
+  background:
+    radial-gradient(
+      120% 150% at 0% 0%,
+      color-mix(in srgb, var(--mini-c1) 17%, transparent) 0%,
+      transparent 58%
+    ),
+    rgba(12, 13, 19, 0.975);
+  border: 1px solid rgba(255, 255, 255, 0.11);
+  border-radius: 16px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  position: relative;
+  cursor: grab;
+  overflow: hidden;
   transition:
     --mini-c1 0.9s ease,
     --mini-c2 0.9s ease;
+}
+
+.mini-root.has-lyrics {
+  justify-content: flex-start;
+}
+
+.mini-main {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.mini-chips {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+  z-index: 3;
+}
+
+/* tylko pod kursorem albo z klawiatury; zwykły fokus po kliknięciu zostawiał je na stałe */
+.mini-root:hover .mini-chips,
+.mini-chips:has(:focus-visible) {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.mini-chip {
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.75);
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+}
+
+.mini-chip:hover {
+  background: rgba(255, 255, 255, 0.2);
+  color: #fff;
+}
+
+.mini-chip:last-child:hover {
+  background: rgba(255, 80, 80, 0.85);
+}
+
+.mini-chip.on {
+  background: var(--mini-c1);
+  color: #0a0b10;
+}
+
+.mini-cover {
+  width: 56px;
+  height: 56px;
+  border-radius: 10px;
+  object-fit: cover;
+  flex-shrink: 0;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
+}
+
+.mini-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.mini-title-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.mini-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 800;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mini-like {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.5);
+  cursor: pointer;
+  transition:
+    color 0.15s ease,
+    background 0.15s ease,
+    transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.mini-like:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.mini-like:active {
+  transform: scale(0.85);
+}
+
+.mini-like.on {
+  color: var(--mini-c1);
+}
+
+.mini-artist {
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.5);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 2px;
+}
+
+/* pasek ma 3 px, ale łapie się w 15 px wysokości, bo w małym oknie trudno trafić w kreskę */
+.mini-seek {
+  position: relative;
+  padding: 6px 0;
+  margin-top: 2px;
+  cursor: pointer;
+  touch-action: none;
+  outline: none;
+}
+
+.mini-seek.is-locked {
+  cursor: default;
+}
+
+.mini-progress {
   height: 3px;
   background: rgba(255, 255, 255, 0.12);
   border-radius: 2px;
-  margin-top: 8px;
   overflow: hidden;
+  transition: height 0.15s ease;
+}
+
+.mini-seek:hover .mini-progress,
+.mini-seek.is-dragging .mini-progress,
+.mini-seek:focus-visible .mini-progress {
+  height: 5px;
+}
+
+.mini-seek.is-locked .mini-progress {
+  height: 3px;
+}
+
+.mini-seek:focus-visible .mini-progress {
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.35);
 }
 
 .mini-progress-fill {
   height: 100%;
-  background: linear-gradient(90deg, var(--mini-c1, #a78bfa), var(--mini-c2, #fff));
+  background: linear-gradient(90deg, var(--mini-c1), var(--mini-c2));
   border-radius: 2px;
   transform-origin: left center;
   transform: scaleX(0);
   will-change: transform;
+}
+
+.mini-seek-thumb {
+  position: absolute;
+  top: 50%;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--mini-c1) 35%, transparent),
+    0 2px 6px rgba(0, 0, 0, 0.5);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.mini-seek-time {
+  position: absolute;
+  bottom: calc(100% - 2px);
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: rgba(10, 11, 16, 0.94);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.5;
+  white-space: nowrap;
+  transform: translateX(-50%);
+  pointer-events: none;
 }
 
 .mini-controls {
@@ -151,6 +288,10 @@ html.opaque-window .mini-root {
   transform: scale(1.06);
 }
 
+.mini-btn:active {
+  transform: scale(0.94);
+}
+
 .mini-btn.play {
   width: 40px;
   height: 40px;
@@ -163,11 +304,121 @@ html.opaque-window .mini-root {
 }
 
 .mini-idle {
-  color: rgba(255, 255, 255, 0.35);
+  margin: auto;
+  color: rgba(255, 255, 255, 0.6);
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 1.5px;
   text-transform: uppercase;
-  flex: 1;
   text-align: center;
+}
+
+/* stała wysokość pod dwa wiersze aktywnej linii i jeden następnej, więc okno nie skacze między liniami */
+.mini-lyrics {
+  position: relative;
+  overflow: hidden;
+  flex: none;
+  height: 58px;
+  margin-top: 8px;
+  padding: 6px 2px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  font-family: Outfit, 'Segoe UI Variable Display', 'Segoe UI', sans-serif;
+  font-optical-sizing: auto;
+  font-synthesis: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+.mini-lyrics-page {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
+}
+
+/* schodząca linia ma układ sprzed zmiany (z niewidoczną następną), więc rusza z miejsca, a nie skacze */
+.mini-lyrics-page.is-leaving {
+  position: absolute;
+  inset: 6px 2px 0;
+  pointer-events: none;
+}
+
+.mini-lyric.is-ghost {
+  visibility: hidden;
+}
+
+/* nowa linia rośnie od lewego górnego rogu, czyli z miejsca szarej następnej */
+.mini-lyrics-page.is-entering .mini-lyric.is-active {
+  transform-origin: 0 0;
+}
+
+.mini-lyrics.is-empty {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  color: rgba(255, 255, 255, 0.32);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+}
+
+/* aktywna linia może zająć dwa wiersze; dłuższa zostaje ucięta, bo okno ma stałą wysokość */
+.mini-lyric.is-active {
+  max-height: 2.5em;
+  overflow: hidden;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+  color: #fff;
+}
+
+/* z romanizacją lub tłumaczeniem oryginał dostaje jeden wiersz, żeby wszystko zmieściło się w oknie */
+.mini-lyrics.has-extras .mini-lyric.is-active {
+  max-height: 1.25em;
+}
+
+/* kolor dla tekstu bez karaoke; bez niego dziedziczył czarny z dokumentu */
+.mini-lyric.is-sub {
+  max-height: 1.3em;
+  overflow: hidden;
+  font-size: 12px;
+  line-height: 1.3;
+  font-weight: 640;
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.mini-lyric.is-roman {
+  font-style: italic;
+  font-synthesis: style;
+}
+
+.mini-lyric.is-trans {
+  color: rgba(255, 255, 255, 0.6);
+  font-weight: 540;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.mini-lyric.is-next {
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: rgba(255, 255, 255, 0.4);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mini-root .lyric-karaoke-fill {
+  text-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.6),
+    0 0 14px color-mix(in srgb, var(--mini-c1) 45%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mini-lyrics-page.is-leaving {
+    display: none;
+  }
 }

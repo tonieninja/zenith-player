@@ -32,6 +32,7 @@ import { Select } from './ui/Select';
 import { ModalOverlay } from './ui/ModalOverlay';
 import { DownloadsSettings } from './plugins/DownloadsSettings';
 import { HotkeySettings } from './plugins/HotkeySettings';
+import { MiniPlayerSettings } from './plugins/MiniPlayerSettings';
 import { DuckMeter } from './plugins/DuckMeter';
 import type { Track } from '../api/youtube';
 import { getListenStats, resetListenStats } from '../plugins/statsTracker';
@@ -117,7 +118,7 @@ import {
   refreshRoomPeerCount,
   roomPeerCount,
 } from '../plugins/listeningRoom';
-import { translations, Language } from '../i18n';
+import { errorText, translations, Language } from '../i18n';
 import { pluginText } from '../i18n/plugins';
 import { pluginQueryMatches } from '../utils/pluginSearch';
 import type { PlayerAudio } from '../audio/engine';
@@ -317,7 +318,7 @@ export function PluginsPanel({
     setRemoteErr('');
     restartRemote()
       .then((i) => i && setRemoteInfo(i))
-      .catch((e) => setRemoteErr(`${t.remoteError}: ${String(e)}`));
+      .catch((e) => setRemoteErr(`${t.remoteError}: ${errorText(t, e)}`));
   };
 
   const renderSettings = (id: string) => {
@@ -373,6 +374,8 @@ export function PluginsPanel({
         return <DownloadsSettings t={t} currentTrack={currentTrack} onPlayTrack={onPlayTrack} />;
       case 'global-hotkeys':
         return <HotkeySettings t={t} />;
+      case 'mini-player':
+        return <MiniPlayerSettings t={t} />;
       case 'sleep-timer':
         return (
           <div className="plugin-setting-row">
@@ -905,7 +908,7 @@ export function PluginsPanel({
                   disabled={fwBusy}
                   onClick={async () => {
                     setFwBusy(true);
-                    const ok = await allowThroughFirewall();
+                    const ok = await allowThroughFirewall(fw.publicNetwork);
                     setFwBusy(false);
                     setFw(await getFirewallStatus());
                     if (!ok) setFw((f) => (f ? { ...f, ruleOk: false } : f));
@@ -942,7 +945,7 @@ export function PluginsPanel({
                   if (remoteOn)
                     restartRemote()
                       .then((i) => i && setRemoteInfo(i))
-                      .catch((e) => setRemoteErr(`${t.remoteError}: ${String(e)}`));
+                      .catch((e) => setRemoteErr(`${t.remoteError}: ${errorText(t, e)}`));
                 }}
               >
                 <span className="plugin-toggle-knob" />
@@ -1274,6 +1277,7 @@ export function PluginsPanel({
       'playback-speed',
       'discord-rpc',
       'lyrics-overlay',
+      'mini-player',
       'second-screen-lyrics',
       'preload-next',
       'fade-on-pause',
@@ -1296,7 +1300,15 @@ export function PluginsPanel({
       <div className="glass-modal-container plugins-modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <h2>{t.plugins}</h2>
-          <X size={26} className="modal-close-icon" onClick={onClose} />
+          <button
+            type="button"
+            className="modal-close-icon"
+            aria-label={t.winClose}
+            title={t.winClose}
+            onClick={onClose}
+          >
+            <X size={26} />
+          </button>
         </div>
         <div className="plugins-search">
           <Search size={16} aria-hidden />
