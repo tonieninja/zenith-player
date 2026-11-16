@@ -167,6 +167,8 @@ import {
 import { registerDualSenseHandler } from './plugins/dualSense';
 import { bindFx } from './plugins/equalizer';
 import {
+  allowThroughFirewall,
+  getFirewallStatus,
   pushRemoteLyrics,
   pushRemoteMessage,
   pushRemoteState,
@@ -234,6 +236,7 @@ import {
   DONATE_URL,
   GITHUB_RELEASES,
   installPendingUpdate,
+  isPortableApp,
 } from './utils/appUpdate';
 import { resetOnboarding, shouldShowOnboarding } from './utils/onboarding';
 import { smartShuffle } from './utils/smartShuffle';
@@ -4515,6 +4518,48 @@ export default function App() {
     const t = window.setTimeout(() => setShowOnboarding(true), 600);
     return () => window.clearTimeout(t);
   }, [showSplash]);
+
+  // portable omija instalator, który pyta o zaporę dla pilota, więc pyta raz sam po pierwszym starcie
+  useEffect(() => {
+    if (showSplash || showOnboarding || shouldShowOnboarding()) return;
+    if (localStorage.getItem('zenith_portable_fw_asked')) return;
+    let cancelled = false;
+    void (async () => {
+      if (!(await isPortableApp())) return;
+      const fw = await getFirewallStatus();
+      if (cancelled || !fw?.windows) return;
+      localStorage.setItem('zenith_portable_fw_asked', '1');
+      if (fw.ruleOk) return;
+      const tr = () => translations[localStorage.getItem('zenith_lang') === 'pl' ? 'pl' : 'en'];
+      // reguła tylko dla sieci prywatnych nie wpuści telefonu w publicznej, więc tam ostrzegamy jak panel pilota
+      const ask = fw.publicNetwork ? 'remoteFwPublic' : 'portableFwAsk';
+      pushToast(
+        tr()[ask],
+        'info',
+        30000,
+        {
+          label: tr().remoteFwFix,
+          labelKey: 'remoteFwFix',
+          onClick: () =>
+            void allowThroughFirewall(fw.publicNetwork).then((ok) => {
+              if (ok) {
+                pushToast(tr().portableFwDone, 'success', 4000, undefined, {
+                  key: 'portableFwDone',
+                });
+              } else {
+                pushToast(tr().remoteFwMissing, 'error', 6000, undefined, {
+                  key: 'remoteFwMissing',
+                });
+              }
+            }),
+        },
+        { key: ask }
+      );
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [showSplash, showOnboarding]);
 
   const ambientGlowOn = pluginStates['ambient-glow'];
   useEffect(() => {

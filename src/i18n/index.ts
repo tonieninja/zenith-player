@@ -322,6 +322,9 @@ const en = {
     "Windows treats this network as Public, so the firewall blocks your phone. If it's your home network, set it to Private in Windows settings. Allow Zenith here only on a network you trust: in a café or hotel anyone on the same Wi-Fi could reach the remote.",
   remoteFwFix: 'Allow in firewall',
   remoteFwBusy: 'Waiting for Windows...',
+  portableFwAsk:
+    'Want to control Zenith from your phone? Windows Firewall has to let it through once.',
+  portableFwDone: 'Done, phones on your network can reach Zenith now.',
   pluginOnCount: '{on} of {n} on',
   pluginNoMatch: 'No plugins match that.',
   offlineBadge: 'Offline',
@@ -917,6 +920,8 @@ const pl: Record<keyof typeof en, string> = {
     'Windows uznaje tę sieć za publiczną i zapora blokuje telefon. Jeśli to twoja sieć domowa, ustaw ją w Windows jako prywatną. Zezwalaj tu tylko w zaufanej sieci: w kawiarni czy hotelu do pilota dostałby się każdy z tego samego Wi-Fi.',
   remoteFwFix: 'Zezwól w zaporze',
   remoteFwBusy: 'Czekam na Windows...',
+  portableFwAsk: 'Chcesz sterować Zenithem z telefonu? Zapora Windows musi go raz przepuścić.',
+  portableFwDone: 'Gotowe, telefony w twojej sieci dostaną się już do Zenitha.',
   pluginOnCount: 'włączone: {on} z {n}',
   pluginNoMatch: 'Żadna wtyczka nie pasuje.',
   offlineBadge: 'Offline',
