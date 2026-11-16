@@ -15,6 +15,8 @@ mod native_audio;
 mod player;
 mod player_js;
 mod portable;
+#[cfg(target_os = "linux")]
+mod portal_hotkeys;
 mod potoken;
 mod prefs;
 mod remote;
@@ -590,6 +592,13 @@ pub(crate) fn hotkey_action_for(
         .map(|(_, a)| a.clone())
 }
 
+// GTK na natywnym Waylandzie: brak globalnych skrótów, pozycji okien i „zawsze na wierzchu”
+pub(crate) fn native_wayland() -> bool {
+    cfg!(target_os = "linux")
+        && std::env::var_os("WAYLAND_DISPLAY").is_some()
+        && std::env::var("GDK_BACKEND").as_deref() != Ok("x11")
+}
+
 fn apply_global_shortcuts(app: &tauri::AppHandle, enabled: bool) -> usize {
     use tauri_plugin_global_shortcut::GlobalShortcutExt;
     let _guard = HOTKEY_LOCK.lock().unwrap_or_else(|e| e.into_inner());
@@ -601,10 +610,20 @@ fn apply_global_shortcuts(app: &tauri::AppHandle, enabled: bool) -> usize {
         }
     }
     // global-hotkey łapie klawisze tylko przez X11; na Waylandzie rejestracja „udaje się”, a skrót nigdy nie działa
-    #[cfg(target_os = "linux")]
-    let enabled = enabled
-        && (std::env::var_os("WAYLAND_DISPLAY").is_none()
-            || std::env::var("GDK_BACKEND").as_deref() == Ok("x11"));
+    if native_wayland() {
+        #[cfg(target_os = "linux")]
+        {
+            let bindings = HOTKEY_BINDINGS
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .clone();
+            // pusta lista = start przed ustawieniami z frontendu, a portal przyjmuje skróty tylko raz
+            if enabled && !bindings.is_empty() {
+                portal_hotkeys::sync(app, bindings);
+            }
+        }
+        return 0;
+    }
     if !enabled {
         return 0;
     }
@@ -636,7 +655,12 @@ fn set_global_hotkey_bindings(
         list.push((a.to_string(), acc));
     }
     *HOTKEY_BINDINGS.lock().unwrap_or_else(|e| e.into_inner()) = list;
-    apply_global_shortcuts(&app, GLOBAL_HOTKEYS_ON.load(Ordering::SeqCst));
+    let on = GLOBAL_HOTKEYS_ON.load(Ordering::SeqCst);
+    apply_global_shortcuts(&app, on);
+    // nic nie próbowano rejestrować, więc nie ma czego zgłaszać jako zajęte przez inną aplikację
+    if !on || native_wayland() {
+        return bad;
+    }
     let live = HOTKEY_LIVE.lock().unwrap_or_else(|e| e.into_inner());
     for (a, acc) in bindings {
         if let Some(sc) = parse_accelerator(&acc) {
