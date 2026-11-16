@@ -1,5 +1,26 @@
 # Changelog
 
+## 4.5.0
+
+- the portable exe updates itself in place instead of installing the setup next to it. Portable 4.4.0 and older can't do that yet, so download this one by hand once
+- the portable exe asks once if Windows Firewall may let the phone remote through, before only the installer asked
+- Linux: global hotkeys work on Wayland through the desktop's shortcut portal (KDE Plasma 6, GNOME 48 and newer, deb and rpm), the desktop asks once to allow them
+- Linux on KDE Wayland: the mini player and the lyrics overlay stay on top and out of the taskbar
+- Linux on Wayland: Zenith shows its own icon in the taskbar and Alt+Tab, lyrics on a second screen open fullscreen on that screen
+- Linux on NVIDIA: Explore no longer hangs with Fedora's WebKit 2.54. If WebKit crashes or stops responding, Zenith restarts on a safer renderer and picks the song up where it was
+- Linux on NVIDIA: WebKit on the 580 driver loses a file handle every frame, Zenith raises the limit so it no longer dies after a minute
+- Linux on laptops where the screen runs on the Intel or AMD chip: the fallback skips the renderer mode that could freeze there
+- AppImage: Spotify, Last.fm and donate links open in your browser, Fedora's Firefox didn't start from inside the AppImage
+- rpm on Fedora 45 and newer: rpm refuses unsigned packages there, so Zenith links the new release instead of an update that would fail. Fedora 44 and older still update in one click
+- the rpm no longer requires Fedora package names, so it installs on openSUSE too
+- Linux: the deb and rpm install a udev rule, so the DualSense works without root and without replugging
+- macOS: the default app menu with Quit and Hide is back, the Dock icon brings the window back from the tray, media keys go through Now Playing without asking for accessibility access, the pad isn't taken away from other apps
+- Windows: reinstalling cleans up the old uninstaller, uninstalling asks for admin once to really remove the phone remote firewall rules and leaves other accounts' installs alone
+- fewer GPU layers on every screen, loading placeholders no longer repaint every frame
+- the playback position is saved on its own instead of rewriting the whole queue every time
+- Explore: the trending list keeps fitting the window after paging, and each tab opens at the top instead of where the last one was scrolled
+- Tauri 2.12 and updated dependencies
+
 ## 4.4.0
 
 - Linux on NVIDIA: when the fast renderer can't start, the fallback keeps drawing on the graphics card and only copies the frame through RAM. The old fallback drew the whole interface on the CPU, which made Zenith crawl on 4K screens
