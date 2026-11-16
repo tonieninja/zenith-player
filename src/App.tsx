@@ -197,7 +197,12 @@ import {
 import { registerMediaSessionHandlers } from './plugins/mediaSession';
 import { miniLyrics, pushMiniPlayerState } from './plugins/miniPlayer';
 import { getPreloadDepth } from './plugins/preloadNext';
-import { loadPersistedQueue, playOnStart, savePersistedQueue } from './plugins/queuePersist';
+import {
+  loadPersistedQueue,
+  playOnStart,
+  savePersistedProgress,
+  savePersistedQueue,
+} from './plugins/queuePersist';
 import { saveRememberedVolume, startupVolume } from './plugins/rememberVolume';
 import { registerKeyboardHandler, setupKeyboardShortcuts } from './plugins/keyboardShortcuts';
 import { copyShareCardToClipboard } from './plugins/shareCard';
@@ -3611,15 +3616,9 @@ export default function App() {
   useEffect(() => {
     if (!pluginManager.isEnabled('queue-persist') || !currentTrack) return;
     const iv = window.setInterval(() => {
-      if (!isPlayingRef.current) return;
-      savePersistedQueue(
-        queueRef.current,
-        queueIndexRef.current,
-        playingFromRef.current,
-        progressRef.current,
-        isPlayingRef.current,
-        playingFromIdRef.current
-      );
+      const cur = queueRef.current[queueIndexRef.current];
+      if (!isPlayingRef.current || !cur?.id) return;
+      savePersistedProgress(cur.id, progressRef.current, true);
     }, 12000);
     return () => window.clearInterval(iv);
   }, [currentTrack, pluginStates, isPlayingRef, playingFromRef, queueIndexRef, queueRef]);

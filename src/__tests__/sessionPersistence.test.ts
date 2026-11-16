@@ -9,7 +9,11 @@ vi.mock('@tauri-apps/api/event', () => ({
 vi.mock('@tauri-apps/plugin-http', () => ({ fetch: vi.fn() }));
 
 import { getRememberLogin, setRememberLogin } from '../api/youtube';
-import { loadPersistedQueue, savePersistedQueue } from '../plugins/queuePersist';
+import {
+  loadPersistedQueue,
+  savePersistedProgress,
+  savePersistedQueue,
+} from '../plugins/queuePersist';
 import { ALL_PLUGINS, pluginManager } from '../plugins';
 
 const track = (id: string) => ({
@@ -38,6 +42,26 @@ describe('session persistence', () => {
     expect(restored.queue.map((t) => t.id)).toEqual(['1', '2', '3']);
     expect(restored.progress).toBe(42);
     expect(restored.wasPlaying).toBe(true);
+  });
+
+  it('restores the latest position saved without rewriting the whole queue', () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(1000);
+      savePersistedQueue([track('1'), track('2')], 1, 'mix', 10, true);
+      vi.setSystemTime(2000);
+      savePersistedProgress('1', 99, true);
+      expect(loadPersistedQueue()!.progress).toBe(10);
+      savePersistedProgress('2', 55, true);
+      expect(loadPersistedQueue()!.progress).toBe(55);
+      vi.setSystemTime(3000);
+      savePersistedQueue([track('1'), track('2')], 1, 'mix', 70, false);
+      const restored = loadPersistedQueue()!;
+      expect(restored.progress).toBe(70);
+      expect(restored.wasPlaying).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('keeps a track duration so the player can show it before playback starts', () => {
