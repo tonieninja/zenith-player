@@ -86,9 +86,10 @@ textarea,
   user-select: text;
 }
 
+/* tła absolute zamiast fixed: fixed nad kompozytowanym korzeniem dawały 5 pełnoekranowych warstw GPU */
 body::before {
   content: '';
-  position: fixed;
+  position: absolute;
   inset: 0;
   background:
     radial-gradient(ellipse 90% 70% at 50% 0%, rgba(255, 255, 255, 0.05), transparent 70%),
@@ -99,7 +100,7 @@ body::before {
 
 body::after {
   content: '';
-  position: fixed;
+  position: absolute;
   inset: 0;
   background:
     radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0), rgba(0, 0, 0, 0.5) 70%),
@@ -118,16 +119,18 @@ html.window-occluded * {
   color: var(--text-primary);
 }
 
+/* jedna stała warstwa aplikacji trzyma dotychczasowe szare wygładzanie tekstu zamiast ClearType */
 .zenith-app {
   display: flex;
   flex-direction: column;
   height: 100vh;
   position: relative;
   z-index: 1;
+  will-change: transform;
 }
 
 .global-glass-bg {
-  position: fixed;
+  position: absolute;
   top: 0;
   left: 0;
   width: 100vw;
@@ -669,9 +672,9 @@ button.nav-item {
     0 0 0 1px rgba(255, 255, 255, 0.2);
 }
 
+/* contain: content był jedyną różnicą warstw względem Home, a tylko Explore wieszało WebKitGTK na NVIDIA */
 .explore-view-wrapper {
   padding: 0;
-  contain: content;
 }
 
 .explore-top-nav {
@@ -754,7 +757,7 @@ button.nav-item {
   align-items: center;
   padding: clamp(24px, 4vw, 48px) clamp(16px, 3vw, 48px);
   margin-bottom: 24px;
-  animation: fadeSlideUp 0.4s var(--ease-standard) both;
+  animation: fadeSlideUp 0.4s var(--ease-standard) backwards;
   min-height: 240px;
 }
 
@@ -863,7 +866,7 @@ button.nav-item {
 
 .yt-section {
   padding: 0 0 36px;
-  animation: fadeSlideUp 0.4s var(--ease-standard) both;
+  animation: fadeSlideUp 0.4s var(--ease-standard) backwards;
   min-width: 0;
   content-visibility: auto;
   contain-intrinsic-size: auto 330px;
@@ -947,11 +950,12 @@ button.nav-item {
   }
 }
 
+/* backwards: zakończona animacja z both trzymała każdą kartę na osobnej warstwie GPU, a koniec = styl bazowy */
 .yt-anim.yt-slide-left > * {
-  animation: enterFromRight 0.34s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: enterFromRight 0.34s cubic-bezier(0.16, 1, 0.3, 1) backwards;
 }
 .yt-anim.yt-slide-right > * {
-  animation: enterFromLeft 0.34s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: enterFromLeft 0.34s cubic-bezier(0.16, 1, 0.3, 1) backwards;
 }
 
 .yt-anim > *:nth-child(1) {
@@ -3318,7 +3322,7 @@ button.modal-close-icon {
   min-height: clamp(220px, 28vh, 320px);
   border: 1px solid rgba(255, 255, 255, 0.1);
   box-shadow: var(--shadow-card);
-  animation: fadeSlideUp 0.5s var(--ease-standard) both;
+  animation: fadeSlideUp 0.5s var(--ease-standard) backwards;
 }
 
 .feed-hero-bg {
@@ -3334,7 +3338,7 @@ button.modal-close-icon {
 
 .feed-hero-bg.pre-blurred {
   filter: none;
-  animation: heroBgIn 0.35s ease both;
+  animation: heroBgIn 0.35s ease backwards;
 }
 
 @keyframes heroBgIn {
@@ -3425,14 +3429,12 @@ button.modal-close-icon {
 .skeleton-line {
   height: 14px;
   border-radius: 8px;
-  background: linear-gradient(
+  --skeleton-sweep: linear-gradient(
     90deg,
     rgba(255, 255, 255, 0.04),
     rgba(255, 255, 255, 0.1),
     rgba(255, 255, 255, 0.04)
   );
-  background-size: 200% 100%;
-  animation: skeletonShimmer 1.4s ease-in-out infinite;
 }
 
 .skeleton-line.skeleton-title {
@@ -3455,14 +3457,12 @@ button.modal-close-icon {
   flex: 0 0 176px;
   aspect-ratio: 1;
   border-radius: var(--card-radius);
-  background: linear-gradient(
+  --skeleton-sweep: linear-gradient(
     90deg,
     rgba(255, 255, 255, 0.03),
     rgba(255, 255, 255, 0.08),
     rgba(255, 255, 255, 0.03)
   );
-  background-size: 200% 100%;
-  animation: skeletonShimmer 1.4s ease-in-out infinite;
 }
 
 .library-skeleton {
@@ -3483,14 +3483,12 @@ button.modal-close-icon {
   height: 48px;
   border-radius: 8px;
   flex-shrink: 0;
-  background: linear-gradient(
+  --skeleton-sweep: linear-gradient(
     90deg,
     rgba(255, 255, 255, 0.04),
     rgba(255, 255, 255, 0.09),
     rgba(255, 255, 255, 0.04)
   );
-  background-size: 200% 100%;
-  animation: skeletonShimmer 1.4s ease-in-out infinite;
 }
 
 .skeleton-lines {
@@ -3500,12 +3498,34 @@ button.modal-close-icon {
   gap: 8px;
 }
 
+/* przesuwana warstwa: ten sam obraz co background-position, bez malowania 21 prostokątów na klatkę */
+.skeleton-line,
+.skeleton-card,
+.skeleton-cover {
+  position: relative;
+  overflow: hidden;
+}
+
+/* 5 szerokości z kafelkiem 2x: przesunięcie o 4 odtwarza dawne background-position od 200% do -200% */
+.skeleton-line::after,
+.skeleton-card::after,
+.skeleton-cover::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -400%;
+  right: 0;
+  background: var(--skeleton-sweep) 0 0 / 40% 100% repeat-x;
+  animation: skeletonShimmer 1.4s ease-in-out infinite;
+}
+
 @keyframes skeletonShimmer {
-  0% {
-    background-position: 200% 0;
+  from {
+    transform: translateX(0);
   }
-  100% {
-    background-position: -200% 0;
+  to {
+    transform: translateX(80%);
   }
 }
 
