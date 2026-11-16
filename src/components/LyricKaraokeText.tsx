@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useLightLyrics } from '../lyrics/light';
 
-const COLUMN_PX = 24;
 // wymazywanie skacze 30 razy na sekundę: przy miękkiej krawędzi wygląda płynnie, a WebView2 nie rysuje 60 klatek
 const WIPE_FRAME_MS = 1000 / 30;
 const wipeEasing = (ms: number) =>
@@ -76,83 +75,6 @@ function watchLayout(fill: HTMLElement, rebuild: () => void): () => void {
   return () => {
     alive = false;
     ro?.disconnect();
-  };
-}
-
-function runColumnWipe(
-  wrap: HTMLElement,
-  fill: HTMLElement,
-  span: number,
-  pos: () => number
-): () => void {
-  const durMs = span * 1000;
-  let cols: HTMLElement[] = [];
-  let anims: Animation[] = [];
-
-  const build = () => {
-    const W = fill.offsetWidth;
-    const H = fill.offsetHeight;
-    const rows = measureRows(fill);
-    if (!rows.length) return;
-    const wasPaused = anims.some((a) => a.playState === 'paused');
-    anims.forEach((a) => a.cancel());
-    cols.forEach((c) => c.remove());
-    cols = [];
-    anims = [];
-    for (const row of rows) {
-      const left = row.x;
-      const right = row.x + row.w;
-      const h = row.y1 - row.y0;
-      const n = Math.max(1, Math.ceil((right - left) / COLUMN_PX));
-      const rowMs = (row.t1 - row.t0) * durMs;
-      for (let i = 0; i < n; i++) {
-        const x0 = left + i * COLUMN_PX;
-        const cw = Math.min(right, x0 + COLUMN_PX) - x0;
-        const lead = i === 0 ? Math.min(x0, 24) : 0;
-        const col = document.createElement('span');
-        col.className = 'lyric-karaoke-col';
-        col.setAttribute('aria-hidden', 'true');
-        col.style.cssText = `position:absolute;left:${x0 - lead}px;top:${row.y0}px;width:${cw + lead}px;height:${h}px;overflow:hidden;pointer-events:none;`;
-        const copy = fill.cloneNode(true) as HTMLElement;
-        copy.style.cssText = `inset:auto;position:absolute;left:${-(x0 - lead)}px;top:${-row.y0}px;width:${W}px;height:${H}px;clip-path:none;visibility:visible;`;
-        col.appendChild(copy);
-        wrap.appendChild(col);
-        const a = col.animate(
-          [
-            { clip: `rect(0px, ${lead}px, ${h}px, 0px)` },
-            { clip: `rect(0px, ${cw + lead}px, ${h}px, 0px)` },
-          ],
-          {
-            delay: row.t0 * durMs + ((x0 - left) / (right - left)) * rowMs,
-            duration: Math.max(1, (cw / (right - left)) * rowMs),
-            easing: wipeEasing((cw / (right - left)) * rowMs),
-            fill: 'both',
-          }
-        );
-        cols.push(col);
-        anims.push(a);
-      }
-    }
-    fill.style.visibility = 'hidden';
-    const ms = Math.max(0, Math.min(span, pos())) * 1000;
-    anims.forEach((a) => (a.currentTime = ms));
-    if (wasPaused) anims.forEach((a) => a.pause());
-  };
-
-  build();
-  const stopLayout = watchLayout(fill, build);
-  const stopSync = driveWipe(
-    () => anims,
-    span,
-    pos,
-    () => {}
-  );
-  return () => {
-    stopSync();
-    stopLayout();
-    anims.forEach((a) => a.cancel());
-    cols.forEach((c) => c.remove());
-    fill.style.visibility = '';
   };
 }
 
@@ -324,11 +246,6 @@ function runTransformWipe(
   };
 }
 
-const useColumns =
-  typeof navigator !== 'undefined' &&
-  /Linux/.test(navigator.userAgent) &&
-  !/Android/.test(navigator.userAgent);
-
 // pierwsza litera hebrajska lub arabska: wypełnienie idzie od lewej, więc taka linia zostaje bez niego
 const RTL_FIRST = /^\P{L}*[\p{Script=Hebrew}\p{Script=Arabic}\p{Script=Syriac}\p{Script=Thaana}]/u;
 
@@ -370,9 +287,7 @@ export function LyricKaraokeText({ text, active: activeProp, start, end, getProg
 
     const fill = el.querySelector<HTMLElement>('.lyric-karaoke-fill');
     if (fill && typeof fill.animate === 'function') {
-      return useColumns
-        ? runColumnWipe(el, fill, span, pos)
-        : runTransformWipe(el, fill, span, pos);
+      return runTransformWipe(el, fill, span, pos);
     }
 
     let raf = 0;
