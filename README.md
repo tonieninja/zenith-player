@@ -152,9 +152,10 @@ Yes, I know `App.tsx` is around 6000 lines. It's a crime and someone should prob
 but that's life. I hack on this on my knees and it's just easier for me with everything in one place.
 
 On Linux most of the RAM with the window open is WebKit itself. Closing to the tray drops the UI
-completely, so the player alone uses a lot less. On NVIDIA Zenith turns off the WebKitGTK DMA-BUF
-renderer and, under Wayland, NVIDIA explicit sync by itself, since WebKitGTK won't start otherwise.
-`ZENITH_RENDER=gpu` skips that, and anything you set yourself wins.
+completely, so the player alone uses a lot less. On NVIDIA under Wayland Zenith turns off NVIDIA
+explicit sync, which WebKitGTK can't start with. If the faster DMA-BUF renderer still doesn't come up,
+the next start uses the slower one by itself until the next update. `ZENITH_RENDER=gpu` skips all of
+that, and anything you set yourself wins.
 
 ## Privacy
 

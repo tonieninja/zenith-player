@@ -280,6 +280,7 @@ pub fn defer_ui_event(event: &'static str, payload: &str) -> bool {
 #[tauri::command]
 pub fn ui_ready(app: AppHandle) {
     UI_READY.store(true, Ordering::SeqCst);
+    crate::webview_tuning::gpu_render_ok();
     let q = std::mem::take(&mut *PENDING_UI.lock().unwrap_or_else(|p| p.into_inner()));
     for (event, payload) in q {
         let _ = app.emit_to("main", event, payload);

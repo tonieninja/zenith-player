@@ -97,11 +97,13 @@ fn software_rendering_defaults() {
     if std::env::var("ZENITH_RENDER").as_deref() == Ok("gpu") {
         return;
     }
-    // sterownik nvidia z rendererem dmabuf WebKitGTK nie startuje na Waylandzie (błąd protokołu 71)
     if std::path::Path::new("/proc/driver/nvidia/version").exists() {
-        set_default("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
         if std::env::var_os("WAYLAND_DISPLAY").is_some() {
             set_default("__NV_DISABLE_EXPLICIT_SYNC", "1");
+        }
+        // dmabuf na części sterowników nvidia nie startuje (błąd 71), a bez niego każda klatka idzie przez RAM
+        if gpu_failed_before() {
+            set_default("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
         }
         return;
     }
@@ -109,6 +111,69 @@ fn software_rendering_defaults() {
         return;
     }
     set_default("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+}
+
+#[cfg(target_os = "linux")]
+fn render_marks() -> Option<(std::path::PathBuf, std::path::PathBuf)> {
+    use std::path::PathBuf;
+    let base = std::env::var_os("XDG_DATA_HOME")
+        .map(PathBuf::from)
+        .filter(|p| p.is_absolute())
+        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".local/share")))?;
+    let dir = base.join("com.zenithplayer.desktop");
+    Some((dir.join("render-probe"), dir.join("render-safe")))
+}
+
+// próba gpu zostawia znacznik, który znika dopiero po starcie UI; został, to poprzedni start padł
+#[cfg(target_os = "linux")]
+fn gpu_failed_before() -> bool {
+    render_marks()
+        .is_none_or(|(probe, safe)| gpu_failed_at(&probe, &safe, env!("CARGO_PKG_VERSION")))
+}
+
+#[cfg(target_os = "linux")]
+fn gpu_failed_at(probe: &std::path::Path, safe: &std::path::Path, version: &str) -> bool {
+    if std::fs::read_to_string(safe).is_ok_and(|v| v == version) {
+        return true;
+    }
+    if probe.exists() {
+        let _ = std::fs::remove_file(probe);
+        let _ = std::fs::write(safe, version);
+        return true;
+    }
+    if let Some(dir) = probe.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    let _ = std::fs::write(probe, "");
+    false
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod tests {
+    #[test]
+    fn a_failed_gpu_start_switches_to_safe_until_the_next_version() {
+        let dir = std::env::temp_dir().join(format!("zenith-render-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let (probe, safe) = (dir.join("render-probe"), dir.join("render-safe"));
+        assert!(!super::gpu_failed_at(&probe, &safe, "1.0.0"));
+        assert!(probe.exists());
+        assert!(super::gpu_failed_at(&probe, &safe, "1.0.0"));
+        assert!(!probe.exists());
+        assert!(super::gpu_failed_at(&probe, &safe, "1.0.0"));
+        assert!(!super::gpu_failed_at(&probe, &safe, "1.0.1"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+// 5 s zapasu: błąd 71 potrafi przyjść przy pierwszej klatce, już po tym, jak JS zgłosił gotowość
+pub fn gpu_render_ok() {
+    #[cfg(target_os = "linux")]
+    if let Some((probe, _)) = render_marks().filter(|(p, _)| p.exists()) {
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_secs(5));
+            let _ = std::fs::remove_file(probe);
+        });
+    }
 }
 
 #[cfg(target_os = "linux")]
