@@ -35,6 +35,8 @@ const seg = (start: number, end: number, extra: Record<string, unknown> = {}) =>
 async function primed(segments: unknown[], d = 200) {
   reply(segments);
   expect(sponsorBlockJump(ID, 1, d)).toBeNull();
+  // sha256 z crypto.subtle liczy się poza wątkiem, więc pod obciążeniem nie zdąży w dwa ticki
+  await vi.waitFor(() => expect(httpFetch).toHaveBeenCalled());
   await flush();
   await flush();
 }

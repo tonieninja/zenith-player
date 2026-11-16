@@ -6,7 +6,7 @@
 
 use crate::{Error, RequestAsyncResponder};
 use gtk::glib::{self, MainContext, ObjectExt};
-use http::{header::CONTENT_TYPE, HeaderName, HeaderValue, Request, Response as HttpResponse};
+use http::{HeaderName, HeaderValue, Request, Response as HttpResponse, header::CONTENT_TYPE};
 use soup::{MessageHeaders, MessageHeadersType};
 use std::{
   borrow::Cow,
@@ -46,9 +46,7 @@ impl WebContextImpl {
       }
       context_builder = context_builder.website_data_manager(&data_manager);
     }
-    // zenith patch: optional memory pressure settings for the web processes of this
-    // context (construct-only property, so it has to be set here).
-    // ZENITH_WEBKIT_MP="limit_mb:conservative:strict:poll_s"
+    // zenith: ZENITH_WEBKIT_MP="limit_mb:conservative:strict:poll_s"; ustawienie tylko przy budowie kontekstu
     if let Ok(v) = std::env::var("ZENITH_WEBKIT_MP") {
       let f: Vec<f64> = v.split(':').filter_map(|x| x.parse().ok()).collect();
       if f.len() == 4 && f[0] >= 1.0 {
@@ -199,15 +197,13 @@ impl WebContextExt for super::WebContext {
               const BUFFER_LEN: usize = 1024;
               let mut result = Vec::new();
               let mut buffer = vec![0; BUFFER_LEN];
+              // A short read is not the end of the stream (a multipart body may
+              // return one part per read): only 0 is.
               while let Ok(count) = s.read(&mut buffer[..], cancellable) {
-                if count == BUFFER_LEN {
-                  result.append(&mut buffer);
-                  buffer.resize(BUFFER_LEN, 0);
-                } else {
-                  buffer.truncate(count);
-                  result.append(&mut buffer);
+                if count == 0 {
                   break;
                 }
+                result.extend_from_slice(&buffer[..count]);
               }
               result
             })
@@ -326,9 +322,10 @@ impl WebContextExt for super::WebContext {
     let context = &self.os.context;
 
     let download_started_handler = Rc::new(RefCell::new(download_started_handler));
-    let failed = Rc::new(RefCell::new(false));
 
     context.connect_download_started(move |_context, download| {
+      // Failure belongs to this download, not every download in the context.
+      let failed = Rc::new(RefCell::new(false));
       let download_started_handler = download_started_handler.clone();
       download.connect_decide_destination(move |download, suggested_filename| {
         if let Some(uri) = download.request().and_then(|req| req.uri()) {

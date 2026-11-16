@@ -27,7 +27,7 @@ lazy_static = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 url = "2"
-tauri-plugin-http = { version = "2.5.9", features = ["unsafe-headers"] }
+tauri-plugin-http = { version = "2.9", features = ["unsafe-headers"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync", "time"] }
 axum = { version = "0.8", features = ["ws"] }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "rustls-tls-native-roots", "system-proxy", "http2", "charset", "stream", "blocking", "json"] }
@@ -36,9 +36,8 @@ sha1 = "0.10"
 futures-util = "0.3"
 discord-rich-presence = "0.2.5"
 hidapi = "2"
-# TODO: tauri 2.12 chce windows 0.62 i webview2-com 0.39, a vendor/wry i wv2_mem.rs są jeszcze na 0.61/0.38
-tauri-plugin-updater = "~2.12"
-tauri-plugin-process = "~2.3"
+tauri-plugin-updater = "~2.14"
+tauri-plugin-process = "~2.4"
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
 qrcode = { version = "0.14", default-features = false, features = ["svg"] }
 md-5 = "0.10"
@@ -60,8 +59,8 @@ rquickjs = { version = "0.14", default-features = false, features = ["bindgen"] 
 souvlaki = { version = "0.8.3", default-features = false }
 
 [target.'cfg(windows)'.dependencies]
-webview2-com = "0.38"
-windows-core = "0.61"
+webview2-com = "0.39"
+windows-core = "0.62"
 windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_Security_Cryptography", "Win32_System_Registry", "Win32_UI_WindowsAndMessaging", "Win32_Networking_WinHttp", "Win32_System_LibraryLoader", "Win32_Security_WinTrust"] }
 
 [profile.release]
