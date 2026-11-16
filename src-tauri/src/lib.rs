@@ -568,7 +568,8 @@ fn zenith_shortcuts() -> Vec<(tauri_plugin_global_shortcut::Shortcut, String)> {
             }
         }
     }
-    if !cfg!(target_os = "linux") {
+    // na macOS klawisze mediów obsługuje Now Playing, a podsłuch CGEventTap wymaga zgody na dostępność
+    if cfg!(windows) {
         list.push((
             Shortcut::new(None, Code::MediaPlayPause),
             "toggle-play".into(),
@@ -658,7 +659,8 @@ async fn cover_cache_base() -> Result<String, String> {
     stream_proxy::cover_base().ok_or_else(|| "proxy not ready".to_string())
 }
 
-#[cfg(not(target_os = "linux"))]
+// macOS ma domyślne menu Tauri z Quit, Hide i Undo; podmiana zostawiłaby samo Edit jako menu aplikacji
+#[cfg(windows)]
 fn install_edit_menu(app: &tauri::AppHandle) -> Result<(), String> {
     use tauri::menu::{PredefinedMenuItem, Submenu};
     let cut = PredefinedMenuItem::cut(app, None).map_err(|e| e.to_string())?;
@@ -717,7 +719,7 @@ pub fn run() {
                 native_audio::set_spool_dir(dir.join("audio"));
             }
             downloads::init(app.handle());
-            #[cfg(not(target_os = "linux"))]
+            #[cfg(windows)]
             if let Err(e) = install_edit_menu(app.handle()) {
                 eprintln!("[zenith] edit menu unavailable: {e}");
             }
@@ -920,6 +922,15 @@ pub fn run() {
             panic!("error while building tauri application: {e}");
         })
         .run(|app_handle, event| {
+            // okno schowane do zasobnika trzeba móc przywrócić z Docka i Findera
+            #[cfg(target_os = "macos")]
+            if let RunEvent::Reopen {
+                has_visible_windows: false,
+                ..
+            } = event
+            {
+                show_main_window(app_handle);
+            }
             if let RunEvent::ExitRequested {
                 code: None, api, ..
             } = &event

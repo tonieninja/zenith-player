@@ -35,7 +35,8 @@ getrandom = "0.2"
 sha1 = "0.10"
 futures-util = "0.3"
 discord-rich-presence = "0.2.5"
-hidapi = "2"
+# na macOS hidapi domyślnie zabiera pada innym aplikacjom
+hidapi = { version = "2", features = ["macos-shared-device"] }
 tauri-plugin-updater = "~2.14"
 tauri-plugin-process = "~2.4"
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
