@@ -195,8 +195,8 @@ import {
 import { registerMediaSessionHandlers } from './plugins/mediaSession';
 import { miniLyrics, pushMiniPlayerState } from './plugins/miniPlayer';
 import { getPreloadDepth } from './plugins/preloadNext';
-import { loadPersistedQueue, savePersistedQueue } from './plugins/queuePersist';
-import { getRememberedVolume, saveRememberedVolume } from './plugins/rememberVolume';
+import { loadPersistedQueue, playOnStart, savePersistedQueue } from './plugins/queuePersist';
+import { saveRememberedVolume, startupVolume } from './plugins/rememberVolume';
 import { registerKeyboardHandler, setupKeyboardShortcuts } from './plugins/keyboardShortcuts';
 import { copyShareCardToClipboard } from './plugins/shareCard';
 import { copyTrackLink } from './plugins/copyTrackLink';
@@ -393,7 +393,7 @@ export default function App() {
   const showRemainingRef = useLatest(showRemaining);
   const [volume, setVolume] = useState(() => {
     if (pluginManager.isEnabled('remember-volume')) {
-      const saved = getRememberedVolume();
+      const saved = startupVolume();
       if (saved !== null) return saved;
     }
     return 0.8;
@@ -3334,7 +3334,12 @@ export default function App() {
             }
             hydratePanelsRef.current(track);
             saved.queue.slice(idx, idx + 3).forEach((t) => prefetchStreamRef.current?.(t));
-            await loadTrackRef.current(track, saved.wasPlaying, undefined, saved.progress);
+            await loadTrackRef.current(
+              track,
+              playOnStart(saved.wasPlaying),
+              undefined,
+              saved.progress
+            );
             return;
           }
         }

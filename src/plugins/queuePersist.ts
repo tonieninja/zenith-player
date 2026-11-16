@@ -70,6 +70,24 @@ export function savePersistedQueue(
   }
 }
 
+export type QueueStart = 'last' | 'play' | 'pause';
+
+const START_KEY = 'zenith_queue_start';
+
+export function getQueueStart(): QueueStart {
+  const v = localStorage.getItem(START_KEY);
+  return v === 'play' || v === 'pause' ? v : 'last';
+}
+
+export function setQueueStart(v: QueueStart) {
+  localStorage.setItem(START_KEY, v);
+}
+
+export function playOnStart(wasPlaying: boolean): boolean {
+  const mode = getQueueStart();
+  return mode === 'last' ? wasPlaying : mode === 'play';
+}
+
 export const queuePersistPlugin: ZenithPlugin = {
   id: 'queue-persist',
   name: 'Remember queue',

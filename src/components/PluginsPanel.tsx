@@ -72,6 +72,13 @@ import {
 } from '../plugins/lyricsOverlay';
 import { getPreloadDepth, setPreloadDepth } from '../plugins/preloadNext';
 import { getFadePauseMs, setFadePauseMs } from '../plugins/fadeOnPause';
+import {
+  getFixedVolume,
+  isFixedVolumeOn,
+  setFixedVolume,
+  setFixedVolumeOn,
+} from '../plugins/rememberVolume';
+import { getQueueStart, setQueueStart, type QueueStart } from '../plugins/queuePersist';
 import { getWebhookUrl, setWebhookUrl } from '../plugins/webhook';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import {
@@ -225,6 +232,9 @@ export function PluginsPanel({
   const deferredQuery = useDeferredValue(query);
   const [preloadDepth, setPreloadDepthState] = useState(getPreloadDepth);
   const [fadeMs, setFadeMs] = useState(getFadePauseMs);
+  const [fixedVolOn, setFixedVolOnState] = useState(isFixedVolumeOn);
+  const [fixedVol, setFixedVolState] = useState(() => Math.round(getFixedVolume() * 100));
+  const [queueStart, setQueueStartState] = useState(getQueueStart);
   const [webhookUrl, setWebhookUrlState] = useState(getWebhookUrl);
   const [duckLvl, setDuckLvl] = useState(getDuckLevel);
   const [duckSens, setDuckSens] = useState(getDuckSensitivity);
@@ -606,6 +616,75 @@ export function PluginsPanel({
             />
           </div>
         );
+      case 'remember-volume':
+        return (
+          <>
+            <div className="plugin-setting-row">
+              <div className="plugin-setting-label">
+                <span>{t.fixedVolume}</span>
+                <span className="plugin-desc">{t.fixedVolumeDesc}</span>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={fixedVolOn}
+                aria-label={t.fixedVolume}
+                className={`plugin-toggle ${fixedVolOn ? 'on' : ''}`}
+                onClick={() => {
+                  setFixedVolOnState(!fixedVolOn);
+                  setFixedVolumeOn(!fixedVolOn);
+                }}
+              >
+                <span className="plugin-toggle-knob" />
+              </button>
+            </div>
+            {fixedVolOn && (
+              <div className="plugin-setting-row">
+                <div className="plugin-setting-label">
+                  <span>{t.fixedVolumeLevel}</span>
+                </div>
+                <div className="crossfade-secs-control">
+                  <input
+                    type="range"
+                    min={0}
+                    max={100}
+                    step={1}
+                    value={fixedVol}
+                    aria-label={t.fixedVolumeLevel}
+                    onChange={(e) => {
+                      const v = Number(e.target.value);
+                      setFixedVolState(v);
+                      setFixedVolume(v / 100);
+                    }}
+                  />
+                  <span className="crossfade-secs-value">{fixedVol}%</span>
+                </div>
+              </div>
+            )}
+          </>
+        );
+      case 'queue-persist':
+        return (
+          <div className="plugin-setting-row">
+            <div className="plugin-setting-label">
+              <span>{t.queueStart}</span>
+              <span className="plugin-desc">{t.queueStartDesc}</span>
+            </div>
+            <Select
+              value={queueStart}
+              ariaLabel={t.queueStart}
+              options={[
+                { value: 'last' as QueueStart, label: t.queueStartLast },
+                { value: 'play' as QueueStart, label: t.queueStartPlay },
+                { value: 'pause' as QueueStart, label: t.queueStartPause },
+              ]}
+              onChange={(v) => {
+                setQueueStartState(v);
+                setQueueStart(v);
+              }}
+            />
+          </div>
+        );
       case 'fade-on-pause':
         return (
           <div className="plugin-setting-row">
@@ -886,7 +965,12 @@ export function PluginsPanel({
               {remoteOn && remoteInfo?.url ? (
                 <span
                   className="remote-url"
-                  style={{ userSelect: 'text', WebkitUserSelect: 'text', fontWeight: 600, textAlign: 'right' }}
+                  style={{
+                    userSelect: 'text',
+                    WebkitUserSelect: 'text',
+                    fontWeight: 600,
+                    textAlign: 'right',
+                  }}
                 >
                   {remoteInfo.url}
                   {remoteInfo.mdnsUrl && (
@@ -1280,6 +1364,8 @@ export function PluginsPanel({
       'mini-player',
       'second-screen-lyrics',
       'preload-next',
+      'remember-volume',
+      'queue-persist',
       'fade-on-pause',
       'webhook',
       'remote-control',
