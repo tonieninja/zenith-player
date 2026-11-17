@@ -115,6 +115,10 @@ jobs:
           # cross z x64: rquickjs ma gotowe bindingi dla tego celu, ring bierze clang z obrazu runnera
           - { target: aarch64-pc-windows-msvc, arch: arm64 }
     runs-on: windows-latest
+    env:
+      # podpis SignPath tylko dla tagów i po ustawieniu zmiennych repo; bez nich build idzie jak dotąd, bez podpisu
+      SIGNPATH: ${{ vars.SIGNPATH_PROJECT_SLUG != '' && startsWith(github.ref, 'refs/tags/v') }}
+      REL: src-tauri/target/${{ matrix.target }}/release
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v5
@@ -129,6 +133,7 @@ jobs:
         if: matrix.arch == 'x64'
         run: cargo test --manifest-path src-tauri/Cargo.toml
       - name: build installer
+        if: env.SIGNPATH != 'true'
         shell: bash
         env:
           ZENITH_SKIP_CODESIGN: '1'
@@ -147,6 +152,7 @@ jobs:
             pnpm tauri signer sign "portable/Zenith_${V}_${{ matrix.arch }}_portable.exe"
           fi
       - uses: actions/upload-artifact@v7
+        if: env.SIGNPATH != 'true'
         with:
           name: bundle-windows-${{ matrix.arch }}
           path: |
@@ -157,9 +163,95 @@ jobs:
             portable/*.exe
             portable/*.sig
 
+      # instalatory pakują exe, więc SignPath podpisuje go przed nimi, a potem same instalatory
+      - name: build exe + msi (SignPath)
+        if: env.SIGNPATH == 'true'
+        shell: bash
+        env:
+          ZENITH_SKIP_CODESIGN: '1'
+          RUSTFLAGS: '-C target-feature=+crt-static'
+        run: |
+          # MSI od razu, bo Tauri wpisuje typ MSI do kopii exe w środku, a SignPath podpisze ją przy MSI
+          pnpm tauri build --target ${{ matrix.target }} --bundles msi --config '{"bundle":{"createUpdaterArtifacts":false}}'
+          V=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          echo "V=$V" >> "$GITHUB_ENV"
+          mkdir -p sign-exe
+          cp "$REL/zenith-player.exe" "sign-exe/Zenith_${V}_${{ matrix.arch }}_portable.exe"
+          node scripts/bundle-type-variant.mjs "$REL/zenith-player.exe" sign-exe/zenith-player.exe NSS
+      - id: up-exe
+        if: env.SIGNPATH == 'true'
+        uses: actions/upload-artifact@v7
+        with: { name: 'unsigned-exe-${{ matrix.arch }}', path: sign-exe/ }
+      - name: sign exe (SignPath)
+        if: env.SIGNPATH == 'true'
+        uses: signpath/github-action-submit-signing-request@v3
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: release-signing
+          artifact-configuration-slug: exe
+          github-artifact-id: ${{ steps.up-exe.outputs.artifact-id }}
+          wait-for-completion: true
+          wait-for-completion-timeout-in-seconds: 3600
+          output-artifact-directory: signed-exe
+          parameters: |
+            version: "${{ env.V }}"
+      - name: build nsis from signed exe (SignPath)
+        if: env.SIGNPATH == 'true'
+        shell: bash
+        env:
+          ZENITH_SKIP_CODESIGN: '1'
+          RUSTFLAGS: '-C target-feature=+crt-static'
+        run: |
+          cp signed-exe/zenith-player.exe "$REL/zenith-player.exe"
+          # bez --no-binary-patching Tauri przepisałby typ paczki w exe i zniszczył podpis
+          pnpm tauri bundle --target ${{ matrix.target }} --bundles nsis --no-binary-patching --config '{"bundle":{"createUpdaterArtifacts":false}}'
+          mkdir -p sign-inst
+          cp "$REL"/bundle/nsis/*-setup.exe "$REL"/bundle/msi/*.msi sign-inst/
+      - id: up-inst
+        if: env.SIGNPATH == 'true'
+        uses: actions/upload-artifact@v7
+        with: { name: 'unsigned-installers-${{ matrix.arch }}', path: sign-inst/ }
+      - name: sign installers (SignPath)
+        if: env.SIGNPATH == 'true'
+        uses: signpath/github-action-submit-signing-request@v3
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: release-signing
+          artifact-configuration-slug: installers
+          github-artifact-id: ${{ steps.up-inst.outputs.artifact-id }}
+          wait-for-completion: true
+          wait-for-completion-timeout-in-seconds: 3600
+          output-artifact-directory: signed-inst
+          parameters: |
+            version: "${{ env.V }}"
+      - name: verify + updater signatures (SignPath)
+        if: env.SIGNPATH == 'true'
+        shell: bash
+        run: |
+          mkdir -p out/nsis out/msi out/portable
+          cp signed-inst/*-setup.exe out/nsis/
+          cp signed-inst/*.msi out/msi/
+          cp signed-exe/Zenith_*_portable.exe out/portable/
+          powershell -NoProfile -Command '$bad = Get-ChildItem out -Recurse -File | Get-AuthenticodeSignature | Where-Object Status -ne Valid; if ($bad) { $bad | Format-Table Path,Status; exit 1 }'
+          # minisign dopiero po Authenticode, inaczej .sig aktualizatora nie pasuje do pliku z wydania
+          if [ -n "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            for f in out/nsis/* out/msi/* out/portable/*; do pnpm tauri signer sign "$f"; done
+          fi
+      - uses: actions/upload-artifact@v7
+        if: env.SIGNPATH == 'true'
+        with:
+          name: bundle-windows-${{ matrix.arch }}
+          path: |
+            out/nsis/*
+            out/msi/*
+            out/portable/*
+
   release:
     if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
-    needs: [linux, macos, windows]
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v7

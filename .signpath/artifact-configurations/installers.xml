@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SignPath, slug "installers": setup NSIS oraz MSI razem z exe w środku -->
+<artifact-configuration xmlns="http://signpath.io/artifact-configuration/v1">
+  <parameters>
+    <parameter name="version" required="true" />
+  </parameters>
+  <zip-file>
+    <pe-file path="Zenith_*-setup.exe" product-name="Zenith" product-version="${version}">
+      <authenticode-sign />
+    </pe-file>
+    <msi-file path="Zenith_*.msi">
+      <pe-file path="zenith-player.exe" product-name="Zenith" product-version="${version}">
+        <authenticode-sign />
+      </pe-file>
+      <authenticode-sign />
+    </msi-file>
+  </zip-file>
+</artifact-configuration>

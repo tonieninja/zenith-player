@@ -181,7 +181,7 @@ and nothing is recorded.
 
 <p align="center">
   <sub>
-    MIT, see <a href="LICENSE">LICENSE</a>. Bundled third-party code is listed in <a href="THIRD_PARTY_NOTICES.md">THIRD_PARTY_NOTICES.md</a>.<br>
+    MIT, see <a href="LICENSE">LICENSE</a>. Bundled third-party code is listed in <a href="THIRD_PARTY_NOTICES.md">THIRD_PARTY_NOTICES.md</a>. <a href="CODE_SIGNING.md">Code signing policy</a>.<br>
     Zenith is an independent project, not affiliated with, endorsed by or sponsored by Google or YouTube.<br>
     YouTube, YouTube Music and Google are trademarks of Google LLC. The music and lyrics belong to whoever owns them.
   </sub>
