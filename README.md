@@ -21,6 +21,10 @@
 
 With [Scoop](https://scoop.sh): `scoop bucket add zenith https://github.com/tonieninja/scoop-zenith`, then `scoop install zenith/zenith`.
 
+Windows builds: free code signing provided by [SignPath.io](https://about.signpath.io), certificate by
+[SignPath Foundation](https://signpath.org). It's still being set up, until then the builds are unsigned
+([code signing policy](CODE_SIGNING.md)).
+
 <details>
 <summary>Which file do I need?</summary>
 <br>
