@@ -492,6 +492,8 @@ export default function App() {
   const [trackRating, setTrackRatingState] = useState<TrackLikeStatus>('INDIFFERENT');
   const [loginBusy, setLoginBusy] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [fwAsk, setFwAsk] = useState<{ publicNetwork: boolean; blocked: boolean } | null>(null);
+  const [fwAskBusy, setFwAskBusy] = useState(false);
   const [userPlaylists, setUserPlaylists] = useState<Track[]>([]);
   const [libSections, setLibSections] = useState<Section[]>([]);
   const [libLoading, setLibLoading] = useState(false);
@@ -4677,38 +4679,28 @@ export default function App() {
       if (!(await isPortableApp())) return;
       const fw = await getFirewallStatus();
       if (cancelled || !fw?.windows) return;
-      localStorage.setItem('zenith_portable_fw_asked', '1');
-      if (fw.ruleOk) return;
-      const tr = () => translations[localStorage.getItem('zenith_lang') === 'pl' ? 'pl' : 'en'];
-      // reguła tylko dla sieci prywatnych nie wpuści telefonu w publicznej, więc tam ostrzegamy jak panel pilota
-      const ask = fw.publicNetwork ? 'remoteFwPublic' : 'portableFwAsk';
-      pushToast(
-        tr()[ask],
-        'info',
-        30000,
-        {
-          label: tr().remoteFwFix,
-          labelKey: 'remoteFwFix',
-          onClick: () =>
-            void allowThroughFirewall(fw.publicNetwork).then((ok) => {
-              if (ok) {
-                pushToast(tr().portableFwDone, 'success', 4000, undefined, {
-                  key: 'portableFwDone',
-                });
-              } else {
-                pushToast(tr().remoteFwMissing, 'error', 6000, undefined, {
-                  key: 'remoteFwMissing',
-                });
-              }
-            }),
-        },
-        { key: ask }
-      );
+      if (fw.ruleOk) {
+        localStorage.setItem('zenith_portable_fw_asked', '1');
+        return;
+      }
+      setFwAsk({ publicNetwork: fw.publicNetwork, blocked: fw.blocked });
     })();
     return () => {
       cancelled = true;
     };
   }, [showSplash, showOnboarding]);
+
+  // flaga dopiero po odpowiedzi, żeby zamknięcie aplikacji przed decyzją nie gasiło pytania na zawsze
+  const answerPortableFw = async (allow: boolean) => {
+    localStorage.setItem('zenith_portable_fw_asked', '1');
+    if (!allow || !fwAsk) return setFwAsk(null);
+    setFwAskBusy(true);
+    const ok = await allowThroughFirewall(fwAsk.publicNetwork);
+    setFwAskBusy(false);
+    setFwAsk(null);
+    if (ok) pushToast(t.portableFwDone, 'success', 4000, undefined, { key: 'portableFwDone' });
+    else pushToast(t.portableFwFailed, 'error', 8000, undefined, { key: 'portableFwFailed' });
+  };
 
   const ambientGlowOn = pluginStates['ambient-glow'];
   useEffect(() => {
@@ -6581,6 +6573,43 @@ export default function App() {
                     : plEdit.mode === 'rename'
                       ? t.saveChanges
                       : t.deletePlaylist}
+                </button>
+              </div>
+            </div>
+          </div>
+        </ModalOverlay>
+      )}
+
+      {fwAsk && (
+        // klik w tło nic nie robi, bo przypadkowe kliknięcie zapisałoby „Nie” na zawsze
+        <ModalOverlay testId="portable-fw-ask">
+          <div className="glass-modal-container" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>{t.portableFwTitle}</h2>
+            </div>
+            <div className="modal-body np-modal-body">
+              <p className="plugin-desc">
+                {fwAsk.publicNetwork
+                  ? t.remoteFwPublic
+                  : fwAsk.blocked
+                    ? t.remoteFwBlocked
+                    : t.portableFwAsk}
+              </p>
+              <p className="plugin-desc">{t.portableFwUac}</p>
+              <div className="np-actions">
+                <button
+                  className="np-cancel-btn"
+                  disabled={fwAskBusy}
+                  onClick={() => void answerPortableFw(false)}
+                >
+                  {t.portableFwNo}
+                </button>
+                <button
+                  className="np-create-btn"
+                  disabled={fwAskBusy}
+                  onClick={() => void answerPortableFw(true)}
+                >
+                  {fwAskBusy ? t.remoteFwBusy : t.portableFwYes}
                 </button>
               </div>
             </div>

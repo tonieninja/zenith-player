@@ -494,8 +494,42 @@ Function ZenithFinishLeave
   ${If} $ZenithFwMissing = 1
     ${NSD_GetState} $ZenithFwCheckbox $0
     ${If} $0 = ${BST_CHECKED}
-      ; Tylko sieci prywatne; na publiczną (hotel, kawiarnia) użytkownik zgadza się osobno w ustawieniach pilota
-      ExecShellWait "runas" "$SYSDIR\netsh.exe" 'advfirewall firewall add rule name="${ZENITH_FW_RULE}" dir=in action=allow program="$INSTDIR\${MAINBINARYNAME}.exe" profile=private remoteip=localsubnet protocol=TCP enable=yes' SW_HIDE
+      ; Najpierw kasuje reguły tego exe, bo blokada po „Anuluj” w okienku zapory wygrywa z zezwalającą
+      StrCpy $R1 "$SYSDIR\cmd.exe"
+      StrCpy $R2 '/c netsh advfirewall firewall delete rule name=all dir=in program="$INSTDIR\${MAINBINARYNAME}.exe" & netsh advfirewall firewall add rule name="${ZENITH_FW_RULE}" dir=in action=allow program="$INSTDIR\${MAINBINARYNAME}.exe" profile=private,domain remoteip=localsubnet protocol=TCP enable=yes'
+      StrCpy $R3 ""
+      StrCpy $R4 ""
+      ClearErrors
+      ; własne ShellExecuteExW zamiast ExecShellWait, bo tylko tak widać kod błędu (1223 = „Nie” w UAC)
+      System::Call '*(&l4, i 0x540, p $HWNDPARENT, w "runas", w R1, w R2, p 0, i 0, p, p, p, p, i, p, p) p .r1'
+      ${If} ${Errors}
+        ; System.dll zablokowany (np. Smart App Control), więc zostaje wbudowane ExecShellWait bez kodu błędu
+        ExecShellWait "runas" $R1 $R2 SW_HIDE
+        StrCpy $R4 "?"
+      ${Else}
+        System::Call 'shell32::ShellExecuteExW(p r1) i .r2 ?e'
+        Pop $R4
+        ${If} $2 <> 0
+          System::Call '*$1(i, i, p, p, p, p, p, i, p, p, p, p, i, p, p .r3)'
+          System::Call 'kernel32::WaitForSingleObject(p r3, i -1)'
+          System::Call 'kernel32::GetExitCodeProcess(p r3, *i .R3)'
+          System::Call 'kernel32::CloseHandle(p r3)'
+          StrCpy $R4 ""
+        ${EndIf}
+        System::Free $1
+      ${EndIf}
+      ; o wyniku decyduje obecność reguły, bo cmd zwraca kod tylko ostatniego netsh
+      ClearErrors
+      nsExec::ExecToStack 'netsh advfirewall firewall show rule name="${ZENITH_FW_RULE}"'
+      ${IfNot} ${Errors}
+        Pop $0
+        Pop $1
+        ${If} $R4 == "1223"
+          MessageBox MB_ICONEXCLAMATION|MB_OK "$(zenithFirewallCancelled)"
+        ${ElseIf} $0 != "0"
+          MessageBox MB_ICONEXCLAMATION|MB_OK "$(zenithFirewallFailed) $R4$R3"
+        ${EndIf}
+      ${EndIf}
     ${EndIf}
   ${EndIf}
 FunctionEnd

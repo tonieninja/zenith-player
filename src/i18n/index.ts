@@ -335,6 +335,16 @@ const en = {
   portableFwAsk:
     'Want to control Zenith from your phone? Windows Firewall has to let it through once.',
   portableFwDone: 'Done, phones on your network can reach Zenith now.',
+  portableFwTitle: 'Phone remote',
+  portableFwUac:
+    'Windows will ask for administrator permission. You can change this later in Plugins > Phone remote.',
+  portableFwFailed: "Windows didn't add the rule. You can try again in Plugins > Phone remote.",
+  portableFwYes: 'Yes, allow',
+  portableFwNo: 'No',
+  remoteFwBlocked:
+    'Windows Firewall has a rule that blocks Zenith (it appears when the Windows "Allow access" popup is cancelled). Allow it once to replace it.',
+  remoteFwFailed:
+    "Windows didn't add the rule. Click again and choose Yes in the Windows prompt. If no prompt shows up, sign in to an administrator account.",
   pluginOnCount: '{on} of {n} on',
   pluginNoMatch: 'No plugins match that.',
   offlineBadge: 'Offline',
@@ -365,7 +375,7 @@ const en = {
   remoteStarting: 'Starting…',
   remoteError: "Couldn't start the server",
   remoteFirewall:
-    "Windows may ask once to allow Zenith on private networks. Allow it, or phones can't connect. It's not reachable from the internet.",
+    "Windows may ask once to allow Zenith on private networks. Allow it, or phones can't connect. It's not reachable from the internet. School, office and guest Wi-Fi often stop devices from seeing each other; then use a home network or a phone hotspot.",
   webhookUrl: 'Webhook URL',
   webhookUrlDesc: 'Sends a JSON POST here on every track change.',
   duckLevel: 'Ducked volume',
@@ -947,6 +957,17 @@ const pl: Record<keyof typeof en, string> = {
   remoteFwBusy: 'Czekam na Windows...',
   portableFwAsk: 'Chcesz sterować Zenithem z telefonu? Zapora Windows musi go raz przepuścić.',
   portableFwDone: 'Gotowe, telefony w twojej sieci dostaną się już do Zenitha.',
+  portableFwTitle: 'Sterowanie z telefonu',
+  portableFwUac:
+    'Windows poprosi o zgodę administratora. Zmienisz to później: Wtyczki > Sterowanie przez sieć.',
+  portableFwFailed:
+    'Windows nie dodał reguły. Spróbujesz ponownie: Wtyczki > Sterowanie przez sieć.',
+  portableFwYes: 'Tak, zezwól',
+  portableFwNo: 'Nie',
+  remoteFwBlocked:
+    'Zapora Windows ma regułę, która blokuje Zenith (powstaje po „Anuluj” w okienku zapory Windows). Zezwól raz, a zastąpimy ją właściwą.',
+  remoteFwFailed:
+    'Windows nie dodał reguły. Kliknij jeszcze raz i wybierz „Tak” w oknie Windows. Jeśli okno się nie pojawia, zaloguj się na konto administratora.',
   pluginOnCount: 'włączone: {on} z {n}',
   pluginNoMatch: 'Żadna wtyczka nie pasuje.',
   offlineBadge: 'Offline',
@@ -977,7 +998,7 @@ const pl: Record<keyof typeof en, string> = {
   remoteStarting: 'Uruchamiam…',
   remoteError: 'Nie udało się uruchomić serwera',
   remoteFirewall:
-    'Windows może raz zapytać, czy wpuścić Zenith w sieciach prywatnych. Zezwól, bo inaczej telefon się nie połączy. Z internetu nikt tu nie wejdzie.',
+    'Windows może raz zapytać, czy wpuścić Zenith w sieciach prywatnych. Zezwól, bo inaczej telefon się nie połączy. Z internetu nikt tu nie wejdzie. Szkolne, firmowe i gościnne Wi-Fi często nie pozwalają urządzeniom się widzieć; wtedy użyj sieci domowej albo hotspotu z telefonu.',
   webhookUrl: 'URL webhooka',
   webhookUrlDesc: 'Tu leci POST z JSON-em przy każdej zmianie utworu.',
   duckLevel: 'Ściszona głośność',

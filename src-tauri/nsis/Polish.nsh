@@ -35,6 +35,8 @@ LangString zenithFinishText ${LANG_POLISH} "Zenith ${VERSION} jest zainstalowany
 LangString zenithRun ${LANG_POLISH} "Otwórz Zenith"
 LangString zenithClosingApp ${LANG_POLISH} "Zamykam Zenith..."
 LangString zenithFirewall ${LANG_POLISH} "Wpuść „Sterowanie przez sieć” przez zaporę"
+LangString zenithFirewallCancelled ${LANG_POLISH} "Windows nie dostał zgody administratora, więc reguła zapory nie została dodana. Zezwolisz później w Zenith: Wtyczki > Sterowanie przez sieć."
+LangString zenithFirewallFailed ${LANG_POLISH} "Reguła zapory nie została dodana. Zezwolisz później w Zenith: Wtyczki > Sterowanie przez sieć. Kod błędu:"
 LangString zenithUnTitle ${LANG_POLISH} "Odinstaluj Zenith"
 LangString zenithUnSubtitle ${LANG_POLISH} "Usuń Zenith z tego komputera."
 LangString zenithUnText ${LANG_POLISH} "Zenith zostanie usunięty z tego folderu:"

@@ -746,6 +746,8 @@ pub struct FirewallStatus {
     pub windows: bool,
     pub rule_ok: bool,
     pub public_network: bool,
+    // reguła blokująca (np. po „Anuluj” w okienku zapory Windows) wygrywa z każdą regułą zezwalającą
+    pub blocked: bool,
 }
 
 #[cfg(windows)]
@@ -774,20 +776,25 @@ pub async fn remote_firewall_status() -> FirewallStatus {
             let exe = std::env::current_exe()
                 .map(|p| p.to_string_lossy().into_owned())
                 .unwrap_or_default();
-            // reguła musi wpuszczać ten exe w bieżącej sieci (Private=2, Public=4, Any=0); ścieżkę porównuje
-            // PowerShell, bo netsh pisze w stronie OEM i gubi polskie znaki z nazwy konta
-            let script = format!(
-                "$ProgressPreference = 'SilentlyContinue'; \
-                 $pub = @(Get-NetConnectionProfile | Where-Object {{ $_.NetworkCategory -eq 'Public' }}).Count -gt 0; \
-                 $need = if ($pub) {{ 4 }} else {{ 2 }}; \
-                 $ok = @(Get-NetFirewallRule -DisplayName '{FIREWALL_RULE}','{FIREWALL_RULE_PORTABLE}' -ErrorAction SilentlyContinue | \
-                   Where-Object {{ $_.Enabled -eq 'True' -and $_.Direction -eq 'Inbound' -and $_.Action -eq 'Allow' -and ([int]$_.Profile -eq 0 -or ([int]$_.Profile -band $need)) }} | \
-                   Where-Object {{ ($_ | Get-NetFirewallApplicationFilter).Program -eq $env:ZENITH_EXE }}).Count -gt 0; \
-                 '{{0}}{{1}}' -f [int]$pub, [int]$ok"
-            );
+            let ip = lan_ip().map(|i| i.to_string()).unwrap_or_default();
+            // liczy się profil sieci z adresu w kodzie QR (Domain=1, Private=2, Public=4, Any=0), a nie np. karty
+            // Hyper-V; ścieżkę porównuje PowerShell, bo netsh pisze w stronie OEM i gubi polskie znaki z nazwy konta
+            let script = "$ProgressPreference = 'SilentlyContinue'; \
+                 $bits = @{ DomainAuthenticated = 1; Private = 2; Public = 4 }; \
+                 $idx = if ($env:ZENITH_IP) { @(Get-NetIPAddress -IPAddress $env:ZENITH_IP -ErrorAction SilentlyContinue).InterfaceIndex }; \
+                 $nets = @(if ($idx) { Get-NetConnectionProfile -InterfaceIndex $idx -ErrorAction SilentlyContinue }); \
+                 if (-not $nets) { $nets = @(Get-NetConnectionProfile) }; \
+                 $need = 0; $nets | ForEach-Object { $need = $need -bor [int]$bits[[string]$_.NetworkCategory] }; \
+                 if ($need -eq 0) { $need = 2 }; \
+                 $rules = @(Get-NetFirewallApplicationFilter -Program ([WildcardPattern]::Escape($env:ZENITH_EXE)) -ErrorAction SilentlyContinue | Get-NetFirewallRule | \
+                   Where-Object { $_.Enabled -eq 'True' -and $_.Direction -eq 'Inbound' }); \
+                 $blocked = @($rules | Where-Object { $_.Action -eq 'Block' -and ([int]$_.Profile -eq 0 -or ([int]$_.Profile -band $need)) }).Count -gt 0; \
+                 $ok = -not $blocked -and @($rules | Where-Object { $_.Action -eq 'Allow' -and ([int]$_.Profile -eq 0 -or ([int]$_.Profile -band $need) -eq $need) }).Count -gt 0; \
+                 '{0}{1}{2}' -f [int](($need -band 4) -ne 0), [int]$ok, [int]$blocked";
             let out = hidden_powershell()
                 .arg(script)
                 .env("ZENITH_EXE", exe)
+                .env("ZENITH_IP", ip)
                 .output()
                 .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_owned())
                 .unwrap_or_default();
@@ -795,6 +802,7 @@ pub async fn remote_firewall_status() -> FirewallStatus {
                 windows: true,
                 public_network: out.starts_with('1'),
                 rule_ok: out.get(1..2) == Some("1"),
+                blocked: out.get(2..3) == Some("1"),
             }
         })
         .await
@@ -803,6 +811,61 @@ pub async fn remote_firewall_status() -> FirewallStatus {
     #[cfg(not(windows))]
     {
         FirewallStatus::default()
+    }
+}
+
+// najpierw kasuje wszystkie reguły tego exe, bo blokada z okienka zapory wygrywa z regułą zezwalającą
+// shortcut: cmd rozwinie %ZMIENNA% w ścieżce exe, poprawić dopiero przy zgłoszeniu takiej ścieżki
+#[cfg(windows)]
+fn firewall_args(exe: &str, name: &str, public_network: bool) -> String {
+    // sieć publiczna (hotel, kawiarnia) tylko po kliknięciu pod ostrzeżeniem, które to opisuje
+    let profile = if public_network {
+        "private,domain,public"
+    } else {
+        "private,domain"
+    };
+    format!(
+        "/c netsh advfirewall firewall delete rule name=all dir=in program=\"{exe}\" & \
+         netsh advfirewall firewall add rule name=\"{name}\" dir=in action=allow program=\"{exe}\" \
+         profile={profile} remoteip=localsubnet protocol=TCP enable=yes"
+    )
+}
+
+// okno Zenith jako właściciel zgody UAC; bez niego Windows pokazuje ją tylko jako mrugający przycisk na pasku
+#[cfg(windows)]
+fn shell_wait(verb: &str, file: &str, args: &str, hwnd: isize) -> Result<u32, u32> {
+    use windows_sys::Win32::Foundation::{CloseHandle, GetLastError};
+    use windows_sys::Win32::System::Threading::{
+        GetExitCodeProcess, WaitForSingleObject, INFINITE,
+    };
+    use windows_sys::Win32::UI::Shell::{
+        ShellExecuteExW, SEE_MASK_FLAG_NO_UI, SEE_MASK_NOASYNC, SEE_MASK_NOCLOSEPROCESS,
+        SHELLEXECUTEINFOW,
+    };
+    let w = |s: &str| s.encode_utf16().chain(Some(0)).collect::<Vec<u16>>();
+    let (verb, file, args) = (w(verb), w(file), w(args));
+    let mut sei: SHELLEXECUTEINFOW = unsafe { std::mem::zeroed() };
+    sei.cbSize = std::mem::size_of::<SHELLEXECUTEINFOW>() as u32;
+    sei.fMask = SEE_MASK_NOCLOSEPROCESS | SEE_MASK_NOASYNC | SEE_MASK_FLAG_NO_UI;
+    sei.hwnd = hwnd as _;
+    sei.lpVerb = verb.as_ptr();
+    sei.lpFile = file.as_ptr();
+    sei.lpParameters = args.as_ptr();
+    sei.nShow = 0;
+    unsafe {
+        if ShellExecuteExW(&mut sei) == 0 {
+            return Err(GetLastError());
+        }
+        // kopia uchwytu, bo na x86 struktura jest packed i referencja do pola się nie skompiluje
+        let process = sei.hProcess;
+        if process.is_null() {
+            return Err(0);
+        }
+        WaitForSingleObject(process, INFINITE);
+        let mut code = 1u32;
+        GetExitCodeProcess(process, &mut code);
+        CloseHandle(process);
+        Ok(code)
     }
 }
 
@@ -815,35 +878,30 @@ pub async fn remote_firewall_allow(
     #[cfg(windows)]
     {
         let exe = std::env::current_exe().map_err(|e| e.to_string())?;
-        let exe = exe.to_string_lossy();
-        // sieć publiczna (hotel, kawiarnia) tylko po kliknięciu pod ostrzeżeniem, które to opisuje
-        let profile = if public_network.unwrap_or(false) {
-            "private,public"
-        } else {
-            "private"
-        };
         let name = if crate::portable::is_portable() {
             FIREWALL_RULE_PORTABLE
         } else {
             FIREWALL_RULE
         };
-        let args = format!(
-            "advfirewall firewall add rule name=\"{name}\" dir=in action=allow program=\"{exe}\" profile={profile} remoteip=localsubnet protocol=TCP enable=yes"
+        let args = firewall_args(
+            &exe.to_string_lossy(),
+            name,
+            public_network.unwrap_or(false),
         );
-        // argumenty idą przez zmienną, bo cudzysłów ’ w nazwie folderu zamknąłby napis w skrypcie
-        let script = "try { Start-Process -FilePath \"$env:SystemRoot\\System32\\netsh.exe\" -Verb RunAs -Wait \
-                      -WindowStyle Hidden -ArgumentList $env:ZENITH_FW_ARGS; exit 0 } catch { exit 1 }";
-        let ok = tokio::task::spawn_blocking(move || {
-            hidden_powershell()
-                .arg(script)
-                .env("ZENITH_FW_ARGS", args)
-                .status()
-                .map(|s| s.success())
-                .unwrap_or(false)
+        let cmd = std::path::Path::new(
+            &std::env::var_os("SystemRoot").unwrap_or_else(|| r"C:\Windows".into()),
+        )
+        .join(r"System32\cmd.exe");
+        // HWND to nie Send, więc do wątku idzie liczba
+        let hwnd = webview.window().hwnd().map(|h| h.0 as isize).unwrap_or(0);
+        let res = tokio::task::spawn_blocking(move || {
+            shell_wait("runas", &cmd.to_string_lossy(), &args, hwnd)
         })
         .await
-        .unwrap_or(false);
-        if !ok {
+        .unwrap_or(Err(0));
+        if let Err(code) = res {
+            // 1223 = ERROR_CANCELLED, czyli „Nie” w oknie UAC
+            eprintln!("[remote] firewall elevation failed: {code}");
             return Ok(false);
         }
         Ok(remote_firewall_status().await.rule_ok)
@@ -858,6 +916,26 @@ pub async fn remote_firewall_allow(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(windows)]
+    #[test]
+    fn shell_wait_exit_code() {
+        let cmd = format!(r"{}\System32\cmd.exe", std::env::var("SystemRoot").unwrap());
+        assert_eq!(shell_wait("open", &cmd, "/c exit 0", 0), Ok(0));
+        assert_eq!(shell_wait("open", &cmd, "/c exit 3", 0), Ok(3));
+        assert!(shell_wait("open", r"C:\zenith-no-such.exe", "", 0).is_err());
+    }
+    #[cfg(windows)]
+    #[test]
+    fn firewall_args_profiles() {
+        let a = firewall_args(r"C:\Users\Zoś ’x\zenith-player.exe", FIREWALL_RULE, false);
+        assert!(
+            a.starts_with("/c netsh advfirewall firewall delete rule name=all dir=in program=\"")
+        );
+        assert!(a.contains(
+            r#"program="C:\Users\Zoś ’x\zenith-player.exe" profile=private,domain remoteip"#
+        ));
+        assert!(firewall_args("x", FIREWALL_RULE, true).contains("profile=private,domain,public "));
+    }
     #[test]
     fn lan_filter() {
         assert!(is_lan("192.168.1.5".parse().unwrap()));

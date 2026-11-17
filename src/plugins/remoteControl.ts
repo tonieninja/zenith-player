@@ -199,6 +199,7 @@ export interface FirewallStatus {
   windows: boolean;
   ruleOk: boolean;
   publicNetwork: boolean;
+  blocked: boolean;
 }
 
 export async function getFirewallStatus(): Promise<FirewallStatus | null> {

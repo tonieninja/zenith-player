@@ -35,6 +35,8 @@ LangString zenithFinishText ${LANG_ENGLISH} "Zenith ${VERSION} is installed. Fro
 LangString zenithRun ${LANG_ENGLISH} "Open Zenith"
 LangString zenithClosingApp ${LANG_ENGLISH} "Closing Zenith..."
 LangString zenithFirewall ${LANG_ENGLISH} "Allow the Phone remote through the firewall"
+LangString zenithFirewallCancelled ${LANG_ENGLISH} "Windows did not get administrator permission, so the firewall rule was not added. You can allow it later in Zenith: Plugins > Phone remote."
+LangString zenithFirewallFailed ${LANG_ENGLISH} "The firewall rule was not added. You can allow it later in Zenith: Plugins > Phone remote. Error code:"
 LangString zenithUnTitle ${LANG_ENGLISH} "Uninstall Zenith"
 LangString zenithUnSubtitle ${LANG_ENGLISH} "Remove Zenith from this computer."
 LangString zenithUnText ${LANG_ENGLISH} "Zenith will be removed from this folder:"

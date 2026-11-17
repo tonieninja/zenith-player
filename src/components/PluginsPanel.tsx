@@ -251,6 +251,7 @@ export function PluginsPanel({
   const [remoteInfo, setRemoteInfo] = useState<RemoteInfo | null>(null);
   const [fw, setFw] = useState<FirewallStatus | null>(null);
   const [fwBusy, setFwBusy] = useState(false);
+  const [fwFailed, setFwFailed] = useState(false);
   const [lfm, setLfm] = useState<LastfmStatus | null>(null);
   const [lfmKey, setLfmKey] = useState('');
   const [lfmSecret, setLfmSecret] = useState('');
@@ -987,7 +988,15 @@ export function PluginsPanel({
             </div>
             {remoteOn && fw?.windows && !fw.ruleOk && (
               <div className="remote-fw-warn" role="alert" data-testid="remote-fw-warn">
-                <span>{fw.publicNetwork ? t.remoteFwPublic : t.remoteFwMissing}</span>
+                <span>
+                  {fwFailed
+                    ? t.remoteFwFailed
+                    : fw.publicNetwork
+                      ? t.remoteFwPublic
+                      : fw.blocked
+                        ? t.remoteFwBlocked
+                        : t.remoteFwMissing}
+                </span>
                 <button
                   type="button"
                   className="np-cancel-btn"
@@ -996,6 +1005,7 @@ export function PluginsPanel({
                     setFwBusy(true);
                     const ok = await allowThroughFirewall(fw.publicNetwork);
                     setFwBusy(false);
+                    setFwFailed(!ok);
                     setFw(await getFirewallStatus());
                     if (!ok) setFw((f) => (f ? { ...f, ruleOk: false } : f));
                   }}
