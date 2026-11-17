@@ -10,6 +10,14 @@ RUN pacman -Syu --noconfirm --needed \
   && npm install -g pnpm@10.18.3 \
   && rm -rf /var/cache/pacman/pkg/*
 
+# Mesa z Archa ciągnie LLVM (+100 MB) i radeonsi pod nowe jądro, więc quick-sharun ją odrzuca; mini działa na starszych
+RUN curl -fsSL -o /tmp/gdp.sh \
+    https://raw.githubusercontent.com/pkgforge-dev/Anylinux-AppImages/a159da2858637fc3e8c480581b2999640ebbfe30/useful-tools/get-debloated-pkgs.sh \
+  && echo "d215f7676785f1a1bb8784e69085d66c1df81488ef31f1ba7198325a5be05130  /tmp/gdp.sh" | sha256sum -c - \
+  && sh /tmp/gdp.sh --add-opengl \
+  && ! ldd /usr/lib/libgallium-*.so | grep -q libLLVM \
+  && rm -rf /tmp/gdp.sh /var/cache/pacman/pkg/*
+
 WORKDIR /src
 COPY scripts/linux-build-inner.sh /usr/local/bin/zenith-linux-build
 RUN chmod +x /usr/local/bin/zenith-linux-build
