@@ -1,5 +1,21 @@
 # Changelog
 
+## 4.6.0
+
+- artist pages got a proper header with the photo and subscribers, Play all plays every song of the artist like a playlist, next to it Shuffle, Radio and Show all
+- age-restricted songs play without signing in: Zenith finds the same song on YouTube Music (it usually has no age gate) or uses the embedded player. You can turn it off in Settings → Bypass age restriction
+- signed in, age-restricted songs go through the YouTube Studio client too, like the browser extensions do
+- one age-restricted song no longer made the next songs fail for 10 minutes, YouTube's age check was taken for a bot block
+- songs with an ad in front of them play again, before they failed on the first try
+- when a song really can't play, Zenith says why (age restriction, removed, not in your country) on the first try instead of after three
+- Windows: the firewall question for the phone remote really shows the Windows admin prompt, in the installer and in the portable exe. It used to open behind the window or not at all
+- Windows: the phone remote works on networks Windows marks as Public (school, hotel) if you allow it there, and Zenith spots the blocking rule Windows adds when its own popup is cancelled
+- Linux: global hotkeys are off by default, media keys and the desktop media widget work through MPRIS, so KDE and GNOME no longer ask to allow shortcuts on start. Turn them on in Plugins for extra key combos
+- Linux: seeking, volume, shuffle and repeat work from the desktop media widget, its progress bar moves
+- AppImage: carries its own glibc, so it runs on Ubuntu 22.04, Debian 12 and Mint 21 again, and 4.5.0 AppImages update to it on their own
+- AppImage: built with WebKitGTK 2.54 without the Ubuntu patch, so NVIDIA cards draw the interface on the GPU instead of the CPU
+- deb on Debian and Ubuntu with NVIDIA: Zenith turns off the distro patch that forced the whole interface onto the CPU
+
 ## 4.5.0
 
 - the portable exe updates itself in place instead of installing the setup next to it. Portable 4.4.0 and older can't do that yet, so download this one by hand once
