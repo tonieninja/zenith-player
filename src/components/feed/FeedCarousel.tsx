@@ -34,7 +34,7 @@ const AlbumCard = memo(function AlbumCard({
   );
   return (
     <div
-      className="yt-card"
+      className={`yt-card yt-card-${track.type}`}
       role="button"
       tabIndex={0}
       onClick={handleClick}

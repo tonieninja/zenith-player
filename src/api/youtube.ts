@@ -766,6 +766,77 @@ export async function getMoodPlaylist(browseId: string, lang: Language): Promise
   }
 }
 
+export interface ArtistHeader {
+  name: string;
+  description: string;
+  subscribers: string;
+  listeners: string;
+  banner: string;
+  songsId: string | null;
+  songsTitle: string;
+  shuffleId: string | null;
+  radioId: string | null;
+}
+
+export type ArtistPage = { header: ArtistHeader | null; sections: Section[] };
+
+export function parseArtistHeader(data: any): ArtistHeader | null {
+  const h = data?.header?.musicImmersiveHeaderRenderer || data?.header?.musicVisualHeaderRenderer;
+  if (!h) return null;
+  const thumbs: { url?: string; width?: number }[] =
+    h.thumbnail?.musicThumbnailRenderer?.thumbnail?.thumbnails || [];
+  // baner ma proporcje 2,4:1, a getOptimizedCover przycina do kwadratu, więc bierzemy gotowy rozmiar do 1920 px
+  const byWidth = [...thumbs].sort((a, b) => (a.width || 0) - (b.width || 0));
+  const banner =
+    byWidth.filter((t) => (t.width || 0) <= 1920).at(-1)?.url || byWidth.at(-1)?.url || '';
+  const watch = (b: any) => b?.buttonRenderer?.navigationEndpoint?.watchEndpoint;
+  const shelf = findRenderer(data?.contents, 'musicShelfRenderer');
+  const songsId =
+    shelf?.bottomEndpoint?.browseEndpoint?.browseId ||
+    shelf?.title?.runs?.[0]?.navigationEndpoint?.browseEndpoint?.browseId;
+  return {
+    name: runsText(h.title),
+    description: runsText(h.description),
+    subscribers: runsText(h.subscriptionButton?.subscribeButtonRenderer?.subscriberCountText),
+    listeners: runsText(h.monthlyListenerCount),
+    banner,
+    songsId: typeof songsId === 'string' && songsId.startsWith('VL') ? songsId : null,
+    // ten sam tytuł co w parseShelves, żeby App znalazł sekcję najpopularniejszych utworów
+    songsTitle:
+      extractFirstText(shelf?.header?.musicShelfHeaderRenderer?.title) ||
+      extractFirstText(shelf?.title) ||
+      '',
+    shuffleId: watch(h.playButton)?.playlistId || null,
+    radioId: watch(h.startRadioButton)?.playlistId || null,
+  };
+}
+
+const artistCache = new Map<string, { data: ArtistPage; ts: number }>();
+
+export async function getArtistPage(browseId: string, lang: Language): Promise<ArtistPage> {
+  const key = `${browseId}:${lang}`;
+  const cached = artistCache.get(key);
+  if (cached && Date.now() - cached.ts < 120000) return cached.data;
+  const isPl = lang === 'pl';
+  const raw = await invokeWithTimeout<string>(
+    'ytm_browse',
+    { browseId, hl: isPl ? 'pl' : 'en', gl: isPl ? 'PL' : 'US', params: null },
+    12000
+  )
+    .then((text) => JSON.parse(text))
+    // jak getMoodPlaylist: błąd daje pustą stronę z przyciskiem „Ponów”, nie wyjątek
+    .catch(() => ytmBrowseRaw({ browseId }, lang).catch(() => null));
+  const page: ArtistPage = {
+    header: parseArtistHeader(raw),
+    sections: dedupeSections(parseShelves(raw, translations[lang])),
+  };
+  if (page.sections.length) {
+    artistCache.set(key, { data: page, ts: Date.now() });
+    pruneOldest(artistCache, 20);
+  }
+  return page;
+}
+
 function findContinuationToken(node: any): string | null {
   let found: string | null = null;
   const walk = (n: any) => {

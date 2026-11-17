@@ -77,6 +77,7 @@ import {
   getAgeBypass,
   findSongTwins,
   setAgeBypass,
+  getArtistPage,
 } from './api/youtube';
 import {
   createAudio,
@@ -97,6 +98,7 @@ import { HeroSection } from './components/feed/HeroSection';
 import { MoodChips } from './components/feed/MoodChips';
 import { MoodsGenresView } from './components/feed/MoodsGenresView';
 import { QuickPicks, SectionRow } from './components/feed/FeedCarousel';
+import { ArtistSkeleton, ArtistView, type ArtistPlayMode } from './components/feed/ArtistView';
 import { UpNextItem } from './components/player/UpNextItem';
 import { WindowedList } from './components/ui/WindowedList';
 import { QueueDrawer } from './components/queue/QueueDrawer';
@@ -303,7 +305,12 @@ import {
   FolderOpen,
 } from 'lucide-react';
 import { useLatest } from './hooks/useLatest';
-import { restoreScroll, saveUiSnapshot, takeUiSnapshot } from './utils/uiSnapshot';
+import {
+  restoreScroll,
+  saveUiSnapshot,
+  takeUiSnapshot,
+  type ArtistPageState,
+} from './utils/uiSnapshot';
 import './App.css';
 
 const Onboarding = lazy(() =>
@@ -315,6 +322,16 @@ const PluginsPanel = lazy(() =>
 
 const appWindow = getCurrentWindow();
 const FAVORITES_ID = '__favorites';
+// typ 'artist' odróżnia listę utworów wykonawcy od albumu, choć obie mają id OLAK5uy
+const artistSongsTrack = (p: ArtistPageState, id: string): Track => ({
+  id,
+  type: 'artist',
+  title: p.header?.name || p.avatar.title,
+  artist: p.header?.name || p.avatar.title,
+  cover: p.avatar.cover,
+  coverSmall: p.avatar.coverSmall,
+  coverLarge: p.avatar.coverLarge,
+});
 const MAX_SEARCH_LENGTH = 200;
 const MANUAL_FADE_SECS = 0.35;
 const uiLang = () => (localStorage.getItem('zenith_lang') as Language) || 'en';
@@ -381,6 +398,7 @@ export default function App() {
   const [quickPicks, setQuickPicks] = useState<Track[]>([]);
   const [activeMood, setActiveMood] = useState<string | null>(null);
   const [browseTitle, setBrowseTitle] = useState<string | null>(null);
+  const [artistPage, setArtistPage] = useState<ArtistPageState | null>(null);
   const [browseEmptyKind, setBrowseEmptyKind] = useState<'episodes' | 'collection' | null>(null);
   const [showSplash, setShowSplash] = useState(() => !isRestoredUi());
   const [splashLeaving, setSplashLeaving] = useState(false);
@@ -1080,7 +1098,26 @@ export default function App() {
       setSections([]);
       navigateTo('mood');
       const safety = window.setTimeout(() => setFeedTabLoading('mood', false), 12000);
-      getMoodPlaylist(item.id, lang)
+      const isArtist = item.id.startsWith('UC');
+      // „Ponów” podaje pustą okładkę, więc zostawiamy awatar z pierwszego wejścia na ten sam kanał
+      setArtistPage((prev) =>
+        isArtist
+          ? {
+              id: item.id,
+              avatar: prev?.id === item.id && !item.cover ? prev.avatar : item,
+              header: null,
+            }
+          : null
+      );
+      const load = isArtist
+        ? getArtistPage(item.id, lang).then((page) => {
+            if (dataSeq === feedSeqRef.current.mood) {
+              setArtistPage((prev) => prev && { ...prev, header: page.header });
+            }
+            return page.sections;
+          })
+        : getMoodPlaylist(item.id, lang);
+      load
         .then((data) => {
           if (dataSeq !== feedSeqRef.current.mood) return;
           setSections(stableOrderSections(data));
@@ -2155,7 +2192,7 @@ export default function App() {
 
   const collectionReqRef = useRef(0);
   const handleCollectionClick = useCallback(
-    async (collection: Track) => {
+    async (collection: Track, opts?: { shuffle?: boolean; sourceId?: string }) => {
       if (toPlainPlaylistId(collection.id) === 'SE') {
         await openCollectionPage(collection);
         return;
@@ -2181,15 +2218,18 @@ export default function App() {
 
         const itemsWithCover = withCollectionMeta(collection, items, L.variousArtists);
 
-        setQueue(itemsWithCover);
+        const list = opts?.shuffle ? smartShuffle(itemsWithCover) : itemsWithCover;
+        setQueue(list);
         setQueueIndex(0);
-        setShuffleOn(false);
-        originalQueueRef.current = null;
+        setShuffleOn(!!opts?.shuffle);
+        originalQueueRef.current = opts?.shuffle ? itemsWithCover : null;
         setPlayingFrom(collection.title);
-        playingFromIdRef.current = toPlainPlaylistId(collection.id);
-        playingAlbumRef.current = collection.type === 'album' || isAlbumCollectionId(collection.id);
+        playingFromIdRef.current = opts?.sourceId ?? toPlainPlaylistId(collection.id);
+        // lista utworów wykonawcy ma id OLAK5uy jak album, ale to składanka, więc bez gapless i z crossfade
+        playingAlbumRef.current =
+          !opts?.sourceId && (collection.type === 'album' || isAlbumCollectionId(collection.id));
         openPlayer();
-        await loadTrack(itemsWithCover[0]);
+        await loadTrack(list[0]);
       } catch {
         if (req === collectionReqRef.current) pushToast(L.playlistOpenFailed, 'error');
       } finally {
@@ -2237,6 +2277,7 @@ export default function App() {
         !!col &&
         !!sectionTitle &&
         col.title === sectionTitle &&
+        col.type !== 'artist' &&
         (col.type === 'album' || isAlbumCollectionId(col.id));
       playingFromIdRef.current = fromAlbum && col ? toPlainPlaylistId(col.id) : null;
       playingAlbumRef.current = fromAlbum;
@@ -2244,6 +2285,43 @@ export default function App() {
     },
     [openPlayer, loadTrack, handleCollectionClick, openBrowsePage, openCollectionPage]
   );
+
+  const playArtist = useCallback(
+    (mode: ArtistPlayMode) => {
+      const h = artistPage?.header;
+      if (!artistPage || !h) return;
+      const sourceId = artistPage.id;
+      if (mode === 'radio' && h.radioId) {
+        void handleCollectionClick(artistSongsTrack(artistPage, h.radioId), { sourceId });
+        return;
+      }
+      if (h.songsId) {
+        void handleCollectionClick(artistSongsTrack(artistPage, h.songsId), {
+          sourceId,
+          shuffle: mode === 'shuffle',
+        });
+        return;
+      }
+      // wykonawca z kilkoma utworami nie ma listy „Pokaż wszystkie”, zostają najpopularniejsze
+      const top = sections.find((s) => s.title === h.songsTitle)?.items ?? [];
+      const list = mode === 'shuffle' ? smartShuffle(top) : top;
+      if (!list.length) return;
+      // ostatnio otwarty album o tej samej nazwie włączyłby tryb albumu dla przypadkowych utworów
+      lastCollectionRef.current = null;
+      void handleItemClick(list[0], h.name, list);
+      if (mode === 'shuffle') {
+        setShuffleOn(true);
+        originalQueueRef.current = top;
+      }
+    },
+    [artistPage, sections, handleCollectionClick, handleItemClick]
+  );
+
+  const showArtistSongs = useCallback(() => {
+    if (artistPage?.header?.songsId) {
+      void openCollectionPage(artistSongsTrack(artistPage, artistPage.header.songsId));
+    }
+  }, [artistPage, openCollectionPage]);
 
   const togglePlay = useCallback(async () => {
     if (!currentTrack) return;
@@ -3180,6 +3258,7 @@ export default function App() {
     setQuickPicks(ui.quickPicks);
     setActiveMood(ui.activeMood);
     setBrowseTitle(ui.browseTitle);
+    setArtistPage(ui.artistPage ?? null);
     setBrowseEmptyKind(ui.browseEmptyKind);
     setSearchQuery(ui.searchQuery);
     setLibCategory(ui.libCategory);
@@ -3419,6 +3498,7 @@ export default function App() {
     prevTab,
     activeMood,
     browseTitle,
+    artistPage,
     browseEmptyKind,
     sections,
     homeSections,
@@ -4614,6 +4694,11 @@ export default function App() {
     }
   }, [currentTrack?.id, currentTrack?.cover, currentTrack?.coverLarge, ambientGlowOn]);
 
+  const artistHeader =
+    activeTab === 'mood' && artistPage && browseIdFromMood(activeMood) === artistPage.id
+      ? artistPage.header
+      : null;
+
   const sectionRows = useMemo(
     () =>
       stableOrderSections(activeTab === 'home' ? homeSections : sections).map((section, idx) => (
@@ -5445,7 +5530,11 @@ export default function App() {
                     </div>
                   )
                 ) : showFeedSkeleton ? (
-                  <FeedSkeleton />
+                  activeTab === 'mood' && browseIdFromMood(activeMood)?.startsWith('UC') ? (
+                    <ArtistSkeleton />
+                  ) : (
+                    <FeedSkeleton />
+                  )
                 ) : !tabHasFeedContent && activeTab !== 'moods_genres' ? (
                   activeTab === 'mood' && activeMood === FAVORITES_ID ? (
                     <div className="empty-state-message">
@@ -5519,6 +5608,7 @@ export default function App() {
                     )}
                     {activeTab === 'mood' &&
                       browseTitle &&
+                      !artistHeader &&
                       (isBrowseMood(activeMood) || activeMood === FAVORITES_ID) && (
                         <h2 className="library-section-title">{browseTitle}</h2>
                       )}
@@ -5614,11 +5704,25 @@ export default function App() {
                       <MoodsGenresView onCategoryClick={loadMood} t={t} lang={lang} />
                     )}
 
-                    {activeTab !== 'explore' &&
+                    {artistHeader && artistPage ? (
+                      <div className="sections-container">
+                        <ArtistView
+                          avatar={artistPage.avatar}
+                          header={artistHeader}
+                          sections={sections}
+                          onItemClick={handleItemClick}
+                          onPlay={playArtist}
+                          onShowAll={showArtistSongs}
+                          t={t}
+                        />
+                      </div>
+                    ) : (
+                      activeTab !== 'explore' &&
                       activeTab !== 'moods_genres' &&
                       activeTab !== 'search' && (
                         <div className="sections-container">{sectionRows}</div>
-                      )}
+                      )
+                    )}
                   </>
                 )}
               </div>

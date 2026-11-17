@@ -47,6 +47,7 @@ And the rest:
 
 - Home, Explore with charts, moods and genres, Search, and a Library with podcasts and history
 - Playlists you can edit, merge and reorder, synced back to YouTube Music, plus local folders for the sidebar
+- Artist pages with Play all, which plays every song of the artist like a playlist
 - Queue with drag and drop, shuffle, loop, and a radio that keeps going after the last track
 - Speed with the pitch kept, A-B loop, sleep timer, bass boost and a limiter so loud presets don't clip
 - Last.fm and ListenBrainz scrobbling, Discord presence, DualSense, global hotkeys you can rebind

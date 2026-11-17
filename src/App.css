@@ -3418,6 +3418,229 @@ button.modal-close-icon {
   transform: translateY(-2px) scale(1.02);
 }
 
+.artist-view {
+  padding-top: 16px;
+}
+
+.artist-hero {
+  position: relative;
+  margin: 0 var(--content-gutter) 8px;
+  min-height: clamp(240px, 34vh, 380px);
+  border-radius: 24px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: var(--shadow-card);
+  background:
+    radial-gradient(circle at 15% 0%, var(--accent-glow), transparent 60%), var(--rich-black-2);
+  display: flex;
+  animation: fadeSlideUp 0.5s var(--ease-standard) backwards;
+}
+
+/* bez filter: blur i backdrop-filter: duża rozmyta warstwa przycina przewijanie na WebKitGTK */
+.artist-hero-banner {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 30%;
+}
+
+.artist-hero-scrim {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(
+      180deg,
+      rgba(8, 10, 16, 0.1) 0%,
+      rgba(8, 10, 16, 0.55) 45%,
+      var(--rich-black-2) 100%
+    ),
+    linear-gradient(90deg, rgba(8, 10, 16, 0.6) 0%, transparent 70%);
+}
+
+.artist-hero-body {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 14px;
+  padding: clamp(24px, 4vw, 44px);
+}
+
+.artist-hero-identity {
+  display: flex;
+  align-items: flex-end;
+  gap: clamp(16px, 2vw, 24px);
+  min-width: 0;
+}
+
+.artist-hero-avatar {
+  flex-shrink: 0;
+  width: clamp(72px, 9vw, 120px);
+  height: clamp(72px, 9vw, 120px);
+  border-radius: 50%;
+  object-fit: cover;
+  background: rgba(255, 255, 255, 0.09);
+  border: 2px solid rgba(255, 255, 255, 0.18);
+  box-shadow: var(--shadow-card);
+}
+
+.artist-hero-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.artist-hero-name {
+  font-size: clamp(28px, 5vw, 56px);
+  font-weight: 900;
+  letter-spacing: -1.5px;
+  line-height: 1.05;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+
+.artist-hero-meta {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.artist-hero-about {
+  max-width: 72ch;
+}
+
+.artist-hero-description {
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--text-secondary);
+  white-space: pre-line;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  overflow: hidden;
+}
+
+.artist-hero-description.expanded {
+  display: block;
+  -webkit-line-clamp: unset;
+  line-clamp: unset;
+}
+
+.artist-hero-more,
+.artist-show-all {
+  margin-top: 4px;
+  padding: 2px 0;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.3px;
+  color: var(--theme-accent, var(--accent-1));
+  cursor: pointer;
+}
+
+.artist-hero-more:hover,
+.artist-show-all:hover {
+  text-decoration: underline;
+}
+
+.artist-hero-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.artist-play-all {
+  align-self: auto;
+}
+
+.artist-action-btn {
+  padding: 11px 20px;
+  border-radius: 999px;
+  font-size: 14px;
+}
+
+.artist-show-all {
+  margin: 0 0 0 auto;
+  flex-shrink: 0;
+}
+
+.artist-top-songs {
+  list-style: none;
+  padding: 0 clamp(16px, 3vw, 52px);
+  display: flex;
+  flex-direction: column;
+}
+
+.artist-song-index {
+  flex: 0 0 22px;
+  text-align: right;
+  font-size: 14px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+}
+
+.artist-song-row:focus-visible .search-result-play-icon {
+  opacity: 1;
+}
+
+.artist-song-cover {
+  width: 44px;
+  height: 44px;
+}
+
+.artist-song-duration {
+  flex-shrink: 0;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+}
+
+.yt-card-artist .yt-card-thumb {
+  border-radius: 50%;
+}
+
+.artist-skeleton {
+  padding: 16px var(--content-gutter) 48px;
+}
+
+.artist-skeleton-hero {
+  flex: none;
+  aspect-ratio: auto;
+  height: clamp(240px, 34vh, 380px);
+  border-radius: 24px;
+  margin-bottom: 24px;
+}
+
+@media (max-width: 768px) {
+  .artist-hero-avatar {
+    display: none;
+  }
+
+  .artist-hero-actions {
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 500px) {
+  .artist-hero-actions > button {
+    flex: 1 1 auto;
+    justify-content: center;
+  }
+
+  .artist-song-cover {
+    width: 36px;
+    height: 36px;
+  }
+}
+
 .feed-skeleton {
   padding: 24px var(--content-gutter) 48px;
 }

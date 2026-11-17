@@ -1,7 +1,9 @@
-import type { LibraryCategory, Section, Track } from '../api/youtube';
+import type { ArtistHeader, LibraryCategory, Section, Track } from '../api/youtube';
 import type { ViewTab } from '../types/views';
 
 const KEY = 'zenith_ui_snapshot';
+
+export type ArtistPageState = { id: string; avatar: Track; header: ArtistHeader | null };
 
 /** Widok sprzed zwolnienia okna w zasobniku; nowe okno wraca dokładnie tu, bez pobierania od nowa. */
 export interface UiSnapshot {
@@ -18,6 +20,7 @@ export interface UiSnapshot {
   libCategory: LibraryCategory;
   panelTab: 'upnext' | 'related';
   collection: Track | null;
+  artistPage?: ArtistPageState | null;
   scrollTop: number;
 }
 
