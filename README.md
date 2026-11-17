@@ -111,6 +111,10 @@ example `ffmpeg -i "Artist - Title [id].webm" -q:a 2 "Artist - Title.mp3"`.
 - Home stays empty: run Zenith with `ZENITH_DEBUG=1` and open an issue with the log, there are
   no cookies in it. Proxies with their own root cert are fine.
 - Every track fails at school or work: the network blocks YouTube. The error says so after three tracks.
+- Phone remote can't connect at school or in a hotel: Windows marks that network as Public. Allow it in
+  the plugin (only on a network you trust); some school Wi-Fi also blocks devices from seeing each other.
+- Age-restricted song: Zenith plays the same song from YouTube Music instead. A few have no version
+  without the age check, those need a signed-in account that Google has age-verified.
 - High CPU in lyrics: turn on _Settings → Light lyrics mode_.
 - Reset: delete `%LOCALAPPDATA%\com.zenithplayer.desktop` and `%APPDATA%\com.zenithplayer.desktop`
   on Windows, or `~/.local/share/com.zenithplayer.desktop` on Linux.
@@ -119,6 +123,10 @@ example `ffmpeg -i "Artist - Title [id].webm" -q:a 2 "Artist - Title.mp3"`.
 
 Zenith is free and stays free. If it saves you a Premium subscription and you want to say thanks,
 [buy me a coffee](https://buymeacoffee.com/tonieninja). There's the same link in Settings, About.
+
+Big thanks to [melo](https://github.com/melo-foundation/) for all his help with testing, bug reports and
+debugging Zenith on Linux on his own machine: Fedora KDE on Wayland, a laptop RTX 3080 Ti and a 4K
+screen at 200% scale.
 
 ## Building
 
