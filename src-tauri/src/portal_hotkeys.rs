@@ -1,7 +1,7 @@
 // Skróty globalne na natywnym Waylandzie przez portal XDG GlobalShortcuts (KDE Plasma 6, GNOME 48+).
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Mutex, OnceLock};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::Mutex;
 
 use tauri_plugin_global_shortcut::{Modifiers, Shortcut};
 use zbus::blocking::{Connection, MessageIterator};
@@ -16,8 +16,32 @@ const PATH: &str = "/org/freedesktop/portal/desktop";
 const IFACE: &str = "org.freedesktop.portal.GlobalShortcuts";
 
 static STARTED: AtomicBool = AtomicBool::new(false);
+// wyłączenie i włączenie w trakcie okna zgody startuje drugi run; pierwszy po odpowiedzi musi zamknąć swoją sesję
+static GEN: AtomicU32 = AtomicU32::new(0);
 static BOUND: Mutex<Vec<(String, String)>> = Mutex::new(Vec::new());
-static SESSION: OnceLock<(Connection, String)> = OnceLock::new();
+static SESSION: Mutex<Option<(Connection, String)>> = Mutex::new(None);
+
+fn close_session(conn: &Connection, session: &str) {
+    let _ = conn.call_method(
+        Some(DEST),
+        session,
+        Some("org.freedesktop.portal.Session"),
+        "Close",
+        &(),
+    );
+}
+
+// wyłączenie w ustawieniach ma oddać kombinacje systemowi; ponowne włączenie tworzy sesję z tymi samymi id bez pytania
+// shortcut: stary wątek run śpi dalej na iteratorze sygnałów (jeden na przełączenie), wystarczy przy rzadkim klikaniu
+pub fn close() {
+    let s = SESSION.lock().unwrap_or_else(|e| e.into_inner()).take();
+    if let Some((conn, session)) = s {
+        std::thread::spawn(move || close_session(&conn, &session));
+    }
+    BOUND.lock().unwrap_or_else(|e| e.into_inner()).clear();
+    GEN.fetch_add(1, Ordering::SeqCst);
+    STARTED.store(false, Ordering::SeqCst);
+}
 
 // portal wiąże skróty raz na sesję, więc późniejsza zmiana w aplikacji otwiera systemowe ustawienia skrótów
 pub fn sync(app: &tauri::AppHandle, bindings: Vec<(String, String)>) {
@@ -39,7 +63,8 @@ pub fn sync(app: &tauri::AppHandle, bindings: Vec<(String, String)>) {
         *bound = bindings;
     }
     std::thread::spawn(|| {
-        let Some((conn, session)) = SESSION.get() else {
+        let Some((conn, session)) = SESSION.lock().unwrap_or_else(|e| e.into_inner()).clone()
+        else {
             return;
         };
         if let Ok(path) = ObjectPath::try_from(session.as_str()) {
@@ -75,6 +100,7 @@ fn request(
 }
 
 fn run(app: &tauri::AppHandle, bindings: &[(String, String)]) -> Res<()> {
+    let gen = GEN.load(Ordering::SeqCst);
     let conn = Connection::session()?;
     // portal 1.21+ odrzuca sesję bez app id; Zenith to nazwa Zenith.desktop z rpm i deb (AppImage go nie ma)
     let _ = conn.call_method(
@@ -98,8 +124,10 @@ fn run(app: &tauri::AppHandle, bindings: &[(String, String)]) -> Res<()> {
         _ => return Err("no session handle".into()),
     };
     let path = ObjectPath::try_from(session.as_str())?;
+    // puste pola KDE pokazuje w oknie zgody jako „(Brak)”, więc portal dostaje tylko ustawione kombinacje
     let shortcuts: Vec<(&str, HashMap<&str, Value>)> = bindings
         .iter()
+        .filter(|(_, acc)| !acc.trim().is_empty())
         .map(|(id, acc)| {
             let mut o = HashMap::from([("description", Value::from(label(id)))]);
             if let Some(t) = crate::parse_accelerator(acc).and_then(|s| xdg_trigger(&s)) {
@@ -119,15 +147,25 @@ fn run(app: &tauri::AppHandle, bindings: &[(String, String)]) -> Res<()> {
         let body = (&path, &shortcuts, "", opts);
         conn.call_method(Some(DEST), PATH, Some(IFACE), "BindShortcuts", &body)
     })?;
-    let _ = SESSION.set((conn.clone(), session));
+    // użytkownik mógł wyłączyć skróty, zanim portal odpowiedział
+    if !crate::GLOBAL_HOTKEYS_ON.load(Ordering::SeqCst) || GEN.load(Ordering::SeqCst) != gen {
+        close_session(&conn, &session);
+        return Ok(());
+    }
+    *SESSION.lock().unwrap_or_else(|e| e.into_inner()) = Some((conn.clone(), session.clone()));
     for msg in events.flatten() {
         let body = msg.body();
-        let Ok((_, id, _, _)) =
+        let Ok((from, id, _, _)) =
             body.deserialize::<(OwnedObjectPath, String, u64, HashMap<String, OwnedValue>)>()
         else {
             continue;
         };
-        if crate::GLOBAL_HOTKEYS_ON.load(Ordering::SeqCst) {
+        let current = SESSION
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .as_ref()
+            .is_some_and(|(_, s)| s == from.as_str());
+        if current && crate::GLOBAL_HOTKEYS_ON.load(Ordering::SeqCst) {
             crate::tray_action(app, &id);
         }
     }

@@ -54,6 +54,7 @@ import {
   DEFAULT_HOTKEYS,
   getHotkeyBindings,
   HOTKEY_BINDINGS_KEY,
+  linuxHotkeysOptOut,
   prettyAccelerator,
 } from '../plugins/globalHotkeys';
 import { getRemotePairMode, setRemotePairMode } from '../plugins/remoteControl';
@@ -256,6 +257,16 @@ describe('global hotkeys', () => {
     expect(b.next).toBe('F10');
     expect(b.prev).toBe(DEFAULT_HOTKEYS.prev);
     expect('junk' in b).toBe(false);
+  });
+  it('turns hotkeys off once for Linux users without their own combos', () => {
+    const linux = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/605.1.15';
+    expect(linuxHotkeysOptOut('Mozilla/5.0 (Windows NT 10.0; Win64; x64)')).toBe(false);
+    expect(linuxHotkeysOptOut('Mozilla/5.0 (Linux; Android 14)')).toBe(false);
+    expect(linuxHotkeysOptOut(linux)).toBe(true);
+    expect(linuxHotkeysOptOut(linux)).toBe(false);
+    localStorage.clear();
+    localStorage.setItem(HOTKEY_BINDINGS_KEY, JSON.stringify({ next: 'F10' }));
+    expect(linuxHotkeysOptOut(linux)).toBe(false);
   });
 });
 

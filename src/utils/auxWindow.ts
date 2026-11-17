@@ -85,9 +85,12 @@ export function currentWindowLabel(): string {
   }
 }
 
+export function isLinuxDesktop(ua = navigator.userAgent || ''): boolean {
+  return /\bLinux\b/.test(ua) && !/Android/.test(ua);
+}
+
 export function markOpaqueAuxWindow() {
-  const ua = navigator.userAgent || '';
-  if (!/\bLinux\b/.test(ua) || /Android/.test(ua)) return;
+  if (!isLinuxDesktop()) return;
   document.documentElement.classList.add('opaque-window');
   document.documentElement.style.background = '#0a0b10';
   if (document.body) document.body.style.background = '#0a0b10';

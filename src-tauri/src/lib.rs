@@ -362,7 +362,8 @@ struct TrayMenu {
 
 static TRAY_READY: AtomicBool = AtomicBool::new(false);
 static CLOSE_TO_TRAY: AtomicBool = AtomicBool::new(true);
-static GLOBAL_HOTKEYS_ON: AtomicBool = AtomicBool::new(true);
+// Linux: klawisze mediów idą przez MPRIS, a skróty (portal lub XGrabKey) dopiero po włączeniu w ustawieniach
+static GLOBAL_HOTKEYS_ON: AtomicBool = AtomicBool::new(!cfg!(target_os = "linux"));
 static HOTKEY_LOCK: Mutex<()> = Mutex::new(());
 
 fn debug_log_enabled() -> bool {
@@ -620,6 +621,8 @@ fn apply_global_shortcuts(app: &tauri::AppHandle, enabled: bool) -> usize {
             // pusta lista = start przed ustawieniami z frontendu, a portal przyjmuje skróty tylko raz
             if enabled && !bindings.is_empty() {
                 portal_hotkeys::sync(app, bindings);
+            } else if !enabled {
+                portal_hotkeys::close();
             }
         }
         return 0;

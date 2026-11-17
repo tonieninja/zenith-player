@@ -10,6 +10,7 @@ import {
   prettyAccelerator,
   saveHotkeyBindings,
 } from '../../plugins/globalHotkeys';
+import { isLinuxDesktop } from '../../utils/auxWindow';
 
 type T = (typeof translations)['en'];
 
@@ -27,6 +28,7 @@ export function HotkeySettings({ t }: { t: T }) {
 
   return (
     <div className="plugin-setting-col" data-testid="hotkey-settings">
+      {isLinuxDesktop() && <p className="plugin-desc">{t.hkLinuxMpris}</p>}
       <p className="plugin-desc">{t.hkHint}</p>
       {HOTKEY_ACTIONS.map((a) => (
         <div className="plugin-setting-row hotkey-row" key={a}>

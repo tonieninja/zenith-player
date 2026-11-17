@@ -1,7 +1,16 @@
 import { invoke } from '@tauri-apps/api/core';
+import { isLinuxDesktop } from '../utils/auxWindow';
 import { ZenithPlugin } from './types';
 
 export const HOTKEY_BINDINGS_KEY = 'zenith_global_hotkeys';
+const LINUX_OPT_IN_KEY = 'zenith_hk_mpris';
+
+// do 4.5.0 skróty na Linuksie były domyślnie włączone; za świadomy wybór uznajemy tylko własne kombinacje
+export function linuxHotkeysOptOut(ua?: string): boolean {
+  if (!isLinuxDesktop(ua) || localStorage.getItem(LINUX_OPT_IN_KEY)) return false;
+  localStorage.setItem(LINUX_OPT_IN_KEY, '1');
+  return !localStorage.getItem(HOTKEY_BINDINGS_KEY);
+}
 
 export const HOTKEY_ACTIONS = [
   'toggle-play',
@@ -117,7 +126,8 @@ export const globalHotkeysPlugin: ZenithPlugin = {
   category: 'control',
   description:
     'Play/pause, next, previous, volume and like from any app. Every combo can be changed, media keys always work.',
-  defaultEnabled: true,
+  // na Linuksie klawisze mediów obsługuje MPRIS, a prośba KDE/GNOME o skróty ma paść dopiero po włączeniu
+  defaultEnabled: !isLinuxDesktop(),
   onEnable() {
     void syncGlobalHotkeys(true);
   },

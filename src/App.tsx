@@ -144,6 +144,7 @@ import { AUX_WINDOW_PLUGINS, pluginManager } from './plugins';
 import { syncCloseToTray } from './plugins/systemTray';
 import {
   getHotkeyBindings,
+  linuxHotkeysOptOut,
   pushHotkeyBindings,
   syncGlobalHotkeys,
 } from './plugins/globalHotkeys';
@@ -3406,6 +3407,7 @@ export default function App() {
     pluginsBootstrappedRef.current = true;
 
     void syncCloseToTray(pluginManager.isEnabled('system-tray'));
+    if (linuxHotkeysOptOut()) pluginManager.setEnabled('global-hotkeys', false);
     void syncGlobalHotkeys(pluginManager.isEnabled('global-hotkeys'));
     void pushHotkeyBindings();
 

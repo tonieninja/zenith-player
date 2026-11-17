@@ -289,6 +289,8 @@ const en = {
   hkNone: 'Not set',
   hkClear: 'Clear',
   hkReset: 'Restore defaults',
+  hkLinuxMpris:
+    'Media keys (play/pause, next, previous) and the desktop media widget already work through MPRIS while Media controls is on. Turn this on only for extra key combos; on Wayland KDE or GNOME asks you to approve them once.',
   hkHint:
     'Click a field and press the keys. Use at least one modifier (Ctrl, Alt, Shift, Super) or an F key. Press Esc to cancel.',
   hkTaken: 'Already used by another app: {list}',
@@ -901,6 +903,8 @@ const pl: Record<keyof typeof en, string> = {
   hkNone: 'Brak',
   hkClear: 'Wyczyść',
   hkReset: 'Przywróć domyślne',
+  hkLinuxMpris:
+    'Klawisze multimedialne (play/pauza, następny, poprzedni) i systemowy widżet multimediów działają już przez MPRIS, gdy Sterowanie multimediami jest włączone. Włącz to tylko dla dodatkowych kombinacji; na Waylandzie KDE lub GNOME raz poprosi o zgodę.',
   hkHint:
     'Kliknij pole i wciśnij klawisze. Użyj co najmniej jednego modyfikatora (Ctrl, Alt, Shift, Super) albo klawisza F. Esc anuluje.',
   hkTaken: 'Inna aplikacja już używa: {list}',
