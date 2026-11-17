@@ -144,10 +144,16 @@ pub fn early_init() {
 
 #[cfg(target_os = "linux")]
 fn software_rendering_defaults() {
+    let nvidia = std::path::Path::new("/proc/driver/nvidia/version").exists();
+    // Debian/Ubuntu (także WebKit w AppImage) łatką wyłączają dmabuf na nvidii; bez tej zmiennej całe UI rysuje CPU
+    let force_dmabuf = || set_default("WEBKIT_FORCE_DMABUF_RENDERER", "1");
     if std::env::var("ZENITH_RENDER").as_deref() == Ok("gpu") {
+        if nvidia {
+            force_dmabuf();
+        }
         return;
     }
-    if std::path::Path::new("/proc/driver/nvidia/version").exists() {
+    if nvidia {
         if std::env::var_os("WAYLAND_DISPLAY").is_some() {
             set_default("__NV_DISABLE_EXPLICIT_SYNC", "1");
         }
@@ -158,9 +164,13 @@ fn software_rendering_defaults() {
         let level = gpu_render_level();
         GPU_LEVEL.store(level, std::sync::atomic::Ordering::SeqCst);
         match level {
-            0 => GPU_PROBE.store(true, std::sync::atomic::Ordering::SeqCst),
+            0 => {
+                force_dmabuf();
+                GPU_PROBE.store(true, std::sync::atomic::Ordering::SeqCst);
+            }
             // przy ekranie na zintegrowanej karcie FORCE_SHM przenosi WebKit na EGL nvidii, który potrafi się zawiesić
             1 if nvidia_drives_display() => {
+                force_dmabuf();
                 set_default("WEBKIT_DMABUF_RENDERER_FORCE_SHM", "1");
                 GPU_PROBE.store(true, std::sync::atomic::Ordering::SeqCst);
             }
