@@ -977,6 +977,62 @@ export async function searchSongsStrict(query: string, lang: Language): Promise<
   return sections.flatMap((s) => s.items).filter((i) => i.type === 'track');
 }
 
+const VIDEO_NOISE =
+  /\b(official|music|lyrics?|video|audio|visuali[sz]er|hd|hq|4k|explicit|uncensored|fixed|english|cc|mv)\b/gi;
+const letters = (s: string) =>
+  s
+    .normalize('NFKD')
+    .replace(/[^\p{L}\p{N}]/gu, '')
+    .toLowerCase();
+
+// wrzutka fana ma w tytule „Wykonawca - Utwór (Official Video)”, a ta sama piosenka w YouTube Music tylko „Utwór”
+export function songOfVideo(title: string, uploader: string): { song: string; artist: string }[] {
+  const parts = title
+    .replace(/\([^)]*\)|\[[^\]]*\]|【[^】]*】/g, ' ')
+    .replace(/["'“”‘’`]+/g, ' ')
+    .split(/\s[-–—|]\s/)
+    .map((s) => s.replace(VIDEO_NOISE, ' ').replace(/\s+/g, ' ').trim())
+    .filter(Boolean);
+  if (parts.length >= 2) {
+    return [
+      { artist: parts[0], song: parts[1] },
+      { artist: parts[1], song: parts[0] },
+    ];
+  }
+  return [{ artist: uploader.replace(/\s*-\s*Topic$|VEVO$/i, '').trim(), song: parts[0] ?? title }];
+}
+
+export function pickSongTwins(track: Track, found: Track[]): string[] {
+  const wants = songOfVideo(track.title, track.artist).map((w) => ({
+    s: letters(w.song),
+    a: letters(w.artist),
+  }));
+  return found
+    .filter((f) => {
+      const t = letters(f.title);
+      const fa = letters(f.artist);
+      return (
+        f.id !== track.id &&
+        wants.some(
+          ({ s, a }) =>
+            (t === s || (s.length >= 3 && t.startsWith(s)) || (t.length >= 3 && s.startsWith(t))) &&
+            (!a || fa.includes(a) || (fa.length >= 3 && a.includes(fa)))
+        )
+      );
+    })
+    .map((f) => f.id)
+    .slice(0, 3);
+}
+
+export async function findSongTwins(track: Track, lang: Language): Promise<string[]> {
+  const [w] = songOfVideo(track.title, track.artist);
+  try {
+    return pickSongTwins(track, await searchSongsStrict(`${w.song} ${w.artist}`, lang));
+  } catch {
+    return [];
+  }
+}
+
 export async function searchMusic(query: string, lang: Language): Promise<Section[]> {
   const q = query.trim();
   if (!q) return [];
@@ -3239,4 +3295,14 @@ export function getRememberLogin(): boolean {
 
 export function setRememberLogin(enabled: boolean): void {
   localStorage.setItem(REMEMBER_LOGIN_KEY, enabled ? '1' : '0');
+}
+
+const AGE_BYPASS_KEY = 'zenith_age_bypass';
+
+export function getAgeBypass(): boolean {
+  return localStorage.getItem(AGE_BYPASS_KEY) !== '0';
+}
+
+export function setAgeBypass(enabled: boolean): void {
+  localStorage.setItem(AGE_BYPASS_KEY, enabled ? '1' : '0');
 }

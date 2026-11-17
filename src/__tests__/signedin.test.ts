@@ -24,6 +24,7 @@ import {
   playlistContentRoot,
   rememberPlaylistDeleted,
   rememberPlaylistRenamed,
+  pickSongTwins,
   searchSongsStrict,
   toPlaylistBrowseId,
 } from '../api/youtube';
@@ -410,5 +411,49 @@ describe('radio', () => {
     );
     const tracks = await getRadioTracks('zzzzzzzzzzz', 'en');
     expect(tracks.map((t) => t.id)).toEqual(['aaaaaaaaaaa', 'ccccccccccc']);
+  });
+});
+
+describe('song twin of an age-gated video', () => {
+  const t = (id: string, title: string, artist: string) => ({
+    id,
+    type: 'track' as const,
+    title,
+    artist,
+    cover: '',
+  });
+
+  it('finds the YouTube Music song behind a fan upload title', () => {
+    const video = t(
+      'qkO6iBwcoe4',
+      "Rammstein - ''Pussy'' - (OFFICIAL VIDEO) -  [FIXED AUDIO]",
+      'Eliass Kevrelis'
+    );
+    const found = [
+      t('wyS_Kg5MvXI', 'Pussy', 'Rammstein'),
+      t('xxxxxxxxxxx', 'Pussy Galore', 'Someone Else'),
+    ];
+    expect(pickSongTwins(video, found)).toEqual(['wyS_Kg5MvXI']);
+  });
+
+  it('accepts a longer song title and either part order', () => {
+    const lyrics = t('kDhhjD74C8M', 'GHOSTEMANE - Mercury (LYRICS)', 'Promo Sound');
+    expect(pickSongTwins(lyrics, [t('4wvTEbsEOws', 'Mercury: Retrograde', 'Ghostemane')])).toEqual([
+      '4wvTEbsEOws',
+    ]);
+    const swapped = t('Tq92D6wQ1mg', '[MMD] Adios - EVERGLOW [+Motion DL]', 'Projekt Melody');
+    expect(pickSongTwins(swapped, [t('aaaaaaaaaaa', 'Adios', 'EVERGLOW')])).toEqual([
+      'aaaaaaaaaaa',
+    ]);
+  });
+
+  it('uses the uploader as the artist and skips other artists and itself', () => {
+    const omv = t('p7FCgw_GlWc', 'Famous', 'Kanye West');
+    const found = [
+      t('p7FCgw_GlWc', 'Famous', 'Kanye West'),
+      t('bbbbbbbbbbb', 'Famous', 'Charli XCX'),
+      t('Lq2TmRzg19k', 'Famous', 'Kanye West, Rihanna'),
+    ];
+    expect(pickSongTwins(omv, found)).toEqual(['Lq2TmRzg19k']);
   });
 });

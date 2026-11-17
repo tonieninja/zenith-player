@@ -74,6 +74,9 @@ import {
   type AccountProfile,
   getRememberLogin,
   setRememberLogin,
+  getAgeBypass,
+  findSongTwins,
+  setAgeBypass,
 } from './api/youtube';
 import {
   createAudio,
@@ -314,6 +317,8 @@ const appWindow = getCurrentWindow();
 const FAVORITES_ID = '__favorites';
 const MAX_SEARCH_LENGTH = 200;
 const MANUAL_FADE_SECS = 0.35;
+const uiLang = () => (localStorage.getItem('zenith_lang') as Language) || 'en';
+
 const auxWindowExists = (label: string) =>
   WebviewWindow.getByLabel(label).then(Boolean, () => false);
 // wtyczki bez odpowiednika w trybie bez okna (Rust gra kolejkę, ale tych zdarzeń nie obsłuży)
@@ -529,6 +534,7 @@ export default function App() {
     return (localStorage.getItem('zenith_lang') as Language) || 'en';
   });
   const [rememberLogin, setRememberLoginState] = useState(() => getRememberLogin());
+  const [ageBypass, setAgeBypassState] = useState(getAgeBypass);
   const lightLyrics = useLightLyrics();
   const romanize = romanizeLyrics.useValue();
   const translateLyricsOn = translateLyrics.useValue();
@@ -1992,6 +1998,8 @@ export default function App() {
                 title: track.title,
                 // teledysk bywa dłuższy od wersji audio o więcej niż 7 s, więc filtr długości odrzucałby dobre wydania
                 duration: null,
+                ageBypass: getAgeBypass(),
+                candidates: await findSongTwins(track, uiLang()),
               });
             } catch {
               streamUrl = null;
@@ -3033,6 +3041,8 @@ export default function App() {
             query: `${tr.title} ${tr.artist}`,
             title: tr.title,
             duration: dur,
+            ageBypass: getAgeBypass(),
+            candidates: await findSongTwins(tr, uiLang()),
           });
           if (!alt || currentTrackIdRef.current !== id) return false;
           audio.src = alt;
@@ -6029,6 +6039,27 @@ export default function App() {
                   }}
                 >
                   {rememberLogin ? t.toggleOn : t.toggleOff}
+                </button>
+              </div>
+              <div className="settings-row-item settings-toggle-row">
+                <div className="settings-account-info">
+                  <span className="setting-label" id="set-age-bypass-label">
+                    {t.ageBypass}
+                  </span>
+                  <span className="plugin-desc">{t.ageBypassDesc}</span>
+                </div>
+                <button
+                  type="button"
+                  className={`lang-option-btn remember-login-toggle${ageBypass ? ' active' : ''}`}
+                  aria-pressed={ageBypass}
+                  aria-labelledby="set-age-bypass-label"
+                  data-testid="age-bypass-toggle"
+                  onClick={() => {
+                    setAgeBypassState(!ageBypass);
+                    setAgeBypass(!ageBypass);
+                  }}
+                >
+                  {ageBypass ? t.toggleOn : t.toggleOff}
                 </button>
               </div>
               <div className="settings-row-item settings-toggle-row">

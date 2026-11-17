@@ -115,6 +115,9 @@ const en = {
   logoutDesc: 'Disconnect your Google account from Zenith on this device.',
   rememberLogin: 'Keep me signed in',
   rememberLoginDesc: 'Saves your Google session so you stay signed in after a restart or update.',
+  ageBypass: 'Bypass age restriction',
+  ageBypassDesc:
+    'When YouTube asks you to confirm your age, Zenith plays another upload of the same song (usually its audio-only version) instead of skipping it. Nothing is sent to other services.',
   loginWindowTitle: 'Sign in to Google',
   newReleases: 'New releases',
   charts: 'Charts',
@@ -718,6 +721,9 @@ const pl: Record<keyof typeof en, string> = {
   rememberLogin: 'Nie wylogowuj mnie',
   rememberLoginDesc:
     'Zapisuje sesję Google, więc po restarcie albo aktualizacji nie musisz logować się od nowa.',
+  ageBypass: 'Omijaj ograniczenie wiekowe',
+  ageBypassDesc:
+    'Gdy YouTube każe potwierdzić wiek, Zenith gra inne wydanie tego samego utworu (zwykle wersję samego dźwięku) zamiast go pomijać. Nic nie trafia do innych serwisów.',
   loginWindowTitle: 'Zaloguj się do Google',
   newReleases: 'Nowości',
   charts: 'Listy przebojów',
