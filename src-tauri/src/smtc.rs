@@ -146,6 +146,11 @@ pub fn mpris_update(
     playing: bool,
     position: f64,
     duration: f64,
+    // pola tylko dla MPRIS; SMTC nie ma głośności, tempa ani powtarzania
+    _volume: Option<f64>,
+    _rate: Option<f64>,
+    _loop_mode: Option<String>,
+    _shuffle: Option<bool>,
 ) {
     PLAYING.store(playing, Ordering::SeqCst);
     let meta = title.map(|title| Meta {

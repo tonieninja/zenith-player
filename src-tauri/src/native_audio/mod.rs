@@ -1342,7 +1342,33 @@ pub mod headless {
                 let m = with(|st| st.muted).unwrap_or(false);
                 run_cmd(Cmd::Muted { m: !m });
             }
-            _ => {}
+            // shortcut: toggle-shuffle z MPRIS bez okna nic nie robi, bo tasowanie kolejki żyje we frontendzie
+            _ => {
+                if let Some(t) = action
+                    .strip_prefix("seek:")
+                    .and_then(|v| v.parse::<f64>().ok())
+                {
+                    if t.is_finite() && t >= 0.0 {
+                        seek_to(t);
+                    }
+                } else if let Some(v) = action
+                    .strip_prefix("volume:")
+                    .and_then(|v| v.parse::<f64>().ok())
+                {
+                    run_cmd(Cmd::Volume {
+                        v: v.clamp(0.0, 1.0),
+                    });
+                    media_meta(!snapshot().paused);
+                } else if let Some(m) = action.strip_prefix("loop:") {
+                    // okno odbudowane z zasobnika czyta tryb z planu, więc zmiana z panelu przetrwa
+                    h(|h| {
+                        if let Some(o) = h.plan.as_object_mut() {
+                            o.insert("loopMode".into(), m.into());
+                        }
+                    });
+                    media_meta(!snapshot().paused);
+                }
+            }
         }
     }
 
@@ -1364,10 +1390,12 @@ pub mod headless {
 
     // bez okna nikt inny nie powie panelowi multimediów systemu, że gra już następny utwór
     fn media_meta(playing: bool) {
-        let (on, track) = h(|h| {
+        let (on, track, mode, shuffle) = h(|h| {
             (
                 h.plan["mediaSession"].as_bool().unwrap_or(false),
                 h.plan["queue"][index(&h.plan)].clone(),
+                loop_mode(&h.plan),
+                h.plan["shuffle"].as_bool(),
             )
         });
         let Some(app) = engine().and_then(|e| e.app.clone()) else {
@@ -1390,6 +1418,10 @@ pub mod headless {
             playing && !s.paused,
             s.t,
             s.d.unwrap_or(0.0),
+            with(|st| st.master),
+            None,
+            Some(mode),
+            shuffle,
         );
     }
 

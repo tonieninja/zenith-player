@@ -4,6 +4,26 @@ import { NowPlayingInfo, ZenithPlugin } from './types';
 
 let last: NowPlayingInfo | null = null;
 
+export interface MprisExtras {
+  volume: number;
+  rate: number;
+  loopMode: 'off' | 'all' | 'one';
+  shuffle: boolean;
+}
+let extras: MprisExtras | null = null;
+
+// pozycja przychodzi od wołającego, bo `last` pamięta ją tylko z ostatniej zmiany utworu lub pauzy
+export function setMprisExtras(e: MprisExtras, position: number) {
+  extras = e;
+  if (last) pushNative({ ...last, position });
+}
+
+// wybór tempa żyje w panelu wtyczek, a MPRIS liczy z niego pozycję między aktualizacjami
+export function setMprisRate(rate: number, position: number) {
+  if (extras) extras = { ...extras, rate };
+  if (last) pushNative({ ...last, position });
+}
+
 function pushNative(info: NowPlayingInfo | null, playing?: boolean) {
   if (!isNativeAudio()) return;
   last = info;
@@ -15,6 +35,10 @@ function pushNative(info: NowPlayingInfo | null, playing?: boolean) {
     playing: playing ?? info?.isPlaying ?? false,
     position: info?.position ?? 0,
     duration: info?.duration ?? 0,
+    volume: extras?.volume ?? null,
+    rate: extras?.rate ?? null,
+    loopMode: extras?.loopMode ?? null,
+    shuffle: extras?.shuffle ?? null,
   });
 }
 
@@ -91,6 +115,10 @@ export const mediaSessionPlugin: ZenithPlugin = {
       return;
     }
     syncMetadata(info);
+  },
+  // bez tego pasek postępu w panelu systemu zostaje w starym miejscu po przewinięciu w aplikacji
+  onSeek(position) {
+    if (last) pushNative({ ...last, position });
   },
   onPlayStateChange(isPlaying) {
     if (last) pushNative({ ...last, isPlaying }, isPlaying);

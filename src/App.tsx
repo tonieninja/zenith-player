@@ -211,7 +211,7 @@ import {
   pushLyricsOverlay,
   setMiniLyricsTarget,
 } from './plugins/lyricsOverlay';
-import { registerMediaSessionHandlers } from './plugins/mediaSession';
+import { registerMediaSessionHandlers, setMprisExtras } from './plugins/mediaSession';
 import { miniLyrics, pushMiniPlayerState } from './plugins/miniPlayer';
 import { getPreloadDepth } from './plugins/preloadNext';
 import {
@@ -2495,6 +2495,7 @@ export default function App() {
       setShuffleOn(false);
     }
   }, [queue, queueIndex, shuffleOn, currentTrack]);
+  const toggleShuffleRef = useLatest(toggleShuffle);
 
   const ratingReqRef = useRef(0);
   const fetchTrackRating = useEffectEvent((id: string, req: number) => {
@@ -3777,18 +3778,27 @@ export default function App() {
       else if (action === 'seek-forward')
         seekToRef.current(Math.min(durationRef.current, progressRef.current + 10));
       else if (action === 'seek-back') seekToRef.current(Math.max(0, progressRef.current - 10));
-      else if (action === 'volume-up') {
-        const v = Math.min(1, volumeRef.current + 0.05);
-        setVolume(v);
-        rampVolume(audio, v, pluginManager.isEnabled('smooth-volume'));
-        if (pluginManager.isEnabled('remember-volume')) saveRememberedVolume(v);
-      } else if (action === 'volume-down') {
-        const v = Math.max(0, volumeRef.current - 0.05);
-        setVolume(v);
-        rampVolume(audio, v, pluginManager.isEnabled('smooth-volume'));
-        if (pluginManager.isEnabled('remember-volume')) saveRememberedVolume(v);
-      } else if (action === 'mute') toggleMuteRef.current();
+      else if (action === 'volume-up') applyVolume(volumeRef.current + 0.05);
+      else if (action === 'volume-down') applyVolume(volumeRef.current - 0.05);
+      else if (action === 'mute') toggleMuteRef.current();
       else if (action === 'like') toggleSaveRef.current();
+      else if (action === 'toggle-shuffle') toggleShuffleRef.current();
+      else if (action === 'loop:off' || action === 'loop:all' || action === 'loop:one')
+        setLoopMode(action.slice(5) as LoopMode);
+      else if (action.startsWith('seek:')) {
+        // wartości z MPRIS (panel multimediów systemu) przychodzą jako tekst
+        const t = Number(action.slice(5));
+        if (Number.isFinite(t) && t >= 0) seekToRef.current(Math.min(t, durationRef.current || t));
+      } else if (action.startsWith('volume:')) {
+        const v = Number(action.slice(7));
+        if (Number.isFinite(v)) applyVolume(v);
+      }
+    };
+    const applyVolume = (raw: number) => {
+      const v = Math.min(1, Math.max(0, raw));
+      setVolume(v);
+      rampVolume(audio, v, pluginManager.isEnabled('smooth-volume'));
+      if (pluginManager.isEnabled('remember-volume')) saveRememberedVolume(v);
     };
     hotkeyActionRef.current = onHotkey;
     registerKeyboardHandler(onHotkey);
@@ -3802,12 +3812,26 @@ export default function App() {
     toggleMuteRef,
     togglePlayRef,
     toggleSaveRef,
+    toggleShuffleRef,
     volumeRef,
   ]);
 
   useEffect(() => {
     return setupKeyboardShortcuts(pluginManager.isEnabled('keyboard-shortcuts'));
   }, [pluginStates]);
+
+  // pozycja idzie świeża, bo plugin pamięta ją tylko z ostatniej zmiany utworu albo pauzy
+  useEffect(() => {
+    setMprisExtras(
+      {
+        volume,
+        rate: getPlaybackSpeed(pluginManager.isEnabled('playback-speed')),
+        loopMode,
+        shuffle: shuffleOn,
+      },
+      audio.currentTime || 0
+    );
+  }, [audio, volume, loopMode, shuffleOn, pluginStates]);
   const overlayStackRef = useLatest({
     np: npOpen,
     plEdit: plEdit !== null,
@@ -3968,7 +3992,6 @@ export default function App() {
   }, [audio, pluginStates]);
 
   const remoteEnabled = Boolean(pluginStates['remote-control']);
-  const toggleShuffleRef = useLatest(toggleShuffle);
   const cycleLoopRef = useLatest(cycleLoop);
   const handleItemClickRef = useLatest(handleItemClick);
   const langRef = useLatest(lang);

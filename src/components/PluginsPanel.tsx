@@ -52,6 +52,7 @@ import {
   rearmSleepTimer,
 } from '../plugins/sleepTimer';
 import { getPlaybackSpeed, setPlaybackSpeed, PLAYBACK_SPEEDS } from '../plugins/playbackSpeed';
+import { setMprisRate } from '../plugins/mediaSession';
 import {
   getOverlayFontSize,
   setOverlayFontSize,
@@ -423,6 +424,7 @@ export function PluginsPanel({
                 setSpeedRate(r);
                 setPlaybackSpeed(r);
                 audio.playbackRate = r;
+                setMprisRate(r, audio.currentTime || 0);
               }}
             />
           </div>
