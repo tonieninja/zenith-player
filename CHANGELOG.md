@@ -1,5 +1,11 @@
 # Changelog
 
+## 4.6.1
+
+- Home: the play button on artist cards sits in the middle of the round photo, before the circle cut it off in the corner
+- plugin names in the Plugins window are written in sentence case
+- clearer wording in the Windows installer, the missing WebView2 message, the error screen and the phone remote
+
 ## 4.6.0
 
 - artist pages got a proper header with the photo and subscribers, Play all plays every song of the artist like a playlist, next to it Shuffle, Radio and Show all
