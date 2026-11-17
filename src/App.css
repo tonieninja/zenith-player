@@ -3607,6 +3607,13 @@ button.modal-close-icon {
   border-radius: 50%;
 }
 
+/* róg kwadratu leży poza kołem, więc przycisk w rogu byłby przycięty */
+.yt-card-artist .yt-card-overlay {
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.35);
+}
+
 .artist-skeleton {
   padding: 16px var(--content-gutter) 48px;
 }
