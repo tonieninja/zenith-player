@@ -142,7 +142,8 @@ sudo apt install build-essential cmake pkg-config libwebkit2gtk-4.1-dev libgtk-3
   gstreamer1.0-plugins-good gstreamer1.0-libav libasound2-dev
 ```
 
-Add `rpm` and `libfuse2` if you want the rpm and the AppImage.
+Add `rpm` if you want the rpm; CI builds the deb and rpm on Ubuntu 22.04. The AppImage is built in an Arch Linux
+container and carries its own glibc (`Dockerfile.linux`, `pnpm dist:linux`).
 
 </details>
 

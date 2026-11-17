@@ -39,7 +39,7 @@ jobs:
             libssl-dev patchelf libudev-dev libunwind-dev \
             libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
             gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-libav libasound2-dev \
-            rpm libfuse2
+            rpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm test
       - run: pnpm typecheck
@@ -56,12 +56,10 @@ jobs:
         if: env.BUNDLE == 'true'
         shell: bash
         run: |
-          # bez bitu wykonywania AppImage nie otworzy żadnego linku; repo nie zawsze go przechowuje
-          chmod +x src-tauri/linux/xdg-open
           if [ -z "$TAURI_SIGNING_PRIVATE_KEY" ]; then
-            pnpm tauri build --bundles deb,appimage,rpm --config '{"bundle":{"createUpdaterArtifacts":false}}'
+            pnpm tauri build --bundles deb,rpm --config '{"bundle":{"createUpdaterArtifacts":false}}'
           else
-            pnpm tauri build --bundles deb,appimage,rpm
+            pnpm tauri build --bundles deb,rpm
           fi
       - uses: actions/upload-artifact@v7
         if: env.BUNDLE == 'true'
@@ -70,10 +68,45 @@ jobs:
           path: |
             src-tauri/target/release/bundle/deb/*.deb
             src-tauri/target/release/bundle/deb/*.sig
-            src-tauri/target/release/bundle/appimage/*.AppImage
-            src-tauri/target/release/bundle/appimage/*.sig
             src-tauri/target/release/bundle/rpm/*.rpm
             src-tauri/target/release/bundle/rpm/*.sig
+
+  # Ubuntu i Debian wyłączają łatką dmabuf WebKitGTK na NVIDII (całe UI na CPU), a jammy stoi na WebKitGTK 2.50.4
+  linux-appimage:
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: build AppImage (Arch Linux, glibc bundled by quick-sharun)
+        run: |
+          docker build --platform linux/amd64 -f Dockerfile.linux -t zenith-appimage .
+          docker run --rm --platform linux/amd64 -v "$PWD:/src" -e CI \
+            -e TAURI_SIGNING_PRIVATE_KEY -e TAURI_SIGNING_PRIVATE_KEY_PASSWORD \
+            zenith-appimage
+      # osobny katalog zachowuje podfolder appimage/ w artefakcie, po nim job release rozpoznaje pliki
+      - run: |
+          mkdir -p out/appimage
+          cp src-tauri/target/release/bundle/appimage/*.AppImage* out/appimage/
+      - uses: actions/upload-artifact@v7
+        with:
+          name: bundle-linux-appimage
+          path: out
+
+  # najstarsze obsługiwane systemy, bez bibliotek pulpitu: start musi się udać na glibc z paczki, nie z hosta
+  linux-appimage-smoke:
+    needs: linux-appimage
+    strategy:
+      fail-fast: false
+      matrix:
+        image: ['ubuntu:22.04', 'debian:12', 'ubuntu:24.04']
+    runs-on: ubuntu-24.04
+    container: ${{ matrix.image }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with: { name: bundle-linux-appimage, path: dl }
+      - name: start AppImage on ${{ matrix.image }}
+        run: bash scripts/appimage-smoke.sh dl/appimage/*.AppImage
 
   macos:
     if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
@@ -252,6 +285,7 @@ jobs:
 
   release:
     if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    needs: [linux, linux-appimage, linux-appimage-smoke, macos, windows]
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v7

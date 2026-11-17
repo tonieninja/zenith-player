@@ -6,9 +6,9 @@ OUT="$ROOT/dist-artifacts/linux"
 rm -rf "$OUT"
 mkdir -p "$OUT"
 
-if ! pkg-config --exists webkit2gtk-4.1 2>/dev/null; then
-  echo "Need webkit2gtk 4.1. On Ubuntu/Debian:" >&2
-  echo "  sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev patchelf libudev-dev" >&2
+if [ ! -f /etc/arch-release ]; then
+  echo "The AppImage builds on Arch Linux only (Docker: Dockerfile.linux, or WSL: wsl --install archlinux)." >&2
+  echo "deb and rpm come from CI on ubuntu-22.04." >&2
   exit 1
 fi
 

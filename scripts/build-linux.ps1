@@ -12,17 +12,17 @@ function Test-DockerReady {
 }
 
 function Invoke-DockerLinuxBuild {
-  Write-Host '== Linux build via Docker =='
-  docker build -f Dockerfile.linux -t $image $root
+  Write-Host '== Linux AppImage via Docker (deb/rpm come from CI on ubuntu-22.04) =='
+  docker build --platform linux/amd64 -f Dockerfile.linux -t $image $root
   if ($LASTEXITCODE -ne 0) { throw 'docker build of Linux toolchain image failed' }
 
   if (Test-Path $outDir) { Remove-Item -Recurse -Force $outDir }
   New-Item -ItemType Directory -Force -Path $outDir | Out-Null
 
   $outUnix = ($outDir -replace '\\', '/')
-  docker run --rm `
+  docker run --rm --platform linux/amd64 `
     -v "${root}:/src" `
-    -v zenith-player-linux-target:/src/src-tauri/target `
+    -v zenith-player-arch-target:/src/src-tauri/target `
     -v zenith-player-linux-nm:/src/node_modules `
     -v "${outDir}:/out/linux" `
     $image
@@ -30,7 +30,7 @@ function Invoke-DockerLinuxBuild {
 }
 
 function Invoke-WslLinuxBuild {
-  Write-Host '== Linux build via WSL =='
+  Write-Host '== Linux AppImage via WSL (Arch Linux) =='
   $wslRoot = (wsl wslpath -a $root).Trim()
   if (-not $wslRoot) { throw 'wslpath failed' }
   wsl -e bash -lc "bash '$wslRoot/scripts/build-linux.sh'"
@@ -44,7 +44,7 @@ if (Test-DockerReady) {
   if ($LASTEXITCODE -eq 0 -and $wslList) {
     Invoke-WslLinuxBuild
   } else {
-    throw 'WSL has no distro. Install Ubuntu (`wsl --install -d Ubuntu`) or Docker Desktop, then re-run pnpm dist:linux.'
+    throw 'WSL has no distro. Install Arch Linux (`wsl --install archlinux`) or Docker Desktop, then re-run pnpm dist:linux.'
   }
 } elseif ($IsLinux) {
   bash (Join-Path $PSScriptRoot 'build-linux.sh')
@@ -55,11 +55,11 @@ Cannot build Linux on this PC: Docker is not running and WSL has no distro.
 
 Install one of:
   winget install Docker.DockerDesktop
-  wsl --install -d Ubuntu
+  wsl --install archlinux
 
 Then reboot if Windows asks, start Docker, and run: pnpm dist:linux
 
-GitHub Actions still builds Linux on ubuntu-22.04 for v* tags.
+This builds only the AppImage (Arch Linux container, glibc bundled). The .deb/.rpm come from GitHub Actions on ubuntu-22.04 for v* tags.
 '@
 }
 

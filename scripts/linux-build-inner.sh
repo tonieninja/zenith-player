@@ -1,29 +1,28 @@
 #!/usr/bin/env bash
+# kontener Archa składa tylko AppImage; deb i rpm buduje CI na ubuntu-22.04, żeby zostały przy glibc 2.35
 set -euo pipefail
 
 ROOT="${1:-/src}"
 OUT="${2:-/out/linux}"
 cd "$ROOT"
 
-corepack enable
-corepack prepare pnpm@10.18.3 --activate
+if ! command -v pnpm >/dev/null; then
+  corepack enable
+  corepack prepare pnpm@10.18.3 --activate
+fi
 pnpm install --frozen-lockfile
 pnpm typecheck
-pnpm tauri build --bundles appimage,deb
+bash "$ROOT/scripts/build-appimage.sh"
 
 VERSION="$(node -p "require('./src-tauri/tauri.conf.json').version")"
-mkdir -p "$OUT"
-
-shopt -s nullglob
-appimages=(src-tauri/target/release/bundle/appimage/*.AppImage)
-debs=(src-tauri/target/release/bundle/deb/*.deb)
-if [[ ${#appimages[@]} -lt 1 || ${#debs[@]} -lt 1 ]]; then
-  echo "Linux bundles missing (need AppImage + deb)" >&2
+APP="src-tauri/target/release/bundle/appimage/Zenith_${VERSION}_amd64.AppImage"
+if [[ ! -f "$APP" ]]; then
+  echo "AppImage missing: $APP" >&2
   ls -la src-tauri/target/release/bundle || true
   exit 1
 fi
 
-cp -f "${appimages[0]}" "$OUT/Zenith_${VERSION}_amd64.AppImage"
-cp -f "${debs[0]}" "$OUT/Zenith_${VERSION}_amd64.deb"
-chmod +x "$OUT/Zenith_${VERSION}_amd64.AppImage"
+mkdir -p "$OUT"
+cp -f "$APP"* "$OUT/"
+chmod +x "$OUT/${APP##*/}"
 ls -la "$OUT"
