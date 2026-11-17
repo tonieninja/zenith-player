@@ -127,10 +127,21 @@ import { ModalOverlay } from './components/ui/ModalOverlay';
 import { clickOnKey, sliderKeyValue } from './components/ui/keyboard';
 import { YtmRatingButtons } from './components/player/YtmRatingButtons';
 import { PlaylistManager } from './components/PlaylistManager';
-import { errorText, streamStuckMessage, translations, type Language } from './i18n';
+import {
+  errorText,
+  isDefiniteStreamFailure,
+  streamStuckAsksSignIn,
+  streamStuckMessage,
+  translations,
+  type Language,
+} from './i18n';
 import { AUX_WINDOW_PLUGINS, pluginManager } from './plugins';
 import { syncCloseToTray } from './plugins/systemTray';
-import { getHotkeyBindings, pushHotkeyBindings, syncGlobalHotkeys } from './plugins/globalHotkeys';
+import {
+  getHotkeyBindings,
+  pushHotkeyBindings,
+  syncGlobalHotkeys,
+} from './plugins/globalHotkeys';
 import {
   abLoopPhase,
   cycleAbLoop,
@@ -1774,10 +1785,16 @@ export default function App() {
   );
 
   const showStreamStuck = useCallback(
-    async (L: Language) => {
-      const kind = await invoke<string | null>('stream_last_failure').catch(() => null);
+    async (L: Language, videoId: string | null, firstFail = false) => {
+      const kind = await invoke<string | null>('stream_last_failure', { videoId }).catch(
+        () => null
+      );
+      if (firstFail && !isDefiniteStreamFailure(kind)) {
+        pushToast(translations[L].streamUnavailable, 'error');
+        return;
+      }
       const msg = streamStuckMessage(translations[L], kind, libAuthedRef.current);
-      const askSignIn = !libAuthedRef.current && kind !== 'network' && kind !== 'component';
+      const askSignIn = streamStuckAsksSignIn(kind, libAuthedRef.current);
       pushToast(
         msg,
         'error',
@@ -1895,8 +1912,7 @@ export default function App() {
           if (!autoPlay || !navigator.onLine) {
             setBuffering(false);
             setIsPlaying(false);
-            if (navigator.onLine) pushToast(translations[L].streamUnavailable, 'error');
-            else void showStreamStuck(L);
+            void showStreamStuck(L, track.id, navigator.onLine);
             return;
           }
           prefetchPausedUntilRef.current = Date.now() + PREFETCH_PAUSE_AFTER_FAIL_MS;
@@ -1905,14 +1921,14 @@ export default function App() {
           const qi = queueIndexRef.current;
           const q = queueRef.current;
           if (streak >= 3) {
-            void showStreamStuck(L);
+            void showStreamStuck(L, track.id);
             autoFadeTrackRef.current = null;
             window.setTimeout(() => {
               autoFadePendingRef.current = false;
             }, 8000);
             return;
           }
-          pushToast(translations[L].streamUnavailable, 'error');
+          void showStreamStuck(L, track.id, true);
           autoFadeTrackRef.current = null;
           if (autoFadePendingRef.current) {
             autoFadePendingRef.current = false;
@@ -1974,6 +1990,7 @@ export default function App() {
                 videoId: track.id,
                 query: `${track.title} ${track.artist}`,
                 title: track.title,
+                // teledysk bywa dłuższy od wersji audio o więcej niż 7 s, więc filtr długości odrzucałby dobre wydania
                 duration: null,
               });
             } catch {
@@ -2981,7 +2998,7 @@ export default function App() {
         setIsPlaying(false);
         setBuffering(false);
         if (!navigator.onLine) {
-          void showStreamStuck((localStorage.getItem('zenith_lang') as Language) || 'en');
+          void showStreamStuck((localStorage.getItem('zenith_lang') as Language) || 'en', id);
           return;
         }
         const qi = queueIndexRef.current;
@@ -2990,7 +3007,7 @@ export default function App() {
         streamFailStreakRef.current += 1;
         if (streamFailStreakRef.current >= 3) {
           const L = (localStorage.getItem('zenith_lang') as Language) || 'en';
-          void showStreamStuck(L);
+          void showStreamStuck(L, id);
           return;
         }
         if (qi < q.length - 1) {

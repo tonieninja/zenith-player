@@ -78,7 +78,7 @@ async fn visitor_data() -> Option<String> {
     Some(vd)
 }
 
-fn is_bot_check(data: &Value) -> bool {
+fn status_reason(data: &Value) -> (&str, String) {
     let status = data
         .pointer("/playabilityStatus/status")
         .and_then(|v| v.as_str())
@@ -88,7 +88,92 @@ fn is_bot_check(data: &Value) -> bool {
         .and_then(|v| v.as_str())
         .unwrap_or("")
         .to_ascii_lowercase();
-    status == "LOGIN_REQUIRED" && (reason.contains("bot") || reason.contains("confirm"))
+    (status, reason)
+}
+
+// "Sign in to confirm your age" też ma LOGIN_REQUIRED, a blokadą adresu IP jest tylko "not a bot"
+fn is_bot_check(data: &Value) -> bool {
+    let (status, reason) = status_reason(data);
+    status == "LOGIN_REQUIRED" && reason.contains("not a bot")
+}
+
+// jak _is_agegated w yt-dlp: osobne pole, status albo treść powodu, zależnie od klienta
+pub fn is_age_gated(data: &Value) -> bool {
+    if data
+        .pointer("/playabilityStatus/desktopLegacyAgeGateReason")
+        .is_some_and(|v| !v.is_null())
+    {
+        return true;
+    }
+    let (status, reason) = status_reason(data);
+    matches!(status, "AGE_CHECK_REQUIRED" | "AGE_VERIFICATION_REQUIRED")
+        || ["confirm your age", "age-restricted", "inappropriate"]
+            .iter()
+            .any(|s| reason.contains(s))
+}
+
+fn failure_kind(data: &Value) -> &'static str {
+    let (status, reason) = status_reason(data);
+    if is_age_gated(data) {
+        "age"
+    } else if is_bot_check(data) {
+        "bot"
+    } else if reason.contains("country") {
+        "region"
+    } else if status == "ERROR"
+        || ["private", "removed", "terminated", "no longer available"]
+            .iter()
+            .any(|s| reason.contains(s))
+    {
+        "gone"
+    } else {
+        "blocked"
+    }
+}
+
+type Kinds = Mutex<HashMap<String, &'static str>>;
+
+fn kinds() -> &'static Kinds {
+    static K: OnceLock<Kinds> = OnceLock::new();
+    K.get_or_init(Default::default)
+}
+
+// klienci mówią różnie o tym samym filmie (np. visionos "not available" przy filmie dla dzieci), wygrywa najpewniejszy
+fn kind_rank(k: &str) -> u8 {
+    match k {
+        "dead" => 6,
+        "age" => 5,
+        "region" => 4,
+        "bot" => 3,
+        "blocked" => 2,
+        _ => 1,
+    }
+}
+
+pub fn note_kind(video_id: &str, kind: &'static str) {
+    let mut m = kinds().lock().unwrap_or_else(|p| p.into_inner());
+    if m.len() >= 256 {
+        m.clear();
+    }
+    let e = m.entry(video_id.to_string()).or_insert(kind);
+    if kind_rank(kind) > kind_rank(e) {
+        *e = kind;
+    }
+}
+
+pub fn failure_of(video_id: &str) -> Option<&'static str> {
+    kinds()
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .get(video_id)
+        .copied()
+}
+
+pub fn forget_failure(video_id: &str) {
+    kinds()
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .remove(video_id);
 }
 
 pub fn bot_blocked() -> bool {
@@ -128,13 +213,11 @@ pub struct DirectAudio {
 pub enum Client {
     Visionos,
     TvSamsung,
-    Tv,
-    TvDowngraded,
     WebEmbedded,
-    WebSafari,
     Web,
     Mweb,
     WebMusic,
+    WebCreator,
 }
 
 pub struct ClientSpec {
@@ -150,7 +233,6 @@ pub struct ClientSpec {
 }
 
 const SAFARI_UA: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.5 Safari/605.1.15,gzip(gfe)";
-const COBALT_UA: &str = "Mozilla/5.0 (ChromiumStylePlatform) Cobalt/25.lts.30.1034943-gold (unlike Gecko), Unknown_TV_Unknown_0/Unknown (Unknown, Unknown)";
 const TIZEN_UA: &str = "Mozilla/5.0 (SMART-TV; Linux; Tizen 2.4.0) AppleWebKit/538.1 (KHTML, like Gecko) Version/2.4.0 TV Safari/538.1";
 const IPAD_UA: &str = "Mozilla/5.0 (iPad; CPU OS 16_7_10 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1,gzip(gfe)";
 
@@ -195,18 +277,7 @@ pub fn spec(c: Client) -> ClientSpec {
             },
             ..base("TVHTML5", "5.20260707", 7, TIZEN_UA)
         },
-        Client::Tv => base("TVHTML5", "7.20260707.07.00", 7, COBALT_UA),
-        Client::TvDowngraded => base(
-            "TVHTML5",
-            "5.20260707",
-            7,
-            "Mozilla/5.0 (ChromiumStylePlatform) Cobalt/Version",
-        ),
         Client::WebEmbedded => base("WEB_EMBEDDED_PLAYER", "2.20260708.00.00", 56, SAFARI_UA),
-        Client::WebSafari => ClientSpec {
-            needs_pot: true,
-            ..base("WEB", "2.20260708.00.00", 1, SAFARI_UA)
-        },
         Client::Web => ClientSpec {
             needs_pot: true,
             ..base("WEB", "2.20260708.00.00", 1, CHROME_UA)
@@ -219,6 +290,11 @@ pub fn spec(c: Client) -> ClientSpec {
             needs_pot: true,
             host: "music.youtube.com",
             ..base("WEB_REMIX", "1.20260707.12.00", 67, CHROME_UA)
+        },
+        // yt-dlp: omija weryfikację wieku konta w UE, ale tylko z logowaniem i tokenem PO
+        Client::WebCreator => ClientSpec {
+            needs_pot: true,
+            ..base("WEB_CREATOR", "1.20260708.06.00", 62, CHROME_UA)
         },
     }
 }
@@ -302,7 +378,8 @@ fn candidates(data: &Value) -> Vec<Candidate> {
     let mut out = Vec::new();
     for audio_only in [true, false] {
         for fmt in &formats {
-            if audio_only != is_audio_only_fmt(fmt) {
+            // eksperyment DRM na klientach TV: taki format ma adres, ale bez licencji nie da się go odtworzyć
+            if audio_only != is_audio_only_fmt(fmt) || fmt.get("drmFamilies").is_some() {
                 continue;
             }
             let score = format_score(fmt) - if audio_only { 0 } else { 1000 };
@@ -332,6 +409,55 @@ fn candidates(data: &Value) -> Vec<Candidate> {
     }
     out.sort_by_key(|c| std::cmp::Reverse(c.score));
     out
+}
+
+// adres działa dopiero po reklamie przed utworem (yt-dlp _get_available_at_timestamp); wcześniej googlevideo daje 403
+fn preroll_wait(data: &Value) -> Duration {
+    fn ads(v: &Value, ms: &mut f64) {
+        match v {
+            Value::Object(m) => {
+                if let Some(r) = m.get("instreamVideoAdRenderer") {
+                    let len = r
+                        .get("playerVars")
+                        .and_then(Value::as_str)
+                        .and_then(|q| {
+                            url::form_urlencoded::parse(q.as_bytes())
+                                .find(|(k, _)| k == "length_seconds")
+                                .and_then(|(_, v)| v.parse::<f64>().ok())
+                        })
+                        .map(|s| s * 1000.0);
+                    let skip = r.get("skipOffsetMilliseconds").and_then(Value::as_f64);
+                    *ms += skip.or(len).unwrap_or(0.0);
+                    return;
+                }
+                m.values().for_each(|x| ads(x, ms));
+            }
+            Value::Array(a) => a.iter().for_each(|x| ads(x, ms)),
+            _ => {}
+        }
+    }
+    let list = |key: &str| {
+        data.get(key)
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+    };
+    let mut ms = 0.0;
+    for p in list("adPlacements").filter(|p| {
+        p.pointer("/adPlacementRenderer/config/adPlacementConfig/kind")
+            .and_then(Value::as_str)
+            == Some("AD_PLACEMENT_KIND_START")
+    }) {
+        ads(p, &mut ms);
+    }
+    for s in list("adSlots").filter(|s| {
+        s.pointer("/adSlotRenderer/adSlotMetadata/triggerEvent")
+            .and_then(Value::as_str)
+            == Some("SLOT_TRIGGER_EVENT_BEFORE_CONTENT")
+    }) {
+        ads(s, &mut ms);
+    }
+    Duration::from_millis(ms.clamp(0.0, 15_000.0) as u64)
 }
 
 fn is_progressive_url(url: &str) -> bool {
@@ -636,7 +762,9 @@ pub async fn client_once(
     } else {
         None
     };
-    let pot = if spec.needs_pot {
+    // zalogowany web_embedded bez tokenu PO GVS daje adresy z 403 (yt-dlp #17989, #18051)
+    let needs_pot = spec.needs_pot || (auth.is_some() && client == Client::WebEmbedded);
+    let pot = if needs_pot {
         let binding = match auth {
             Some(a) => a.data_sync_id.clone().or_else(|| visitor.map(String::from)),
             None => visitor.map(String::from),
@@ -654,6 +782,7 @@ pub async fn client_once(
         auth,
     )
     .await?;
+    let ready_at = tokio::time::Instant::now() + preroll_wait(&data);
     let status = data
         .pointer("/playabilityStatus/status")
         .and_then(|v| v.as_str())
@@ -671,6 +800,7 @@ pub async fn client_once(
             "[Zenith] innertube {} {}: {} {}",
             spec.name, video_id, status, why
         );
+        note_kind(video_id, failure_kind(&data));
         return None;
     }
     let list = candidates(&data);
@@ -679,13 +809,16 @@ pub async fn client_once(
             "[Zenith] innertube {} {} playable but no progressive audio",
             spec.name, video_id
         );
+        note_kind(video_id, "dead");
         return None;
     }
     for c in list.iter().take(3) {
         let Some(url) = finish_url(c, player.as_ref(), pot.as_deref()).await else {
             continue;
         };
-        if url_reachable(&url, spec.user_agent).await {
+        tokio::time::sleep_until(ready_at).await;
+        if url_reachable(&url, spec.user_agent).await && tail_reachable(&url, spec.user_agent).await
+        {
             eprintln!("[Zenith] innertube {} ok for {}", spec.name, video_id);
             return Some(DirectAudio {
                 url,
@@ -697,6 +830,8 @@ pub async fn client_once(
             spec.name, video_id
         );
     }
+    // klient przeszedł bramkę, więc to nie wiek ani region i eskalacja z odświeżonym player JS ma sens
+    note_kind(video_id, "dead");
     None
 }
 
@@ -717,7 +852,7 @@ pub async fn resolve_with(
 pub async fn url_reachable(url: &str, user_agent: &str) -> bool {
     for wait in [0u64, 700, 1800] {
         tokio::time::sleep(Duration::from_millis(wait)).await;
-        match probe(url, user_agent).await {
+        match probe(url, user_agent, "bytes=0-98303").await {
             Some(true) => return true,
             Some(false) => continue,
             None => return false,
@@ -726,13 +861,25 @@ pub async fn url_reachable(url: &str, user_agent: &str) -> bool {
     false
 }
 
-async fn probe(url: &str, user_agent: &str) -> Option<bool> {
+// googlevideo oddaje pierwszy zakres nawet przy złym tokenie PO, a 403 przychodzi dopiero w środku utworu
+async fn tail_reachable(url: &str, user_agent: &str) -> bool {
+    let Some(len) = query_param(url, "clen")
+        .and_then(|v| v.parse::<u64>().ok())
+        .filter(|l| *l > 400_000)
+    else {
+        return true;
+    };
+    let at = len * 6 / 10;
+    probe(url, user_agent, &format!("bytes={at}-{}", at + 98_303)).await == Some(true)
+}
+
+async fn probe(url: &str, user_agent: &str, range: &str) -> Option<bool> {
     let http = client(user_agent, 8, false)?;
     let mut at = url.to_string();
     for _ in 0..4 {
         let r = http
             .get(&at)
-            .header("Range", "bytes=0-98303")
+            .header("Range", range)
             .header("Referer", "https://www.youtube.com/")
             .header("Origin", "https://www.youtube.com")
             .send()
@@ -812,18 +959,13 @@ mod tests {
         use super::{spec, Client};
         for c in [
             Client::Web,
-            Client::WebSafari,
             Client::Mweb,
             Client::WebMusic,
+            Client::WebCreator,
         ] {
             assert!(spec(c).needs_pot, "{c:?}");
         }
-        for c in [
-            Client::Tv,
-            Client::TvSamsung,
-            Client::WebEmbedded,
-            Client::TvDowngraded,
-        ] {
+        for c in [Client::TvSamsung, Client::WebEmbedded] {
             assert!(!spec(c).needs_pot && spec(c).needs_js, "{c:?}");
         }
         assert_eq!(spec(Client::WebMusic).host, "music.youtube.com");
@@ -927,6 +1069,109 @@ mod tests {
         assert!(is_bot_check(&d));
         let d = json!({"playabilityStatus": {"status": "LOGIN_REQUIRED", "reason": "This video is private"}});
         assert!(!is_bot_check(&d));
+        let d = json!({"playabilityStatus": {"status": "LOGIN_REQUIRED", "reason": "Sign in to confirm your age"}});
+        assert!(
+            !is_bot_check(&d),
+            "age gate must not start the bot cooldown"
+        );
+        let d = json!({"playabilityStatus": {"status": "LOGIN_REQUIRED", "reason": "Sign in to confirm you’re not a bot"}});
+        assert!(is_bot_check(&d));
+    }
+
+    #[test]
+    fn classifies_why_a_video_does_not_play() {
+        use super::{failure_kind, is_age_gated};
+        let ps = |status: &str, reason: &str| json!({"playabilityStatus": {"status": status, "reason": reason}});
+        for d in [
+            ps("LOGIN_REQUIRED", "Sign in to confirm your age"),
+            ps("UNPLAYABLE", "Sorry, this content is age-restricted"),
+            ps(
+                "LOGIN_REQUIRED",
+                "This video may be inappropriate for some users.",
+            ),
+            ps("AGE_VERIFICATION_REQUIRED", ""),
+            json!({"playabilityStatus": {"status": "OK", "desktopLegacyAgeGateReason": 1}}),
+        ] {
+            assert!(is_age_gated(&d), "{d}");
+            assert_eq!(failure_kind(&d), "age");
+        }
+        assert!(!is_age_gated(&ps("OK", "")));
+        assert_eq!(
+            failure_kind(&ps("LOGIN_REQUIRED", "Sign in to confirm you’re not a bot")),
+            "bot"
+        );
+        assert_eq!(
+            failure_kind(&ps(
+                "UNPLAYABLE",
+                "The uploader has not made this video available in your country"
+            )),
+            "region"
+        );
+        assert_eq!(
+            failure_kind(&ps("ERROR", "This video is unavailable")),
+            "gone"
+        );
+        assert_eq!(
+            failure_kind(&ps("LOGIN_REQUIRED", "This video is private")),
+            "gone"
+        );
+        assert_eq!(
+            failure_kind(&ps("UNPLAYABLE", "This video is not available")),
+            "blocked"
+        );
+    }
+
+    #[test]
+    fn the_surest_reason_wins_per_video() {
+        use super::{failure_of, forget_failure, note_kind};
+        let id = "kindtest001";
+        forget_failure(id);
+        note_kind(id, "gone");
+        note_kind(id, "blocked");
+        note_kind(id, "age");
+        note_kind(id, "bot");
+        assert_eq!(failure_of(id), Some("age"));
+        note_kind(id, "dead");
+        assert_eq!(failure_of(id), Some("dead"));
+        assert_eq!(failure_of("kindtest002"), None);
+        forget_failure(id);
+        assert_eq!(failure_of(id), None);
+    }
+
+    #[test]
+    fn waits_for_the_preroll_ad_only_before_content() {
+        use std::time::Duration;
+        let ad = |kind: &str, skip: Option<u64>| {
+            let mut r = json!({"playerVars": "length_seconds=15&x=1"});
+            if let Some(s) = skip {
+                r["skipOffsetMilliseconds"] = json!(s);
+            }
+            json!({"adPlacementRenderer": {"config": {"adPlacementConfig": {"kind": kind}},
+                "renderer": {"instreamVideoAdRenderer": r}}})
+        };
+        let d = json!({"adPlacements": [ad("AD_PLACEMENT_KIND_START", Some(6000)), ad("AD_PLACEMENT_KIND_END", None)]});
+        assert_eq!(super::preroll_wait(&d), Duration::from_millis(6000));
+        let d = json!({"adPlacements": [ad("AD_PLACEMENT_KIND_START", None)]});
+        assert_eq!(super::preroll_wait(&d), Duration::from_secs(15));
+        let slot = json!({"adSlots": [{"adSlotRenderer": {"adSlotMetadata": {"triggerEvent": "SLOT_TRIGGER_EVENT_BEFORE_CONTENT"},
+            "fulfillmentContent": {"x": [{"instreamVideoAdRenderer": {"skipOffsetMilliseconds": 5000}}, {"instreamVideoAdRenderer": {"skipOffsetMilliseconds": 20000}}]}}}]});
+        assert_eq!(
+            super::preroll_wait(&slot),
+            Duration::from_secs(15),
+            "capped"
+        );
+        assert_eq!(super::preroll_wait(&json!({})), Duration::ZERO);
+    }
+
+    #[test]
+    fn drm_formats_are_never_candidates() {
+        let data = json!({"streamingData": {"adaptiveFormats": [
+            { "itag": 251, "mimeType": "audio/webm; codecs=\"opus\"", "url": "https://g.example/drm", "drmFamilies": ["WIDEVINE"] },
+            { "itag": 140, "mimeType": "audio/mp4; codecs=\"mp4a.40.2\"", "url": "https://g.example/m4a" }
+        ]}});
+        let c = super::candidates(&data);
+        assert_eq!(c.len(), 1);
+        assert_eq!(c[0].url, "https://g.example/m4a");
     }
     use serde_json::json;
 
@@ -1041,5 +1286,40 @@ mod chain_live {
             }
         }
         println!("{hits:?}");
+    }
+
+    // lista filmów z ZENITH_IDS, bo korpus testowy zmienia się z każdą zmianą po stronie YouTube
+    #[tokio::test(flavor = "multi_thread")]
+    #[ignore = "talks to youtube"]
+    async fn guest_corpus() {
+        crate::player_js::init(std::env::temp_dir().join("zenith-live-player"));
+        let ids = std::env::var("ZENITH_IDS").unwrap_or_default();
+        let only = std::env::var("ZENITH_CLIENT")
+            .ok()
+            .and_then(|s| crate::resolve_plan::by_name(&s));
+        let (mut ok, mut n, all) = (0, 0, std::time::Instant::now());
+        for id in ids.split(',').filter(|s| s.len() == 11) {
+            let t = std::time::Instant::now();
+            let mut how = "none".to_string();
+            if let Some(c) = only {
+                if let Some((g, _)) = super::resolve_with(id, &[c], None).await {
+                    how = format!("{c:?} itag={:?}", super::query_param(&g.url, "itag"));
+                }
+            } else if let Some(g) = super::fetch_direct_audio(id).await {
+                how = format!("visionos itag={:?}", super::query_param(&g.url, "itag"));
+            } else if let Some((g, c)) =
+                super::resolve_with(id, crate::resolve_plan::GUEST_JS, None).await
+            {
+                how = format!("{c:?} itag={:?}", super::query_param(&g.url, "itag"));
+            }
+            n += 1;
+            ok += (how != "none") as usize;
+            println!(
+                "{id} {how} {} ms bot_cooldown={}",
+                t.elapsed().as_millis(),
+                super::bot_blocked()
+            );
+        }
+        println!("guest ok {ok}/{n} in {} s", all.elapsed().as_secs());
     }
 }

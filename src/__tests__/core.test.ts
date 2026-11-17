@@ -11,7 +11,12 @@ vi.mock('@tauri-apps/api/webviewWindow', () => ({
 }));
 vi.mock('@tauri-apps/plugin-http', () => ({ fetch: vi.fn() }));
 
-import { translations, streamStuckMessage } from '../i18n';
+import {
+  translations,
+  streamStuckMessage,
+  streamStuckAsksSignIn,
+  isDefiniteStreamFailure,
+} from '../i18n';
 import { getActiveLyricIndex } from '../lyrics/active';
 import { localizeLyricsReason } from '../lyrics/reasons';
 import { pluginText } from '../i18n/plugins';
@@ -264,6 +269,24 @@ describe('stream stuck toast', () => {
     expect(en.streamBlockedBotSignedIn.toLowerCase()).not.toContain('sign in');
     expect(pl.streamUnavailableStuckSignedIn.toLowerCase()).not.toContain('zaloguj');
     expect(pl.streamBlockedBotSignedIn.toLowerCase()).not.toContain('zaloguj');
+  });
+
+  it('names the real reason and offers sign-in only where it helps', () => {
+    const en = translations.en;
+    expect(streamStuckMessage(en, 'age', false)).toBe(en.streamAgeRestricted);
+    expect(streamStuckMessage(en, 'age', true)).toBe(en.streamAgeRestrictedSignedIn);
+    expect(streamStuckMessage(en, 'gone', false)).toBe(en.streamGone);
+    expect(streamStuckMessage(en, 'region', false)).toBe(en.streamRegion);
+    expect(streamStuckMessage(en, 'blocked', false)).toBe(en.streamUnavailableStuck);
+    expect(streamStuckAsksSignIn('age', false)).toBe(true);
+    expect(streamStuckAsksSignIn('bot', false)).toBe(true);
+    expect(streamStuckAsksSignIn('age', true)).toBe(false);
+    expect(streamStuckAsksSignIn('gone', false)).toBe(false);
+    expect(streamStuckAsksSignIn('region', false)).toBe(false);
+    expect(streamStuckAsksSignIn('network', false)).toBe(false);
+    expect(isDefiniteStreamFailure('age')).toBe(true);
+    expect(isDefiniteStreamFailure('blocked')).toBe(false);
+    expect(isDefiniteStreamFailure(null)).toBe(false);
   });
 });
 

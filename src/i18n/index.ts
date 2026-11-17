@@ -424,6 +424,11 @@ const en = {
   streamUnavailableStuckSignedIn: 'YouTube blocked the stream. Try another track.',
   streamBlockedBotSignedIn:
     "YouTube's still blocking playback on this network (shared IP). Try another track.",
+  streamAgeRestricted: 'This song is age-restricted on YouTube. Sign in to play it.',
+  streamAgeRestrictedSignedIn:
+    'YouTube wants you to verify your age on your Google account before it plays this song.',
+  streamGone: 'This song is no longer available on YouTube.',
+  streamRegion: "This song isn't available in your country.",
   retry: 'Try again',
   loadFailed: "Couldn't load this",
   libEmptyPlaylists: 'No playlists yet. Create one or save music on YouTube Music.',
@@ -1020,6 +1025,12 @@ const pl: Record<keyof typeof en, string> = {
   streamUnavailableStuckSignedIn: 'YouTube zablokował odtwarzanie. Spróbuj innego utworu.',
   streamBlockedBotSignedIn:
     'YouTube nadal blokuje odtwarzanie z tej sieci (wspólny adres IP). Spróbuj innego utworu.',
+  streamAgeRestricted:
+    'Ten utwór ma na YouTube ograniczenie wiekowe. Zaloguj się, żeby go odtworzyć.',
+  streamAgeRestrictedSignedIn:
+    'YouTube wymaga potwierdzenia wieku na koncie Google, zanim odtworzy ten utwór.',
+  streamGone: 'Tego utworu nie ma już na YouTube.',
+  streamRegion: 'Ten utwór jest niedostępny w twoim kraju.',
   retry: 'Spróbuj jeszcze raz',
   loadFailed: 'Nie udało się wczytać treści',
   libEmptyPlaylists: 'Nie masz jeszcze playlist. Utwórz nową albo zapisuj muzykę w YouTube Music.',
@@ -1202,7 +1213,20 @@ export function streamStuckMessage(
   if (kind === 'network') return t.streamBlockedNetwork;
   if (kind === 'bot') return signedIn ? t.streamBlockedBotSignedIn : t.streamBlockedBot;
   if (kind === 'component') return t.streamBlockedComponent;
+  if (kind === 'age') return signedIn ? t.streamAgeRestrictedSignedIn : t.streamAgeRestricted;
+  if (kind === 'gone') return t.streamGone;
+  if (kind === 'region') return t.streamRegion;
   return signedIn ? t.streamUnavailableStuckSignedIn : t.streamUnavailableStuck;
+}
+
+// usunięty film, blokada regionu i zła sieć nie znikają po zalogowaniu, więc tam przycisk tylko by mylił
+export function streamStuckAsksSignIn(kind: string | null | undefined, signedIn: boolean): boolean {
+  return !signedIn && !['network', 'component', 'gone', 'region'].includes(kind ?? '');
+}
+
+// te powody są pewne już po pierwszej porażce, a ogólne „pomijam” nie mówi, że ponowna próba nic nie da
+export function isDefiniteStreamFailure(kind: string | null | undefined): boolean {
+  return kind === 'age' || kind === 'gone' || kind === 'region';
 }
 
 // komunikaty z Rusta i API są po angielsku; znane przypadki tłumaczymy, resztę pokazujemy bez zmian

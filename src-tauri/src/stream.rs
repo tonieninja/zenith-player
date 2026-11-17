@@ -123,6 +123,8 @@ fn preferred_client() -> Option<Client> {
         if let Some(c) = pref_file()
             .and_then(|p| std::fs::read_to_string(p).ok())
             .and_then(|s| resolve_plan::by_name(&s))
+            // 4.5.0 mógł zapisać tv_samsung, a ten czeka teraz na reklamę przed każdym utworem
+            .filter(|c| *c != Client::TvSamsung)
         {
             if let Ok(mut g) = PREFERRED.lock() {
                 g.get_or_insert(c);
@@ -133,7 +135,8 @@ fn preferred_client() -> Option<Client> {
 }
 
 fn set_preferred(c: Client) {
-    if c == Client::Visionos || player::spec(c).needs_pot {
+    // tv_samsung czeka kilka sekund na reklamę przed utworem, więc jako pierwszy wybór spowalniałby każdy utwór
+    if c == Client::Visionos || c == Client::TvSamsung || player::spec(c).needs_pot {
         return;
     }
     if let Ok(mut g) = PREFERRED.lock() {
@@ -253,28 +256,25 @@ pub async fn recover_upstream(
     })
 }
 
-static LAST_FAILURE: Mutex<Option<&'static str>> = Mutex::new(None);
+static NETWORK_FAILED_AT: AtomicU64 = AtomicU64::new(0);
 
-pub(crate) fn note_failure(kind: &'static str) {
-    if let Ok(mut g) = LAST_FAILURE.lock() {
-        let rank = |k: &str| match k {
-            "component" => 4,
-            "network" => 3,
-            "bot" => 2,
-            _ => 1,
-        };
-        if g.map(|o| rank(kind) >= rank(o)).unwrap_or(true) {
-            *g = Some(kind);
-        }
+pub(crate) fn note_network_failure() {
+    NETWORK_FAILED_AT.store(now_secs(), Ordering::SeqCst);
+}
+
+// wiek, region i usunięcie zna tylko odpowiedź YouTube, a skoro przyszła, to sieć działała
+fn reported_failure(kind: Option<&'static str>, network_at: u64, now: u64) -> Option<&'static str> {
+    match kind {
+        Some(k @ ("age" | "region" | "gone")) => Some(k),
+        _ if network_at > 0 && now.saturating_sub(network_at) < 60 => Some("network"),
+        k => k,
     }
 }
 
 #[tauri::command]
-pub fn stream_last_failure() -> Option<String> {
-    LAST_FAILURE
-        .lock()
-        .ok()
-        .and_then(|g| g.map(|s| s.to_string()))
+pub fn stream_last_failure(video_id: Option<String>) -> Option<String> {
+    let kind = video_id.as_deref().and_then(player::failure_of);
+    reported_failure(kind, NETWORK_FAILED_AT.load(Ordering::SeqCst), now_secs()).map(String::from)
 }
 
 pub fn evict_cached_url(video_id: &str) {
@@ -439,9 +439,7 @@ async fn get_stream_url_locked(
         }
     }
     let _ = app;
-    if let Ok(mut g) = LAST_FAILURE.lock() {
-        *g = None;
-    }
+    player::forget_failure(&video_id);
     let struggling = innertube_struggling();
     let head_start = if struggling {
         0
@@ -501,15 +499,27 @@ async fn get_stream_url_locked(
         }
     }
 
-    if let Some(got) = escalate(&video_id, signed).await {
-        crate::mark(format!("layer escalation {video_id}"));
-        return remember_and_proxy(&video_id, &got.url, &got.user_agent, now).map(Some);
+    // każdy klient dostaje tę samą bramkę wieku albo brak filmu; 45 s eskalacji tylko opóźniałoby wersję zastępczą
+    let hopeless = matches!(
+        player::failure_of(&video_id),
+        Some("age" | "region" | "gone")
+    );
+    if !hopeless {
+        if let Some(got) = escalate(&video_id, signed).await {
+            crate::mark(format!("layer escalation {video_id}"));
+            return remember_and_proxy(&video_id, &got.url, &got.user_agent, now).map(Some);
+        }
     }
-    note_failure(if player::bot_blocked() {
-        "bot"
-    } else {
-        "unavailable"
-    });
+    if player::failure_of(&video_id).is_none() {
+        player::note_kind(
+            &video_id,
+            if player::bot_blocked() {
+                "bot"
+            } else {
+                "blocked"
+            },
+        );
+    }
     Ok(None)
 }
 
@@ -660,7 +670,7 @@ pub async fn yt_search(query: &str, limit: usize) -> Result<Vec<Found>, String> 
         .send()
         .await
         .map_err(|e| {
-            note_failure("network");
+            note_network_failure();
             e.to_string()
         })?;
     if !res.status().is_success() {
@@ -709,9 +719,24 @@ pub async fn resolve_alternate_stream(
     query: String,
     title: Option<String>,
     duration: Option<f64>,
+    age_bypass: Option<bool>,
+    candidates: Option<Vec<String>>,
 ) -> Result<Option<String>, String> {
     validate_video_id(&video_id)?;
     let _ = APP.set(app.clone());
+    if player::failure_of(&video_id) == Some("age") && age_bypass == Some(false) {
+        return Ok(None);
+    }
+    // piosenka z YouTube Music zwykle nie ma blokady wieku teledysku, a jej tytuł nie pasuje do filtru wyszukiwania filmów
+    let twins = candidates
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|c| c != &video_id && validate_video_id(c).is_ok());
+    for alt in twins.take(3) {
+        if let Some(url) = play_alternate(&app, &video_id, alt).await {
+            return Ok(Some(url));
+        }
+    }
     let q: String = query
         .chars()
         .filter(|c| !c.is_control())
@@ -732,15 +757,21 @@ pub async fn resolve_alternate_stream(
         .collect();
     let picks = pick_alternates(&video_id, duration, found);
     for alt in picks.into_iter().take(2) {
-        if let Ok(Some(_)) = get_stream_url(app.clone(), alt.clone(), None).await {
-            // adres pod id zastępczego nagrania: po wygaśnięciu linku proxy odświeża ten film, nie oryginał
-            if stream_proxy::current_upstream(&alt).is_some() {
-                eprintln!("[Zenith] playing alternate upload {} for {}", alt, video_id);
-                return Ok(stream_proxy::proxy_url(&alt));
-            }
+        if let Some(url) = play_alternate(&app, &video_id, alt).await {
+            return Ok(Some(url));
         }
     }
     Ok(None)
+}
+
+async fn play_alternate(app: &AppHandle, video_id: &str, alt: String) -> Option<String> {
+    get_stream_url(app.clone(), alt.clone(), None)
+        .await
+        .ok()??;
+    // adres pod id zastępczego nagrania: po wygaśnięciu linku proxy odświeża ten film, nie oryginał
+    stream_proxy::current_upstream(&alt)?;
+    eprintln!("[Zenith] playing alternate upload {} for {}", alt, video_id);
+    stream_proxy::proxy_url(&alt)
 }
 
 fn norm_title(s: &str) -> String {
@@ -860,6 +891,22 @@ mod tests {
             Some("1234567890")
         );
         assert_eq!(super::parse_data_sync_id("nothing"), None);
+    }
+
+    #[test]
+    fn a_youtube_verdict_beats_an_old_network_error() {
+        use super::reported_failure;
+        assert_eq!(reported_failure(Some("age"), 1000, 1010), Some("age"));
+        assert_eq!(
+            reported_failure(Some("blocked"), 1000, 1010),
+            Some("network")
+        );
+        assert_eq!(reported_failure(None, 1000, 1010), Some("network"));
+        assert_eq!(
+            reported_failure(Some("blocked"), 1000, 1100),
+            Some("blocked")
+        );
+        assert_eq!(reported_failure(None, 0, 1100), None);
     }
 
     #[test]

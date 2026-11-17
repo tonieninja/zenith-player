@@ -1,38 +1,23 @@
 use crate::player::Client::{self, *};
 
-pub const GUEST_JS: &[Client] = &[WebEmbedded, TvSamsung, Tv];
-pub const SIGNED_IN: &[Client] = &[WebEmbedded, TvSamsung, Tv, Web];
-pub const WITH_POT: &[Client] = &[WebMusic, Mweb, WebSafari];
+// tv i tv_downgraded zwracają "The page needs to be reloaded", a web i web_safari same strumienie SABR
+pub const GUEST_JS: &[Client] = &[WebEmbedded, TvSamsung];
+pub const SIGNED_IN: &[Client] = &[TvSamsung, WebEmbedded, WebCreator];
+pub const WITH_POT: &[Client] = &[Mweb, WebMusic];
 
-pub const RECOVERY: &[&[Client]] = &[
-    &[Visionos],
-    &[WebEmbedded, TvSamsung],
-    &[Tv, TvDowngraded],
-    SIGNED_IN,
-];
+pub const RECOVERY: &[&[Client]] = &[&[Visionos], &[WebEmbedded, TvSamsung], SIGNED_IN];
 
-pub const LAST_RESORT: &[Client] = &[
-    Visionos,
-    TvSamsung,
-    Tv,
-    WebEmbedded,
-    Mweb,
-    WebSafari,
-    WebMusic,
-    TvDowngraded,
-];
+pub const LAST_RESORT: &[Client] = &[Visionos, TvSamsung, WebEmbedded, Mweb, WebMusic];
 
 pub fn name(c: Client) -> &'static str {
     match c {
         Visionos => "visionos",
         TvSamsung => "tv_samsung",
-        Tv => "tv",
-        TvDowngraded => "tv_downgraded",
         WebEmbedded => "web_embedded",
-        WebSafari => "web_safari",
         Web => "web",
         Mweb => "mweb",
         WebMusic => "web_music",
+        WebCreator => "web_creator",
     }
 }
 
@@ -89,6 +74,11 @@ mod tests {
             assert_eq!(by_name(name(*c)), Some(*c));
         }
         assert_eq!(by_name("android_vr"), None);
+        assert_eq!(
+            by_name("tv"),
+            None,
+            "stary stream-client.txt nie wskrzesza martwego klienta"
+        );
         assert_eq!(by_name(""), None);
     }
 
@@ -113,6 +103,7 @@ mod tests {
     #[test]
     fn recovery_ends_with_the_signed_in_set() {
         assert_eq!(*RECOVERY.last().unwrap(), SIGNED_IN);
-        assert!(!SIGNED_IN.contains(&TvDowngraded));
+        assert!(SIGNED_IN.contains(&WebCreator));
+        assert!(!GUEST_JS.contains(&WebCreator) && !LAST_RESORT.contains(&WebCreator));
     }
 }

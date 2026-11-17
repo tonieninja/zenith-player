@@ -134,7 +134,7 @@ async fn send_upstream(
                     Ok(r)
                 }
                 Err(e2) => {
-                    crate::stream::note_failure("network");
+                    crate::stream::note_network_failure();
                     Err(e2)
                 }
             }
