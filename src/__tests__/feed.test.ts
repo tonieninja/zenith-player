@@ -141,7 +141,7 @@ describe('artist bylines from YouTube Music', () => {
     expect(bylineFromRuns([])).toBe('');
   });
 
-  it('still splits the album and length off at the bullets', () => {
+  it('keeps the album but drops the length, which the row carries separately', () => {
     expect(
       bylineFromRuns([
         { text: 'Song' },
@@ -152,7 +152,7 @@ describe('artist bylines from YouTube Music', () => {
         { text: ' • ' },
         { text: '4:08' },
       ])
-    ).toBe('Daft Punk, Pharrell Williams & Nile Rodgers • Random Access Memories • 4:08');
+    ).toBe('Daft Punk, Pharrell Williams & Nile Rodgers • Random Access Memories');
   });
 
   it('repairs bylines saved by older builds', () => {
@@ -188,5 +188,20 @@ describe('byline play counts', () => {
     expect(tidyByline('Sanah • 291 tys. wyświetleń')).toBe('Sanah');
     expect(tidyByline('Daft Punk • 2013')).toBe('Daft Punk • 2013');
     expect(tidyByline('Avi, Oskar • 3M plays')).toBe('Avi, Oskar');
+    expect(tidyByline('Daft Punk • 4:09')).toBe('Daft Punk');
+    expect(tidyByline('Mix • 1:02:33')).toBe('Mix');
+    expect(tidyByline('7 min 9 sec • DJ Vini')).toBe('DJ Vini');
+    expect(tidyByline('1.5B plays • 4:09')).toBe('1.5B plays • 4:09');
+  });
+
+  it('plays an episode card (MPED + video id) instead of opening an empty album', () => {
+    expect(resolveFeedItem({ browseId: 'MPED_JTOeHJLkhM' })).toEqual({
+      id: '_JTOeHJLkhM',
+      type: 'track',
+    });
+    expect(resolveFeedItem({ browseId: 'MPEDi_ZUw4sB7RE', videoId: 'i_ZUw4sB7RE' })).toEqual({
+      id: 'i_ZUw4sB7RE',
+      type: 'track',
+    });
   });
 });

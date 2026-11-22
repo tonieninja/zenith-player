@@ -31,6 +31,9 @@ export function resolveFeedItem(input: ResolveFeedItemInput): FeedItemIdentity |
     return { id: browseId, type: profile ? 'profile' : 'artist' };
   }
 
+  // MPED to strona odcinka z id filmu w środku; jako „album” otwierała pustą stronę zamiast grać
+  if (browseId?.startsWith('MPED')) return { id: videoId || browseId.slice(4), type: 'track' };
+
   if (pageType === 'MUSIC_PAGE_TYPE_ALBUM' && browseId) {
     return { id: browseId, type: 'album' };
   }
@@ -99,18 +102,18 @@ export function bylineFromRuns(runs: { text?: unknown }[]): string {
   );
 }
 
-// licznik odsłuchań z kafelka nie jest częścią wykonawcy, a szedł dalej do MediaSession, Discorda i scrobbli
+// licznik odsłuchań i czas z kafelka to nie wykonawca, a szły dalej do MediaSession, Discorda i scrobbli
 const STAT_PART =
-  /^(?:\d[\d.,\s]*\s*(?:[KMB]|tys\.|mln|mld)?\s*(?:plays?|views?|odtworze\p{L}*|wyświetle\p{L}*)|no views)$/iu;
+  /^(?:\d[\d.,\s]*\s*(?:[KMB]|tys\.|mln|mld)?\s*(?:plays?|views?|odtworze\p{L}*|wyświetle\p{L}*)|no views|\d{1,2}(?::\d{2}){1,2}|\d+\s*min(?:\s*\d+\s*s(?:ec)?)?|\d+\s*s(?:ec)?)$/iu;
 
 export function tidyByline(artist: string): string {
   if (!artist.includes('•')) return artist;
-  return artist
+  const parts = artist
     .replace(/\s*•\s*,\s*•\s*/g, ', ')
     .replace(/\s*•\s*([&/+])\s*•\s*/g, ' $1 ')
-    .split(' • ')
-    .filter((part, i) => i === 0 || !STAT_PART.test(part.trim()))
-    .join(' • ');
+    .split(' • ');
+  const kept = parts.filter((part) => !STAT_PART.test(part.trim()));
+  return (kept.length ? kept : parts).join(' • ');
 }
 
 type BylineRun = {
