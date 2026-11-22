@@ -100,6 +100,7 @@ import { MoodsGenresView } from './components/feed/MoodsGenresView';
 import { QuickPicks, SectionRow } from './components/feed/FeedCarousel';
 import { ArtistSkeleton, ArtistView, type ArtistPlayMode } from './components/feed/ArtistView';
 import { UpNextItem } from './components/player/UpNextItem';
+import { CoverVideo } from './components/player/CoverVideo';
 import { WindowedList } from './components/ui/WindowedList';
 import { QueueDrawer } from './components/queue/QueueDrawer';
 import { ToastHost, pushToast } from './components/Toast';
@@ -4734,6 +4735,8 @@ export default function App() {
   };
 
   const ambientGlowOn = pluginStates['ambient-glow'];
+  const musicVideoOn = pluginStates['music-video'];
+  const [coverVideoShown, setCoverVideoShown] = useState(false);
   useEffect(() => {
     if (ambientGlowOn) {
       applyCoverTheme(currentTrack?.coverLarge || currentTrack?.cover);
@@ -5199,7 +5202,7 @@ export default function App() {
                 <div className="player-view-inner">
                   <div className="player-col-cover">
                     <div
-                      className="player-view-cover-wrap"
+                      className={`player-view-cover-wrap${coverVideoShown && musicVideoOn ? ' has-video' : ''}`}
                       ref={coverWheelRef}
                       title={`${Math.round(volume * 100)}%`}
                     >
@@ -5211,6 +5214,15 @@ export default function App() {
                         fetchPriority="high"
                         {...coverAttrs(currentTrack, 'large')}
                       />
+                      {musicVideoOn && /^[\w-]{11}$/.test(currentTrack.id) && (
+                        <CoverVideo
+                          key={currentTrack.id}
+                          audio={audioRef.current}
+                          trackId={currentTrack.id}
+                          buffering={buffering}
+                          onShown={setCoverVideoShown}
+                        />
+                      )}
                       <div className={`cover-vol-badge ${coverVolHint !== null ? 'show' : ''}`}>
                         {coverVolHint !== null
                           ? `${coverVolHint}%`

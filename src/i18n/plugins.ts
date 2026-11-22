@@ -222,6 +222,16 @@ const CATALOG: Record<string, Record<Language, PluginText>> = {
     en: { name: 'Ambient glow', desc: 'A soft glow in the colors of the cover art.' },
     pl: { name: 'Poświata z okładki', desc: 'Delikatna poświata w kolorach okładki.' },
   },
+  'music-video': {
+    en: {
+      name: 'Music video',
+      desc: 'Plays the music video in place of the cover art. The sound stays the same.',
+    },
+    pl: {
+      name: 'Teledysk',
+      desc: 'Zamiast okładki pokazuje teledysk utworu. Dźwięk się nie zmienia.',
+    },
+  },
   'smooth-volume': {
     en: { name: 'Smooth volume', desc: 'Volume changes gradually instead of jumping.' },
     pl: { name: 'Płynna głośność', desc: 'Głośność zmienia się płynnie, bez skoków.' },

@@ -1,5 +1,6 @@
 import { abLoopPlugin } from './abLoop';
 import { ambientGlowPlugin } from './ambientGlow';
+import { musicVideoPlugin } from './musicVideo';
 import { autoPauseBlurPlugin } from './autoPauseBlur';
 import { copyTrackLinkPlugin } from './copyTrackLink';
 import { crossfadePlugin } from './crossfade';
@@ -79,6 +80,7 @@ export const PLUGIN_ORDER = [
   'system-tray',
   'window-title',
   'ambient-glow',
+  'music-video',
   'mini-player',
   'stats-tracker',
   'listening-history',
@@ -101,6 +103,7 @@ export const ALL_PLUGINS: ZenithPlugin[] = [
   abLoopPlugin,
   blockArtistsPlugin,
   ambientGlowPlugin,
+  musicVideoPlugin,
   autoPauseBlurPlugin,
   copyTrackLinkPlugin,
   crossfadePlugin,
