@@ -105,21 +105,30 @@ export function pushRemoteLyrics(
   void invoke('remote_push', { payload });
 }
 
-let unlisten: UnlistenFn | null = null;
+let listening: Promise<UnlistenFn> | null = null;
 let savedHandler: ((c: RemoteCommand) => void) | null = null;
 let running = false;
 let lastPayload = '';
+let stops = 0;
+let starts = 0;
 
 export async function startRemote(handler: (c: RemoteCommand) => void): Promise<RemoteInfo> {
   savedHandler = handler;
-  if (!unlisten) {
-    unlisten = await listen<RemoteCommand>('zenith-remote-cmd', (e) => savedHandler?.(e.payload));
-  }
+  const stopsAtStart = stops;
+  const me = ++starts;
+  // jedna obietnica nasłuchu: dwa szybkie starty rejestrowały dwa nasłuchy i każda komenda szła dwa razy
+  listening ??= listen<RemoteCommand>('zenith-remote-cmd', (e) => savedHandler?.(e.payload));
+  await listening;
   const info = await invoke<RemoteInfo>('remote_start', {
     port: getRemotePort(),
     pin: getRemotePin(),
     pair: getRemotePairMode(),
   });
+  // wyłączenie w trakcie startu wygrywa, chyba że po nim ruszył nowszy start, do którego serwer już należy
+  if (stops !== stopsAtStart) {
+    if (starts === me) await invoke('remote_stop');
+    return info;
+  }
   running = true;
   lastPayload = '';
   lastLyricsKey = '';
@@ -132,10 +141,12 @@ export async function restartRemote(): Promise<RemoteInfo | null> {
 }
 
 export async function stopRemote() {
+  stops += 1;
   running = false;
   lastPayload = '';
-  unlisten?.();
-  unlisten = null;
+  const l = listening;
+  listening = null;
+  void l?.then((off) => off());
   await invoke('remote_stop');
 }
 

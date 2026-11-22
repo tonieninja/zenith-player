@@ -371,16 +371,11 @@ function MiniApp() {
   };
 
   useEffect(() => {
-    let unState: (() => void) | undefined;
-    let unLyrics: (() => void) | undefined;
-    let unHead: (() => void) | undefined;
     const stateReady = listen<MiniPlayerPayload>('zenith-mini-state', (e) => {
       headTrackRef.current = null;
       setHeadNow(null);
       anchor(e.payload.progress, e.payload.isPlaying, e.payload.rate);
       setData(e.payload);
-    }).then((fn) => {
-      unState = fn;
     });
     const lyricsReady = listen<OverlayPayload>('zenith-mini-lyrics', (e) => {
       const p = e.payload;
@@ -391,12 +386,10 @@ function MiniApp() {
           ? prev && { ...prev, syncOffsetMs: p.syncOffsetMs }
           : { trackId: p.trackId, synced: p.synced, text: p.text, syncOffsetMs: p.syncOffsetMs }
       );
-    }).then((fn) => {
-      unLyrics = fn;
     });
     // pełny tekst przychodzi raz po „ready”; wysłany przed podpięciem nasłuchu tekstu ginął
     void Promise.all([stateReady, lyricsReady]).then(() => emit('zenith-mini-ready'));
-    listenHeadless((now) => {
+    const headReady = listenHeadless((now) => {
       const tr = now.track;
       headTrackRef.current = tr;
       anchor(now.t, now.playing, now.rate);
@@ -412,13 +405,10 @@ function MiniApp() {
         liked: prev?.trackId === tr.id ? prev.liked : isFavorite(tr.id),
       }));
       setHeadNow((prev) => (prev?.track.id === tr.id ? prev : now));
-    }).then((fn) => {
-      unHead = fn;
     });
     return () => {
-      unState?.();
-      unLyrics?.();
-      unHead?.();
+      // odpinamy po podpięciu: sprzątanie przed rozwiązaniem listen (StrictMode) zostawiało podwójny nasłuch
+      for (const ready of [stateReady, lyricsReady, headReady]) void ready.then((off) => off());
     };
   }, []);
 
