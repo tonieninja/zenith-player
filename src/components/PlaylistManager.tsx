@@ -270,10 +270,8 @@ export function PlaylistManager({
         });
         setDetailState('idle');
       } catch {
-        if (req === reqRef.current) {
-          setPartial(false);
-          setDetailState('failed');
-        }
+        // lista zostaje oznaczona jako niepełna, żeby eksport, duplikat ani scalanie nie zapisały jej ucięcia
+        if (req === reqRef.current) setDetailState('failed');
       }
     },
     [lang, lists]
@@ -411,7 +409,7 @@ export function PlaylistManager({
 
   const removeSelected = () =>
     run(async () => {
-      if (!active || !details || !selectedEntries.length) return;
+      if (!active || !details || partial || !selectedEntries.length) return;
       await removeEntries(active.id, selectedEntries, lang);
       const gone = new Set(selectedEntries.map(keyOf));
       setDetails({ ...details, entries: entries.filter((e) => !gone.has(keyOf(e))) });
@@ -438,7 +436,8 @@ export function PlaylistManager({
     const from = dragFrom;
     setDragFrom(null);
     setDragOver(null);
-    if (from === null || from === to || !active?.editable || !details) return;
+    // kolejna doczytana strona nadpisałaby zmianę zrobioną w trakcie ładowania
+    if (from === null || from === to || !active?.editable || !details || partial) return;
     const before = entries;
     const id = active.id;
     setDetails({ ...details, entries: reorder(entries, from, to) });
@@ -751,7 +750,7 @@ export function PlaylistManager({
                         {active.editable && (
                           <button
                             className="pm-btn pm-btn-small pm-btn-danger"
-                            disabled={busy}
+                            disabled={busy || partial}
                             onClick={removeSelected}
                           >
                             <Trash2 size={14} /> {t.pmRemove}
@@ -786,7 +785,7 @@ export function PlaylistManager({
                   )}
                   {entries.map((e, i) => {
                     const k = keyOf(e);
-                    const canDrag = active.editable && Boolean(e.setVideoId);
+                    const canDrag = active.editable && !partial && Boolean(e.setVideoId);
                     return (
                       <div
                         key={`${k}-${i}`}
