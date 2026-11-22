@@ -1,24 +1,41 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useLatest } from './useLatest';
 
-export function useScrubBar(duration: number, onSeek: (time: number) => void) {
+// w trakcie ciągnięcia tylko podgląd; seek dopiero po puszczeniu, bo w silniku natywnym to często nowe żądanie HTTP
+export function useScrubBar(
+  duration: number,
+  onSeek: (time: number) => void,
+  onScrub: (time: number) => void
+) {
   const trackRef = useRef<HTMLDivElement | null>(null);
   const scrubbingRef = useRef(false);
+  const pendingRef = useRef<number | null>(null);
   const [scrubbing, setScrubbing] = useState(false);
-  const [scrubTime, setScrubTime] = useState(0);
 
-  const seekFromClientX = useCallback(
+  const preview = useCallback(
     (clientX: number) => {
       const el = trackRef.current;
-      if (!el || !duration) return 0;
+      if (!el || !duration) return;
       const rect = el.getBoundingClientRect();
-      const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-      const time = ratio * duration;
-      setScrubTime(time);
-      onSeek(time);
-      return time;
+      const time = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width)) * duration;
+      pendingRef.current = time;
+      onScrub(time);
     },
-    [duration, onSeek]
+    [duration, onScrub]
   );
+
+  const finish = useCallback(
+    (commit: boolean) => {
+      if (!scrubbingRef.current) return;
+      scrubbingRef.current = false;
+      setScrubbing(false);
+      const time = pendingRef.current;
+      pendingRef.current = null;
+      if (commit && time != null) onSeek(time);
+    },
+    [onSeek]
+  );
+  const finishRef = useLatest(finish);
 
   const onPointerDown = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
@@ -26,40 +43,41 @@ export function useScrubBar(duration: number, onSeek: (time: number) => void) {
       scrubbingRef.current = true;
       setScrubbing(true);
       e.currentTarget.setPointerCapture(e.pointerId);
-      seekFromClientX(e.clientX);
+      preview(e.clientX);
     },
-    [duration, seekFromClientX]
+    [duration, preview]
   );
 
   const onPointerMove = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
-      if (!scrubbingRef.current) return;
-      seekFromClientX(e.clientX);
+      if (scrubbingRef.current) preview(e.clientX);
     },
-    [seekFromClientX]
+    [preview]
   );
 
-  const endScrub = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
-    if (!scrubbingRef.current) return;
-    scrubbingRef.current = false;
-    setScrubbing(false);
+  const release = (e: React.PointerEvent<HTMLDivElement>) => {
     if (e.currentTarget.hasPointerCapture(e.pointerId))
       e.currentTarget.releasePointerCapture(e.pointerId);
-  }, []);
+  };
+  const onPointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    release(e);
+    finish(true);
+  };
+  const onPointerCancel = (e: React.PointerEvent<HTMLDivElement>) => {
+    release(e);
+    finish(false);
+  };
 
   useEffect(() => {
-    const cancel = () => {
-      if (!scrubbingRef.current) return;
-      scrubbingRef.current = false;
-      setScrubbing(false);
-    };
-    window.addEventListener('pointerup', cancel);
+    const up = () => finishRef.current(true);
+    const cancel = () => finishRef.current(false);
+    window.addEventListener('pointerup', up);
     window.addEventListener('pointercancel', cancel);
     return () => {
-      window.removeEventListener('pointerup', cancel);
+      window.removeEventListener('pointerup', up);
       window.removeEventListener('pointercancel', cancel);
     };
-  }, []);
+  }, [finishRef]);
 
-  return { trackRef, scrubbing, scrubTime, onPointerDown, onPointerMove, onPointerUp: endScrub };
+  return { trackRef, scrubbing, onPointerDown, onPointerMove, onPointerUp, onPointerCancel };
 }

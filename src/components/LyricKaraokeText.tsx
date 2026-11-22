@@ -85,7 +85,8 @@ function driveWipe(
   getAnims: () => Animation[],
   span: number,
   pos: () => number,
-  setPlaying: (p: boolean) => void
+  setPlaying: (p: boolean) => void,
+  live: boolean
 ): () => void {
   const clamp = (v: number) => Math.max(0, Math.min(span, v)) * 1000;
   const setAll = (ms: number) => getAnims().forEach((a) => (a.currentTime = ms));
@@ -146,7 +147,7 @@ function driveWipe(
   let iv = 0;
   const start = () => {
     // animacja sama trzyma czas, a zegary okien są ekstrapolowane: 4 sprawdzenia na sekundę łapią pauzę i dryf
-    if (!iv) iv = window.setInterval(sync, 250);
+    if (live && !iv) iv = window.setInterval(sync, 250);
   };
   const stop = () => {
     window.clearInterval(iv);
@@ -159,6 +160,8 @@ function driveWipe(
       start();
     }
   };
+  // w pauzie jedno sprawdzenie zatrzymuje animację; wznowienie i tak buduje efekt od nowa
+  if (!live) sync();
   if (!document.hidden) start();
   document.addEventListener('visibilitychange', onVis);
   return () => {
@@ -171,7 +174,8 @@ function runTransformWipe(
   wrap: HTMLElement,
   fill: HTMLElement,
   span: number,
-  pos: () => number
+  pos: () => number,
+  live: boolean
 ): () => void {
   const durMs = span * 1000;
   let layers: HTMLElement[] = [];
@@ -235,7 +239,8 @@ function runTransformWipe(
     () => anims,
     span,
     pos,
-    () => {}
+    () => {},
+    live
   );
   return () => {
     stopSync();
@@ -255,9 +260,18 @@ type Props = {
   start: number;
   end: number;
   getProgress?: () => number;
+  // bez tego zegar synchronizacji tyka 4 razy na sekundę także w pauzie
+  playing?: boolean;
 };
 
-export function LyricKaraokeText({ text, active: activeProp, start, end, getProgress }: Props) {
+export function LyricKaraokeText({
+  text,
+  active: activeProp,
+  start,
+  end,
+  getProgress,
+  playing = true,
+}: Props) {
   const wrapRef = useRef<HTMLSpanElement>(null);
   const light = useLightLyrics();
   const [onScreen, setOnScreen] = useState(true);
@@ -287,18 +301,18 @@ export function LyricKaraokeText({ text, active: activeProp, start, end, getProg
 
     const fill = el.querySelector<HTMLElement>('.lyric-karaoke-fill');
     if (fill && typeof fill.animate === 'function') {
-      return runTransformWipe(el, fill, span, pos);
+      return runTransformWipe(el, fill, span, pos, playing);
     }
 
     let raf = 0;
     const tick = () => {
       const p = Math.max(0, Math.min(1, pos() / span));
       el.style.setProperty('--karaoke-p', `${(p * 100).toFixed(2)}%`);
-      raf = requestAnimationFrame(tick);
+      if (playing) raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [animate, start, end, getProgress]);
+  }, [animate, start, end, getProgress, playing]);
 
   if (!active) {
     return (

@@ -60,11 +60,13 @@ function OverlayLines({
   idx,
   getProgress,
   extras,
+  playing,
 }: {
   synced: { time: number; text: string }[];
   idx: number;
   getProgress: () => number;
   extras?: LineExtras;
+  playing: boolean;
 }) {
   const cur = idx >= 0 ? synced[idx] : null;
   const end = lyricLineEnd(synced, idx);
@@ -87,6 +89,7 @@ function OverlayLines({
               start={cur.time}
               end={end}
               getProgress={getProgress}
+              playing={playing}
             />
             {extras?.roman && (
               <span className="ov-sub ov-sub--roman">
@@ -96,6 +99,7 @@ function OverlayLines({
                   start={cur.time}
                   end={end}
                   getProgress={getProgress}
+                  playing={playing}
                 />
               </span>
             )}
@@ -370,6 +374,7 @@ export default function OverlayApp() {
               idx={idx}
               getProgress={getOverlayProgress}
               extras={idx >= 0 ? extras[idx] : undefined}
+              playing={data.isPlaying}
             />
           </div>
         ) : (

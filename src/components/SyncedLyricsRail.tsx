@@ -53,6 +53,7 @@ type Props = {
   translateTo?: string;
   // podmiana tekstu w tej samej piosence ma zostać przy bieżącej linii, nie wracać na górę
   resetKey?: string;
+  playing?: boolean;
 };
 
 const WINDOW = 36;
@@ -66,6 +67,7 @@ export const SyncedLyricsRail = memo(function SyncedLyricsRail({
   getProgress,
   translateTo = 'en',
   resetKey,
+  playing,
 }: Props) {
   const light = useLightLyrics();
   const extras = useLyricsExtras(
@@ -119,6 +121,7 @@ export const SyncedLyricsRail = memo(function SyncedLyricsRail({
                 start={line.time}
                 end={lyricLineEnd(synced, i)}
                 getProgress={getProgress}
+                playing={playing}
               />
             );
             const { roman, trans } = extras[i] ?? {};

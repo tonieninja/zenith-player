@@ -314,6 +314,7 @@ function MiniLyrics({
               start={cur.time}
               end={end}
               getProgress={getProgress}
+              playing={playing}
             />
           ) : (
             '♪'
@@ -327,6 +328,7 @@ function MiniLyrics({
               start={cur.time}
               end={end}
               getProgress={getProgress}
+              playing={playing}
             />
           </div>
         )}

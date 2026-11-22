@@ -2723,26 +2723,31 @@ export default function App() {
     [audio, paintProgressUi, activeTabRef, currentTrackIdRef, isPlayingRef, lyricsRef]
   );
 
+  const previewScrub = useCallback(
+    (t: number) => {
+      progressScrubRef.current = true;
+      paintProgressUi(t);
+      progressTimeElRef.current?.replaceChildren(document.createTextNode(formatTime(t)));
+    },
+    [paintProgressUi]
+  );
   const {
     trackRef: progressTrackRef,
     scrubbing: progressScrubbing,
-    scrubTime: progressScrubTime,
     onPointerDown: onProgressPointerDown,
     onPointerMove: onProgressPointerMove,
     onPointerUp: onProgressPointerUp,
-  } = useScrubBar(duration, seekTo);
+    onPointerCancel: onProgressPointerCancel,
+  } = useScrubBar(duration, seekTo, previewScrub);
+  // stała referencja, inaczej memo w SyncedLyricsRail przepuszcza każdy render App
+  const onLyricLineClick = useCallback(
+    (t: number) => seekTo(Math.max(0, t - lyricsSyncOffsetRef.current / 1000)),
+    [seekTo]
+  );
 
   useEffect(() => {
     progressScrubRef.current = progressScrubbing;
   }, [progressScrubbing]);
-
-  useEffect(() => {
-    if (!progressScrubbing) return;
-    paintProgressUi(progressScrubTime);
-    progressTimeElRef.current?.replaceChildren(
-      document.createTextNode(formatTime(progressScrubTime))
-    );
-  }, [progressScrubbing, progressScrubTime, paintProgressUi]);
 
   const setVolumeTo = useCallback(
     (ratio: number) => {
@@ -4412,11 +4417,8 @@ export default function App() {
     const schedule = () => {
       const visible =
         !document.hidden && (activeTabRef.current === 'player' || overlayPluginsOnRef.current);
-      if (!visible) {
-        // ukryte okno: linię i nakładki prowadzi timeupdate, a powrót budzi visibilitychange
-        if (!document.hidden) timer = window.setTimeout(tick, 400);
-        return;
-      }
+      // linię i nakładki prowadzi wtedy timeupdate; powrót budzi visibilitychange albo zmiana karty (activeTab)
+      if (!visible) return;
       const rate = audio.playbackRate > 0 ? audio.playbackRate : 1;
       const wait =
         (secondsUntilLyricChange(
@@ -4450,7 +4452,7 @@ export default function App() {
       cancelAnimationFrame(raf);
       window.clearTimeout(timer);
     };
-  }, [isPlaying, lyrics, audio, activeTabRef, lyricsRef]);
+  }, [isPlaying, lyrics, audio, activeTabRef, lyricsRef, activeTab]);
 
   useEffect(() => {
     setMiniLyricsTarget(miniLyricsActive);
@@ -4560,13 +4562,19 @@ export default function App() {
         rate: audio.playbackRate,
       });
     };
-    send();
-    const iv = setInterval(send, MINI_PLAYER_SYNC_MS);
+    let iv = 0;
+    // w pauzie zegar mini stoi, więc odświeżanie co 4 s tylko budziłoby oba procesy
+    const sync = () => {
+      send();
+      window.clearInterval(iv);
+      iv = audio.paused ? 0 : window.setInterval(send, MINI_PLAYER_SYNC_MS);
+    };
+    sync();
     const evs = ['play', 'playing', 'pause', 'seeked', 'ratechange'] as const;
-    evs.forEach((ev) => audio.addEventListener(ev, send));
+    evs.forEach((ev) => audio.addEventListener(ev, sync));
     return () => {
-      clearInterval(iv);
-      evs.forEach((ev) => audio.removeEventListener(ev, send));
+      window.clearInterval(iv);
+      evs.forEach((ev) => audio.removeEventListener(ev, sync));
     };
   }, [pluginStates, audio, currentTrackIdRef, durationRef, isSaved, isSavedRef, miniLyricsActive]);
 
@@ -5345,10 +5353,9 @@ export default function App() {
                             <PlayerLyricsRail
                               synced={lyrics.synced}
                               resetKey={currentTrack?.id}
-                              onLineClick={(t) =>
-                                seekTo(Math.max(0, t - lyricsSyncOffsetRef.current / 1000))
-                              }
+                              onLineClick={onLyricLineClick}
                               getProgress={getLyricProgress}
+                              playing={isPlaying}
                               translateTo={lang}
                             />
                           ) : lyrics?.text ? (
@@ -5824,7 +5831,7 @@ export default function App() {
                   onPointerDown={onProgressPointerDown}
                   onPointerMove={onProgressPointerMove}
                   onPointerUp={onProgressPointerUp}
-                  onPointerCancel={onProgressPointerUp}
+                  onPointerCancel={onProgressPointerCancel}
                 >
                   <div ref={progressFillRef} className="progress-bar-fill" />
                   {pluginStates['ab-loop'] && abLoop.a !== null && duration > 0 && (

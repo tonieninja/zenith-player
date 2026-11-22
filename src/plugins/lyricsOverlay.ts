@@ -143,6 +143,7 @@ async function closeOverlayWindow() {
 
 let lastOverlaySig = '';
 let lastLyricsKey = '';
+let lastClock = { at: 0, progress: 0, rate: 1 };
 let miniTarget = false;
 
 export function setMiniLyricsTarget(on: boolean) {
@@ -166,10 +167,16 @@ export async function pushLyricsOverlay(
     payload.activeLyricIndex ?? -1,
     payload.isPlaying ? 1 : 0,
     payload.text?.length ?? 0,
-    Math.floor(payload.progress || 0),
   ].join('|');
-  if (!opts?.force && sig === lastOverlaySig) return;
+  const progress = payload.progress || 0;
+  const now = Date.now();
+  const c = lastClock;
+  const expected = c.progress + (payload.isPlaying ? ((now - c.at) / 1000) * c.rate : 0);
+  // okna same doliczają czas: paczka przy zmianie, skoku (seek) albo raz na 5 s na dryf, a nie co sekundę
+  const clockOk = Math.abs(progress - expected) < 0.5 && now - c.at < 5000;
+  if (!opts?.force && sig === lastOverlaySig && clockOk) return;
   lastOverlaySig = sig;
+  lastClock = { at: now, progress, rate: payload.rate && payload.rate > 0 ? payload.rate : 1 };
   const lines = payload.synced;
   const lyricsKey = [
     payload.trackId ?? payload.title,
