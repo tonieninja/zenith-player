@@ -138,10 +138,29 @@ describe('Auto lyrics display rules', () => {
   const song = (shift = 0, words = ['first line here', 'second line here', 'third line here']) =>
     words.map((text, i) => ({ time: 10 + i * 4 + shift, text }));
 
-  it('prefers LRCLib synced lyrics when match scores are equal', () => {
+  it('prefers the higher-ranked source when votes and scores tie', () => {
     const lrclib = { provider: 'LRCLib', matchScore: 15, synced: song() };
-    const mxm = { provider: 'Musixmatch', matchScore: 15, synced: [...song(), ...song(20)] };
-    expect(pickBestSyncedLyrics([mxm, lrclib])?.provider).toBe('LRCLib');
+    const mxm = { provider: 'Musixmatch', matchScore: 13, synced: song(0.1) };
+    const order = ['Musixmatch', 'LRCLib'];
+    expect(pickBestSyncedLyrics([lrclib, mxm], (p) => order.indexOf(p))?.provider).toBe(
+      'Musixmatch'
+    );
+    expect(pickBestSyncedLyrics([lrclib, mxm], (p) => -order.indexOf(p))?.provider).toBe('LRCLib');
+  });
+
+  it('lets a clearly better match or more agreeing sources beat the top source', () => {
+    const order = ['Musixmatch', 'LRCLib', 'Boidu'];
+    const rank = (p: string) => order.indexOf(p);
+    const lrclib = { provider: 'LRCLib', matchScore: 15, synced: song() };
+    const wrongCut = { provider: 'Musixmatch', matchScore: 11, synced: song(0.1) };
+    expect(pickBestSyncedLyrics([wrongCut, lrclib], rank)?.provider).toBe('LRCLib');
+    const lonely = {
+      provider: 'Musixmatch',
+      matchScore: 15,
+      synced: song(0, ['a b', 'c d', 'e f']),
+    };
+    const boidu = { provider: 'Boidu', synced: song(0.2) };
+    expect(pickBestSyncedLyrics([lonely, lrclib, boidu], rank)?.provider).toBe('LRCLib');
   });
 
   it('drops the source the others disagree with, by timing or by text', () => {

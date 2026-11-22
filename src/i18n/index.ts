@@ -555,6 +555,20 @@ const en = {
   lyricsTranslate: 'Translated lyrics',
   lyricsTranslateDesc:
     'Adds a translation into the app language under each line in another language. Lines go to Google Translate.',
+  lyricsSources: 'Lyrics sources',
+  lyricsSourcesDesc:
+    'Auto asks them in this order. The starred one wins whenever it agrees with the others; switched-off sources are never asked.',
+  lyricsSourcesReset: 'Reset',
+  lyricsSourcesManage: 'Lyrics sources',
+  lyricsSourceMakeTop: 'Make {name} the top source',
+  lyricsSourceTop: 'Top source',
+  lyricsSourceUp: 'Move up',
+  lyricsSourceDown: 'Move down',
+  lyricsUpgrade: 'Switch to a better source when it arrives',
+  lyricsUpgradeDesc:
+    'Shows the first lyrics right away and swaps them once if a higher source answers a moment later, keeping your place in the song.',
+  lyricsSwitchedFrom: 'Switched from {from}',
+  lyricsInUse: 'Showing now',
   updateNow: 'Update',
   updateDownloading: 'Downloading update…',
   updateInstallFailed: 'Update failed. You can download it manually.',
@@ -1191,6 +1205,20 @@ const pl: Record<keyof typeof en, string> = {
   lyricsTranslate: 'Tłumaczenie tekstu',
   lyricsTranslateDesc:
     'Dodaje tłumaczenie na język aplikacji pod każdą linią w innym języku. Linie trafiają do Google Translate.',
+  lyricsSources: 'Źródła tekstów',
+  lyricsSourcesDesc:
+    'Auto pyta je w tej kolejności. Źródło z gwiazdką wygrywa, gdy zgadza się z innymi; wyłączonych nie pyta wcale.',
+  lyricsSourcesReset: 'Przywróć',
+  lyricsSourcesManage: 'Źródła tekstów',
+  lyricsSourceMakeTop: 'Ustaw {name} jako główne źródło',
+  lyricsSourceTop: 'Główne źródło',
+  lyricsSourceUp: 'Przesuń wyżej',
+  lyricsSourceDown: 'Przesuń niżej',
+  lyricsUpgrade: 'Przełączaj na lepsze źródło, gdy dotrze',
+  lyricsUpgradeDesc:
+    'Pokazuje pierwszy tekst od razu i podmienia go raz, jeśli chwilę później odpowie wyższe źródło. Bieżąca linia zostaje na miejscu.',
+  lyricsSwitchedFrom: 'Przełączono z {from}',
+  lyricsInUse: 'Wyświetlane teraz',
   updateNow: 'Aktualizuj',
   updateDownloading: 'Pobieram aktualizację…',
   updateInstallFailed: 'Aktualizacja się nie udała. Możesz pobrać ją ręcznie.',

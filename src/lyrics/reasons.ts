@@ -36,6 +36,11 @@ const RULES: Rule[] = [
     pl: (m) => `Przekroczono limit czasu (${m[1]} s)`,
   },
   {
+    re: /^All lyrics sources are turned off$/i,
+    en: () => 'Every lyrics source is turned off in Settings',
+    pl: () => 'Wszystkie źródła tekstów są wyłączone w ustawieniach',
+  },
+  {
     re: /^No lyrics found for this track$/i,
     en: () => 'No lyrics found for this track',
     pl: () => 'Nie znaleziono tekstu dla tego utworu',

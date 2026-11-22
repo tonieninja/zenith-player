@@ -116,6 +116,8 @@ import {
   isVideoTrackId,
 } from './utils/tracks';
 import { SyncedLyricsRail } from './components/SyncedLyricsRail';
+import { LyricsSourceBar } from './components/LyricsSourceBar';
+import { LyricsSourcesSettings } from './components/LyricsSourcesSettings';
 import { PlainLyrics } from './components/PlainLyrics';
 import { LIB_EMPTY_KEYS, LIBRARY_CATEGORIES, nextLibraryViewState } from './constants/library';
 import {
@@ -250,6 +252,7 @@ import {
   pushPlayHistory,
 } from './utils/playback';
 import { localizeLyricsReason } from './lyrics/reasons';
+import { enabledSources, lyricsSourcesKey, lyricsUpgrade, useLyricsPrefs } from './lyrics/prefs';
 import { setLightLyrics, useLightLyrics } from './lyrics/light';
 import { romanizeLyrics, translateLyrics } from './lyrics/extras';
 import {
@@ -295,7 +298,6 @@ import {
   X,
   ChevronLeft,
   UserCircle,
-  ChevronRight,
   Share2,
   Minus,
   Square,
@@ -464,6 +466,7 @@ export default function App() {
     coverUrl: '',
     syncedLen: 0,
     textLen: 0,
+    provider: '',
   });
 
   const [libAuthed, setLibAuthed] = useState(false);
@@ -755,34 +758,16 @@ export default function App() {
     else localStorage.removeItem('zenith_discord_client_id');
   }, []);
 
+  const lyricsPrefs = useLyricsPrefs();
+  const lyricsUpgradeOn = lyricsUpgrade.useValue();
   const lyricProviders = useMemo<LyricsProvider[]>(
-    () => [
-      'Auto',
-      'Musixmatch',
-      'YouTube Music',
-      'LRCLib',
-      'LyricsPlus',
-      'Boidu',
-      'Unison',
-      'Netease',
-      'QQ Music',
-      'Kugou',
-      'LyricsGenius',
-      'Lyrics.ovh',
-    ],
-    []
+    () => ['Auto', ...enabledSources(lyricsPrefs)],
+    [lyricsPrefs]
   );
-  const providerIndex = useMemo(() => {
-    const idx = lyricProviders.indexOf(lyricsProvider);
-    return idx >= 0 ? idx : 0;
+  // wyłączone w ustawieniach źródło nie może dalej być wybrane ręcznie
+  useEffect(() => {
+    if (!lyricProviders.includes(lyricsProvider)) setLyricsProvider('Auto');
   }, [lyricProviders, lyricsProvider]);
-  const cycleProvider = useCallback(
-    (dir: 1 | -1) => {
-      const next = (providerIndex + dir + lyricProviders.length) % lyricProviders.length;
-      setLyricsProvider(lyricProviders[next]);
-    },
-    [providerIndex, lyricProviders]
-  );
 
   const prefetchInflightRef = useRef(0);
   const prefetchPausedUntilRef = useRef(0);
@@ -1763,7 +1748,7 @@ export default function App() {
     (track: Track) => {
       const provider = lyricsProviderRef.current;
       const smart = pluginManager.isEnabled('smart-lyrics');
-      lastHydrateKeyRef.current = `${track.id}|${provider}|${lang}|${smart}`;
+      lastHydrateKeyRef.current = `${track.id}|${provider}|${lang}|${smart}|${lyricsSourcesKey()}`;
       const reqId = ++lyricsReqIdRef.current;
       setLyricsLoading(true);
       setLyrics(null);
@@ -3685,8 +3670,8 @@ export default function App() {
   const rehydrateCurrent = useEffectEvent(() => {
     if (!currentTrack) return;
     const smart = pluginManager.isEnabled('smart-lyrics');
-    if (lastHydrateKeyRef.current === `${currentTrack.id}|${lyricsProvider}|${lang}|${smart}`)
-      return;
+    const key = `${currentTrack.id}|${lyricsProvider}|${lang}|${smart}|${lyricsSourcesKey()}`;
+    if (lastHydrateKeyRef.current === key) return;
     hydratePanels(currentTrack);
   });
   // wyłączenie Smart Lyrics ma od razu poprawić złe dopasowanie bieżącej piosenki
@@ -3695,6 +3680,11 @@ export default function App() {
     lyricsProviderRef.current = lyricsProvider;
     rehydrateCurrent();
   }, [lyricsProvider, lang, smartLyricsOn]);
+  // seria kliknięć ▲▼ w ustawieniach pobiera tekst bieżącej piosenki raz, nie przy każdym kliknięciu
+  useEffect(() => {
+    const id = window.setTimeout(rehydrateCurrent, 600);
+    return () => window.clearTimeout(id);
+  }, [lyricsPrefs, lyricsUpgradeOn]);
 
   const presenceSyncRef = useRef({ sentAt: 0, sentPos: 0 });
   const broadcastPlayback = useCallback(() => {
@@ -4489,14 +4479,20 @@ export default function App() {
     const meta = overlayMetaRef.current;
     const syncedLen = lyrics?.synced?.length ?? 0;
     const textLen = lyrics?.text?.length ?? 0;
+    const provider = lyrics?.provider ?? '';
+    // podmiana źródła przy tej samej liczbie linii też musi od razu trafić do nakładki i drugiego ekranu
     const changed =
-      meta.trackId !== currentTrack.id || meta.syncedLen !== syncedLen || meta.textLen !== textLen;
+      meta.trackId !== currentTrack.id ||
+      meta.syncedLen !== syncedLen ||
+      meta.textLen !== textLen ||
+      meta.provider !== provider;
     meta.trackId = currentTrack.id;
     meta.title = currentTrack.title;
     meta.artist = currentTrack.artist;
     meta.coverUrl = currentTrack.coverLarge || currentTrack.cover;
     meta.syncedLen = syncedLen;
     meta.textLen = textLen;
+    meta.provider = provider;
 
     const overlayOn =
       pluginStates['lyrics-overlay'] || pluginStates['second-screen-lyrics'] || miniLyricsActive;
@@ -5324,60 +5320,30 @@ export default function App() {
                   <div className="player-col-lyrics">
                     <div className="player-view-section h-full">
                       <div className="lyrics-panel-full">
-                        <div className="lyrics-provider-header">
-                          <button
-                            className="lyrics-provider-nav"
-                            onClick={() => cycleProvider(-1)}
-                            aria-label={t.lyricsPrevSource}
-                            title={t.lyricsPrevSource}
-                          >
-                            <ChevronLeft size={16} />
-                          </button>
-                          <div className="lyrics-provider-title">
-                            {lyricsLoading || !lyrics
-                              ? lyricsProvider === 'Auto'
-                                ? t.lyrics
-                                : lyricsProvider
-                              : lyrics.provider && lyrics.provider !== 'Auto'
-                                ? lyrics.provider
-                                : lyricsProvider === 'Auto'
-                                  ? t.lyrics
-                                  : lyricsProvider}
-                          </div>
-                          <button
-                            className="lyrics-provider-nav"
-                            onClick={() => cycleProvider(1)}
-                            aria-label={t.lyricsNextSource}
-                            title={t.lyricsNextSource}
-                          >
-                            <ChevronRight size={16} />
-                          </button>
-                        </div>
-                        <div className="lyrics-provider-dots">
-                          {lyricProviders.map((p, i) => (
-                            <span
-                              key={p}
-                              className={`lyrics-provider-dot ${i === providerIndex ? 'active' : ''}`}
-                            />
-                          ))}
-                        </div>
-                        <div className="lyrics-provider-list">
-                          {lyricProviders.map((p) => (
-                            <button
-                              key={p}
-                              className={`lyrics-provider-pill ${lyricsProvider === p ? 'active' : ''}`}
-                              onClick={() => setLyricsProvider(p)}
-                            >
-                              {p}
-                            </button>
-                          ))}
-                        </div>
+                        <LyricsSourceBar
+                          providers={lyricProviders}
+                          selected={lyricsProvider}
+                          lyrics={lyrics}
+                          loading={lyricsLoading}
+                          top={lyricsPrefs.order[0]}
+                          lang={lang}
+                          onSelect={setLyricsProvider}
+                          onManage={() => {
+                            setIsSettingsOpen(true);
+                            requestAnimationFrame(() =>
+                              document
+                                .getElementById('lyrics-sources')
+                                ?.scrollIntoView({ block: 'start', behavior: 'smooth' })
+                            );
+                          }}
+                        />
                         <div className="lyrics-text-content">
                           {lyricsLoading ? (
                             t.loadingLyrics
                           ) : lyrics?.synced && lyrics.synced.length > 0 ? (
                             <PlayerLyricsRail
                               synced={lyrics.synced}
+                              resetKey={currentTrack?.id}
                               onLineClick={(t) =>
                                 seekTo(Math.max(0, t - lyricsSyncOffsetRef.current / 1000))
                               }
@@ -6222,6 +6188,7 @@ export default function App() {
                   {translateLyricsOn ? t.toggleOn : t.toggleOff}
                 </button>
               </div>
+              <LyricsSourcesSettings lang={lang} />
               <div className="settings-row-item settings-toggle-row">
                 <div className="settings-account-info">
                   <span className="setting-label">{t.replayOnboarding}</span>

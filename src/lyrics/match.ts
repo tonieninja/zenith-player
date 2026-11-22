@@ -222,18 +222,22 @@ export function syncAgrees(a: TimedLine[], b: TimedLine[]): boolean {
 
 export function pickBestSyncedLyrics<
   T extends { provider: string; matchScore?: number; synced?: TimedLine[] | null },
->(hits: T[]): T | null {
+>(hits: T[], rank: (provider: string) => number = () => 0): T | null {
   if (!hits.length) return null;
-  const bonus = (provider: string) =>
-    provider === 'LRCLib' ? 200 : provider === 'Musixmatch' ? 80 : 0;
-  const quality = (h: T) =>
-    (h.matchScore ?? 0) * 1000 + bonus(h.provider) + Math.min(h.synced?.length || 0, 90);
   // wygrywa tekst, z którym zgadza się najwięcej źródeł; samotny wyjątek to inna wersja albo romaji
   const votes = hits.map(
     (h) => hits.filter((o) => o !== h && syncAgrees(h.synced ?? [], o.synced ?? [])).length
   );
   const top = Math.max(...votes);
-  return hits.filter((_, i) => votes[i] === top).sort((a, b) => quality(b) - quality(a))[0];
+  let pool = hits.filter((_, i) => votes[i] === top);
+  const scores = pool.map((h) => h.matchScore).filter((s): s is number => s != null);
+  // różnica 4 punktów to dopisek wersji albo zła długość: wtedy dopasowanie bije kolejność użytkownika
+  if (scores.length) {
+    const best = Math.max(...scores);
+    pool = pool.filter((h) => h.matchScore == null || h.matchScore > best - 4);
+  }
+  const lines = (h: T) => Math.min(h.synced?.length || 0, 90);
+  return pool.sort((a, b) => rank(a.provider) - rank(b.provider) || lines(b) - lines(a))[0];
 }
 
 export function shouldShowEarlyPlain(res: {

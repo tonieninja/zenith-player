@@ -51,6 +51,8 @@ type Props = {
   slideMs?: number;
   getProgress?: () => number;
   translateTo?: string;
+  // podmiana tekstu w tej samej piosence ma zostać przy bieżącej linii, nie wracać na górę
+  resetKey?: string;
 };
 
 const WINDOW = 36;
@@ -63,6 +65,7 @@ export const SyncedLyricsRail = memo(function SyncedLyricsRail({
   slideMs = SYNCED_LYRICS_SLIDE_MS,
   getProgress,
   translateTo = 'en',
+  resetKey,
 }: Props) {
   const light = useLightLyrics();
   const extras = useLyricsExtras(
@@ -73,13 +76,14 @@ export const SyncedLyricsRail = memo(function SyncedLyricsRail({
   const listRef = useRef<HTMLDivElement | null>(null);
   const trackRef = useRef<HTMLDivElement | null>(null);
   const trackKey = `${synced.length}:${synced[0]?.time ?? 0}`;
+  const scrollResetKey = resetKey ?? trackKey;
 
   useLayoutEffect(() => {
     const list = listRef.current;
     if (!list) return;
     scrollAnim.get(list)?.cancel();
     list.scrollTo({ top: 0, behavior: 'auto' });
-  }, [trackKey]);
+  }, [scrollResetKey]);
 
   useLayoutEffect(() => {
     if (idx < 0) return;

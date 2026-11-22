@@ -26,6 +26,13 @@ import {
   type SourceQuery,
 } from '../lyrics/sources';
 import { getMusixmatchLyrics as getMusixmatchTrackLyrics } from './musixmatch';
+import {
+  enabledSources,
+  getLyricsPrefs,
+  lyricsSourcesKey,
+  lyricsUpgrade,
+  type LyricsSource,
+} from '../lyrics/prefs';
 
 const DEFAULT_YTM_KEY = 'AIzaSyC9XL3ZjWddXya6X74dJoCTL-WEYFDNX30';
 let ytmKey = DEFAULT_YTM_KEY;
@@ -290,6 +297,7 @@ export interface LyricsResult {
   matchScore?: number;
   failures?: LyricsFailure[];
   via?: string;
+  upgradedFrom?: string;
 }
 
 export type LyricsProvider =
@@ -2014,8 +2022,8 @@ const LYRICS_TIMEOUT_MS: Partial<Record<LyricsProvider, number>> = {
 };
 const DEFAULT_LYRICS_TIMEOUT_MS = 12000;
 
-const SECOND_WAVE: LyricsProvider[] = ['Unison', 'Netease', 'QQ Music', 'Kugou'];
 const SECOND_WAVE_MAX_MS = 6000;
+export const ALL_OFF = 'All lyrics sources are turned off';
 
 function lyricsTimeoutFor(provider: LyricsProvider): number {
   return LYRICS_TIMEOUT_MS[provider] ?? DEFAULT_LYRICS_TIMEOUT_MS;
@@ -2045,6 +2053,7 @@ function settleWithGrace(
       if (timer !== undefined) window.clearTimeout(timer);
       resolve(done.filter((x): x is Attempt => x !== undefined));
     };
+    if (!left) finish();
     early?.then(finish);
     tasks.forEach((t, i) => {
       t.then((x) => {
@@ -2061,19 +2070,25 @@ export async function getLyrics(
   track: Track,
   lang: Language,
   preferred?: LyricsProvider,
-  onPlain?: (plain: LyricsResult) => void
+  onUpdate?: (res: LyricsResult) => void
 ): Promise<LyricsResult | null> {
   const smart = localStorage.getItem('zenith_smart_lyrics') === '0' ? '0' : '1';
-  const cacheKey = `${track.id}:${preferred || 'Auto'}:${lang}:${smart}`;
+  const cacheKey = `${track.id}:${preferred || 'Auto'}:${lang}:${smart}:${lyricsSourcesKey()}`;
   const cached = lyricsCache.get(cacheKey);
   if (cached && Date.now() - cached.ts < (cached.ok ? LYRICS_OK_TTL : LYRICS_FAIL_TTL)) {
     return cached.data;
   }
   let done = false;
-  // zwykły tekst, który dotrze już po wyniku z czasami, nie może go podmienić
-  const result = await getLyricsUncached(track, lang, preferred, (plain) => {
-    if (!done) onPlain?.(plain);
-  });
+  // zwykły tekst albo podmiana, która dotrze już po wyniku końcowym, nie może go nadpisać
+  const result = await getLyricsUncached(
+    track,
+    lang,
+    preferred,
+    onUpdate &&
+      ((res) => {
+        if (!done) onUpdate(res);
+      })
+  );
   done = true;
   if (result) {
     const ok = Boolean(result.synced?.length || result.text);
@@ -2087,7 +2102,7 @@ async function getLyricsUncached(
   track: Track,
   lang: Language,
   preferred?: LyricsProvider,
-  onPlain?: (plain: LyricsResult) => void
+  onUpdate?: (res: LyricsResult) => void
 ): Promise<LyricsResult | null> {
   const explicit = Boolean(preferred && preferred !== 'Auto');
   let shownPlain: LyricsResult | null = null;
@@ -2095,7 +2110,7 @@ async function getLyricsUncached(
   const maybePlain = (res: LyricsResult) => {
     if (shownPlain || !shouldShowEarlyPlain(res)) return;
     shownPlain = res;
-    onPlain?.(res);
+    onUpdate?.(res);
   };
   const attempt = async (
     p: LyricsProvider
@@ -2127,48 +2142,73 @@ async function getLyricsUncached(
     return { provider: preferred!, text: null, failures: failure ? [failure] : [] };
   }
 
+  const prefs = getLyricsPrefs();
+  const on = enabledSources(prefs);
+  if (!on.length) {
+    return { provider: 'Auto', text: null, failures: [{ provider: 'Auto', reason: ALL_OFF }] };
+  }
+  const rank = (p: string) => prefs.order.indexOf(p as LyricsSource);
+  // YouTube Music i Genius dają głównie zwykły tekst, a Lyrics.ovh nie ma czym zweryfikować dopasowania
+  const racing = on.filter((p) => !['YouTube Music', 'LyricsGenius', 'Lyrics.ovh'].includes(p));
+  const live = Boolean(onUpdate) && lyricsUpgrade.get();
   const failures: LyricsFailure[] = [];
+  const hits: LyricsResult[] = [];
   let plainFallback: LyricsResult | null = null;
+  let shownHit: LyricsResult | null = null;
+  let shown: LyricsResult | null = null;
+  const pick = () => pickBestSyncedLyrics(hits, rank)!;
+  // przełączamy tylko, gdy nowe źródło zmienia zwycięzcę, więc tekst zmienia się najwyżej raz na źródło
+  const upgrade = () => {
+    const best = pick();
+    if (!shownHit || best === shownHit) return;
+    shown = { ...best, upgradedFrom: shownHit.provider };
+    shownHit = best;
+    onUpdate!(shown);
+  };
+  const collect = (task: Promise<Attempt>) =>
+    task.then((x) => {
+      if (x.failure) failures.push(x.failure);
+      if (x.res?.synced?.length) {
+        hits.push(x.res);
+        if (live) upgrade();
+      } else if (x.res?.text && !plainFallback) plainFallback = x.res;
+      return x;
+    });
+  const show = async (pending: Promise<unknown>[]): Promise<LyricsResult> => {
+    shown = shownHit = pick();
+    if (!live) return { ...shown, failures };
+    onUpdate!(shown);
+    await Promise.all(pending);
+    return { ...shown, failures };
+  };
+  const synced = (x: Attempt) => Boolean(x.res?.synced?.length);
 
   // YouTube Music od razu, bo zwykły tekst daje w sekundę; Genius po pudle, przy przewijaniu kończył się na 429
-  const fallbacks = [attempt('YouTube Music')];
-  const raced = await settleWithGrace(
-    [attempt('LRCLib'), attempt('Musixmatch'), attempt('LyricsPlus'), attempt('Boidu')],
-    (x) => Boolean(x.res?.synced?.length),
-    1500
-  );
-  const syncedHits = raced
-    .map((x) => x.res)
-    .filter((r): r is LyricsResult => Boolean(r?.synced?.length));
-  for (const x of raced) if (x.failure) failures.push(x.failure);
+  const fallbacks = on.includes('YouTube Music') ? [attempt('YouTube Music')] : [];
+  const first = racing.slice(0, 4).map((p) => collect(attempt(p)));
+  await settleWithGrace(first, synced, 1500);
+  let second: Promise<Attempt[]> | null = null;
   const secondWave = () =>
-    settleWithGrace(
-      SECOND_WAVE.map((p) => attempt(p)),
-      (x) => Boolean(x.res?.synced?.length),
+    (second ??= settleWithGrace(
+      racing.slice(4).map((p) => collect(attempt(p))),
+      synced,
       1200,
       new Promise<void>((r) => window.setTimeout(r, SECOND_WAVE_MAX_MS))
+    ));
+  if (hits.length) {
+    const agreeing = hits.some((a, i) =>
+      hits.some((b, j) => j > i && syncAgrees(a.synced!, b.synced!))
     );
-  const syncedOf = (xs: Array<{ res: LyricsResult | null }>) =>
-    xs.map((x) => x.res).filter((r): r is LyricsResult => Boolean(r?.synced?.length));
-  if (syncedHits.length) {
-    const agreeing = syncedHits.some((a, i) =>
-      syncedHits.some((b, j) => j > i && syncAgrees(a.synced!, b.synced!))
-    );
-    if (syncedHits.length === 1 || agreeing) return pickBestSyncedLyrics(syncedHits);
+    if (hits.length === 1 || agreeing) return show(first);
     // każde źródło mówi co innego (inna wersja, romaji, przesunięte czasy): druga fala rozstrzyga
-    return pickBestSyncedLyrics([...syncedHits, ...syncedOf(await secondWave())]);
+    if (!live) await secondWave();
+    return show([...first, secondWave()]);
   }
-  fallbacks.push(attempt('LyricsGenius'));
+  if (on.includes('LyricsGenius')) fallbacks.push(attempt('LyricsGenius'));
 
   // druga fala rusza dopiero po pudle, żeby przy każdej piosence nie pytać ośmiu serwisów
-  const second = await secondWave();
-  for (const x of second) if (x.failure) failures.push(x.failure);
-  const secondHits = syncedOf(second);
-  if (secondHits.length) return pickBestSyncedLyrics(secondHits);
-
-  for (const x of [...raced, ...second]) {
-    if (x.res?.text && !plainFallback) plainFallback = x.res;
-  }
+  await secondWave();
+  if (hits.length) return show([]);
 
   for (const pending of fallbacks) {
     const { res, failure } = await pending;
