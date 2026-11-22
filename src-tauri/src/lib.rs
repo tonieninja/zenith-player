@@ -30,6 +30,7 @@ mod smtc;
 mod spotify_auth;
 mod stream;
 mod stream_proxy;
+mod thumbbar;
 #[cfg(windows)]
 mod webview2_check;
 mod webview_tuning;
@@ -899,6 +900,7 @@ pub fn run() {
             native_audio::zaudio_tail,
             native_audio::zaudio_output_devices,
             native_audio::zaudio_set_output_device,
+            thumbbar::thumbbar_update,
             native_audio::zaudio_plan,
             native_audio::zaudio_attach,
             native_audio::zaudio_snapshot,

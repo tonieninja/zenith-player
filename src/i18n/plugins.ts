@@ -247,6 +247,16 @@ const CATALOG: Record<string, Record<Language, PluginText>> = {
       desc: 'Systemowy panel „Teraz odtwarzane”, ekran blokady i klawisze multimedialne (MPRIS na Linuksie).',
     },
   },
+  'taskbar-buttons': {
+    en: {
+      name: 'Taskbar buttons',
+      desc: 'Previous, play/pause and next under the window preview on the taskbar. Windows only.',
+    },
+    pl: {
+      name: 'Przyciski na pasku zadań',
+      desc: 'Poprzedni, odtwórz/pauza i następny pod podglądem okna na pasku zadań. Tylko Windows.',
+    },
+  },
   'window-title': {
     en: { name: 'Window title', desc: "Shows what's playing in the window title." },
     pl: { name: 'Tytuł okna', desc: 'Pokazuje w tytule okna, co teraz leci.' },

@@ -34,6 +34,7 @@ import { statsTrackerPlugin } from './statsTracker';
 import { systemTrayPlugin } from './systemTray';
 import { webhookPlugin } from './webhook';
 import { windowTitlePlugin } from './windowTitle';
+import { taskbarButtonsPlugin } from './taskbarButtons';
 import { NowPlayingInfo, PluginCategory, PLUGIN_CATEGORY_ORDER, ZenithPlugin } from './types';
 
 const STORAGE_KEY = 'zenith_plugins_enabled';
@@ -58,6 +59,7 @@ export const PLUGIN_ORDER = [
   'lyrics-overlay',
   'second-screen-lyrics',
   'media-session',
+  'taskbar-buttons',
   'global-hotkeys',
   'keyboard-shortcuts',
   'remote-control',
@@ -126,6 +128,7 @@ export const ALL_PLUGINS: ZenithPlugin[] = [
   sponsorBlockPlugin,
   statsTrackerPlugin,
   systemTrayPlugin,
+  taskbarButtonsPlugin,
   webhookPlugin,
   windowTitlePlugin,
   zenithStagePlugin,
