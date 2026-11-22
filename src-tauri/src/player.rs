@@ -231,10 +231,14 @@ fn calls() -> &'static Calls {
 }
 
 fn take_call(video_id: &str, now: Instant) -> bool {
-    let mut m = calls().lock().unwrap_or_else(|p| p.into_inner());
+    take_from(calls(), CALLS_PER_VIDEO, video_id, now)
+}
+
+fn take_from(calls: &Calls, limit: u32, video_id: &str, now: Instant) -> bool {
+    let mut m = calls.lock().unwrap_or_else(|p| p.into_inner());
     m.retain(|_, (_, at)| now.duration_since(*at) < CALLS_WINDOW);
     let e = m.entry(video_id.to_string()).or_insert((0, now));
-    if e.0 >= CALLS_PER_VIDEO {
+    if e.0 >= limit {
         return false;
     }
     e.0 += 1;
@@ -454,6 +458,68 @@ fn candidates(data: &Value) -> Vec<Candidate> {
     }
     out.sort_by_key(|c| std::cmp::Reverse(c.score));
     out
+}
+
+// sam obraz z adaptiveFormats: avc1 tylko gdy WebView go zdekoduje, potem vp9; AV1 i reszta odpadają (ciężkie w CPU)
+fn video_candidates(data: &Value, max_h: u32, avc: bool) -> Vec<Candidate> {
+    let num = |f: &Value, k: &str| f.get(k).and_then(Value::as_i64).unwrap_or(0);
+    let mut out: Vec<(i64, i64, Candidate)> = Vec::new();
+    let list = data
+        .pointer("/streamingData/adaptiveFormats")
+        .and_then(Value::as_array);
+    for fmt in list.into_iter().flatten() {
+        let mime = fmt.get("mimeType").and_then(Value::as_str).unwrap_or("");
+        let codecs = mime.split("codecs=").nth(1).unwrap_or("").trim_matches('"');
+        let base = if !mime.starts_with("video/") {
+            continue;
+        } else if avc && codecs.starts_with("avc1") {
+            2000
+        } else if codecs.starts_with("vp9") || codecs.starts_with("vp09") {
+            1000
+        } else {
+            continue;
+        };
+        let height = num(fmt, "height");
+        if fmt.get("drmFamilies").is_some()
+            || fmt.get("type").and_then(Value::as_str) == Some("FORMAT_STREAM_TYPE_OTF")
+            || height <= 0
+            || height > max_h as i64
+        {
+            continue;
+        }
+        let score = base + height - if num(fmt, "fps") > 30 { 100 } else { 0 };
+        let found = match (
+            fmt.get("url").and_then(Value::as_str),
+            fmt.get("signatureCipher"),
+        ) {
+            (Some(u), _) => Some((u.to_string(), None)),
+            (None, Some(sc)) => sc
+                .as_str()
+                .and_then(parse_cipher)
+                .map(|(u, s, sp)| (u, Some((s, sp)))),
+            _ => None,
+        };
+        if let Some((url, sig)) = found.filter(|(u, _)| is_progressive_url(u)) {
+            out.push((
+                score,
+                num(fmt, "bitrate"),
+                Candidate {
+                    score: score as i32,
+                    url,
+                    sig,
+                },
+            ));
+        }
+    }
+    out.sort_by_key(|(s, b, _)| (std::cmp::Reverse(*s), *b));
+    out.into_iter().map(|(_, _, c)| c).collect()
+}
+
+// ATV to nieruchoma okładka; goście nie podają musicVideoType, ale ATV zawsze wrzuca kanał „… - Topic”
+fn still_image_upload(data: &Value) -> bool {
+    let field = |p: &str| data.pointer(p).and_then(Value::as_str).unwrap_or("");
+    field("/videoDetails/musicVideoType") == "MUSIC_VIDEO_TYPE_ATV"
+        || field("/videoDetails/author").ends_with(" - Topic")
 }
 
 // adres działa dopiero po reklamie przed utworem (yt-dlp _get_available_at_timestamp); wcześniej googlevideo daje 403
@@ -970,6 +1036,90 @@ async fn probe(url: &str, user_agent: &str, range: &str) -> Option<bool> {
     None
 }
 
+// teledysk ma własny, mały budżet, żeby nigdy nie zjadał wywołań, których potrzebuje dźwięk tego samego utworu
+const VIDEO_CALLS_PER_VIDEO: u32 = 3;
+const VIDEO_CLIENTS: [Client; 3] = [Client::Visionos, Client::TvSamsung, Client::WebEmbedded];
+
+fn video_calls() -> &'static Calls {
+    static C: OnceLock<Calls> = OnceLock::new();
+    C.get_or_init(Default::default)
+}
+
+// Err(true): film to nieruchoma okładka albo budżet się skończył, więc kolejny klient nic nie zmieni
+async fn video_once(
+    video_id: &str,
+    client: Client,
+    visitor: Option<&str>,
+    max_h: u32,
+    avc: bool,
+) -> Result<DirectAudio, bool> {
+    if bot_blocked() {
+        return Err(true);
+    }
+    if !take_from(
+        video_calls(),
+        VIDEO_CALLS_PER_VIDEO,
+        video_id,
+        Instant::now(),
+    ) {
+        return Err(true);
+    }
+    let spec = spec(client);
+    let player = if spec.needs_js {
+        Some(crate::player_js::current().await.ok_or(false)?)
+    } else {
+        None
+    };
+    let sts = player.as_ref().and_then(|p| p.sts);
+    let data = player_request(video_id, &spec, visitor, sts, None)
+        .await
+        .ok_or(false)?;
+    if is_bot_check(&data) {
+        mark_bot_blocked();
+    }
+    if failure_kind(&data) == "ratelimit" {
+        mark_rate_limited(video_id);
+    }
+    if !playable(&data) {
+        return Err(false);
+    }
+    if still_image_upload(&data) {
+        return Err(true);
+    }
+    let ready_at = tokio::time::Instant::now() + preroll_wait(&data);
+    for c in video_candidates(&data, max_h, avc).iter().take(2) {
+        let Some(url) = finish_url(c, player.as_ref(), None).await else {
+            continue;
+        };
+        tokio::time::sleep_until(ready_at).await;
+        if url_reachable(&url, spec.user_agent).await && tail_reachable(&url, spec.user_agent).await
+        {
+            crate::diag::log(format!("[Zenith] video {} ok for {video_id}", spec.name));
+            return Ok(DirectAudio {
+                url,
+                user_agent: spec.user_agent.to_string(),
+            });
+        }
+    }
+    Err(false)
+}
+
+/// Sam obraz teledysku (bez dźwięku) od klientów-gości: bez tokenu PO, ciasteczek i ukrytego okna.
+pub async fn fetch_video(video_id: &str, max_h: u32, avc: bool) -> Option<DirectAudio> {
+    if bot_blocked() {
+        return None;
+    }
+    let visitor = visitor_data().await;
+    for c in VIDEO_CLIENTS {
+        match video_once(video_id, c, visitor.as_deref(), max_h, avc).await {
+            Ok(got) => return Some(got),
+            Err(true) => return None,
+            Err(false) => {}
+        }
+    }
+    None
+}
+
 pub async fn fetch_direct_audio(video_id: &str) -> Option<DirectAudio> {
     if bot_blocked() {
         crate::diag::log(format!(
@@ -1008,6 +1158,71 @@ mod tests {
             ok += got.is_some() as usize;
         }
         assert!(ok >= 4, "native layer {ok}/5");
+    }
+
+    #[tokio::test]
+    #[ignore = "talks to youtube"]
+    async fn live_video_formats() {
+        use super::{video_candidates, Client};
+        let visitor = super::visitor_data().await;
+        for id in ["kJQP7kiw5Fk", "-4SQVBZNdEc", "9bZkp7q19f0", "khnokW3Mw24"] {
+            for c in [Client::Visionos, Client::TvSamsung, Client::WebEmbedded] {
+                let spec = super::spec(c);
+                let player = if spec.needs_js {
+                    crate::player_js::current().await
+                } else {
+                    None
+                };
+                let sts = player.as_ref().and_then(|p| p.sts);
+                let Some(data) =
+                    super::player_request(id, &spec, visitor.as_deref(), sts, None).await
+                else {
+                    println!("{id} {}: no response", spec.name);
+                    continue;
+                };
+                let fmts = data
+                    .pointer("/streamingData/adaptiveFormats")
+                    .and_then(|v| v.as_array())
+                    .cloned()
+                    .unwrap_or_default();
+                let video: Vec<_> = fmts
+                    .iter()
+                    .filter(|f| f["mimeType"].as_str().unwrap_or("").starts_with("video/"))
+                    .collect();
+                let direct = video.iter().filter(|f| f.get("url").is_some()).count();
+                let ciphered = video
+                    .iter()
+                    .filter(|f| f.get("signatureCipher").is_some())
+                    .count();
+                let picked = video_candidates(&data, 720, true);
+                let mut reach = "-".to_string();
+                if let Some(cand) = picked.first() {
+                    reach = match super::finish_url(cand, player.as_ref(), None).await {
+                        Some(u) => {
+                            let itag = super::query_param(&u, "itag").unwrap_or_default();
+                            let head = super::probe(&u, spec.user_agent, "bytes=0-98303").await;
+                            let tail = super::tail_reachable(&u, spec.user_agent).await;
+                            format!("itag {itag} head {head:?} tail {tail}")
+                        }
+                        None => "finish_url failed".into(),
+                    };
+                }
+                println!(
+                    "{id} {}: status {} still {} video {} direct {direct} cipher {ciphered} sabr {} picked {} -> {reach}",
+                    spec.name,
+                    data.pointer("/playabilityStatus/status").and_then(|v| v.as_str()).unwrap_or("?"),
+                    super::still_image_upload(&data),
+                    video.len(),
+                    data.pointer("/streamingData/serverAbrStreamingUrl").is_some(),
+                    picked.len(),
+                );
+            }
+            let got = super::fetch_video(id, 720, true).await.map(|d| d.url);
+            println!(
+                "{id} fetch_video: {:?}",
+                got.and_then(|u| super::query_param(&u, "itag"))
+            );
+        }
     }
 
     #[test]
@@ -1273,6 +1488,111 @@ mod tests {
         let c = super::candidates(&data);
         assert_eq!(c.len(), 1);
         assert_eq!(c[0].url, "https://g.example/m4a");
+    }
+
+    fn video_fixture() -> serde_json::Value {
+        let v = |itag: u32, codec: &str, h: u32, fps: u32, extra: serde_json::Value| {
+            let mime = if codec.starts_with("avc1") {
+                "video/mp4"
+            } else {
+                "video/webm"
+            };
+            let mut f = json!({
+                "itag": itag, "mimeType": format!("{mime}; codecs=\"{codec}\""),
+                "height": h, "width": h * 16 / 9, "fps": fps, "bitrate": itag * 1000,
+                "url": format!("https://r1.googlevideo.com/videoplayback?itag={itag}"),
+            });
+            for (k, x) in extra.as_object().cloned().unwrap_or_default() {
+                f[k] = x;
+            }
+            f
+        };
+        let none = json!({});
+        json!({"streamingData": {
+            "formats": [{ "itag": 18, "mimeType": "video/mp4; codecs=\"avc1.42001E, mp4a.40.2\"", "height": 360, "url": "https://r1.googlevideo.com/videoplayback?itag=18" }],
+            "adaptiveFormats": [
+                v(137, "avc1.640028", 1080, 30, none.clone()),
+                v(298, "avc1.4d4020", 720, 60, none.clone()),
+                v(136, "avc1.4d401f", 720, 30, none.clone()),
+                v(135, "avc1.4d401e", 480, 30, none.clone()),
+                v(247, "vp9", 720, 30, none.clone()),
+                v(302, "vp9", 720, 60, none.clone()),
+                v(244, "vp9", 480, 30, none.clone()),
+                v(398, "av01.0.05M.08", 720, 30, none.clone()),
+                v(400, "vp9", 720, 30, json!({ "drmFamilies": ["WIDEVINE"] })),
+                v(401, "vp9", 720, 30, json!({ "type": "FORMAT_STREAM_TYPE_OTF" })),
+                v(402, "vp9", 720, 30, json!({ "url": "https://manifest.googlevideo.com/api/manifest/hls_playlist/x.m3u8" })),
+                v(403, "vp9", 720, 30, json!({ "url": "https://r1.googlevideo.com/sabr/x" })),
+                { "itag": 251, "mimeType": "audio/webm; codecs=\"opus\"", "bitrate": 1, "url": "https://r1.googlevideo.com/videoplayback?itag=251" }
+            ]
+        }})
+    }
+
+    #[test]
+    fn video_picker_prefers_avc1_up_to_max_height() {
+        let itags = |max_h, avc| -> Vec<String> {
+            super::video_candidates(&video_fixture(), max_h, avc)
+                .iter()
+                .map(|c| super::query_param(&c.url, "itag").unwrap_or_default())
+                .collect()
+        };
+        assert_eq!(
+            itags(720, true),
+            ["136", "298", "135", "247", "302", "244"],
+            "avc1 first, 30 fps beats 60 fps, nothing above 720"
+        );
+        assert_eq!(itags(720, false), ["247", "302", "244"], "vp9 only");
+        assert_eq!(itags(480, true), ["135", "244"]);
+        assert_eq!(itags(1080, true)[0], "137");
+        assert!(itags(144, true).is_empty());
+    }
+
+    #[test]
+    fn video_picker_keeps_the_cipher() {
+        let data = json!({"streamingData": {"adaptiveFormats": [
+            { "itag": 136, "mimeType": "video/mp4; codecs=\"avc1.4d401f\"", "height": 720, "fps": 25,
+              "signatureCipher": "s=QQ&sp=sig&url=https%3A%2F%2Fr1.googlevideo.com%2Fvideoplayback%3Fitag%3D136" },
+            { "itag": 247, "mimeType": "video/webm; codecs=\"vp9\"", "height": 720, "signatureCipher": "url=https%3A%2F%2Fx" }
+        ]}});
+        let c = super::video_candidates(&data, 720, true);
+        assert_eq!(c.len(), 1, "a cipher without s is dropped");
+        assert_eq!(c[0].sig, Some(("QQ".into(), "sig".into())));
+    }
+
+    #[test]
+    fn still_image_uploads_get_no_video() {
+        let t = |d: serde_json::Value| super::still_image_upload(&d);
+        assert!(t(
+            json!({"videoDetails": {"musicVideoType": "MUSIC_VIDEO_TYPE_ATV"}})
+        ));
+        assert!(t(json!({"videoDetails": {"author": "Daft Punk - Topic"}})));
+        assert!(!t(
+            json!({"videoDetails": {"musicVideoType": "MUSIC_VIDEO_TYPE_OMV", "author": "officialpsy"}})
+        ));
+        assert!(!t(json!({"videoDetails": {"author": "Topic Talks"}})));
+        assert!(!t(json!({})));
+    }
+
+    #[test]
+    fn video_budget_is_separate_from_audio() {
+        let now = std::time::Instant::now();
+        let id = "vbudget0001";
+        for _ in 0..super::VIDEO_CALLS_PER_VIDEO {
+            assert!(super::take_from(
+                super::video_calls(),
+                super::VIDEO_CALLS_PER_VIDEO,
+                id,
+                now
+            ));
+        }
+        assert!(!super::take_from(
+            super::video_calls(),
+            super::VIDEO_CALLS_PER_VIDEO,
+            id,
+            now
+        ));
+        assert!(super::take_call(id, now), "audio budget untouched");
+        super::calls_done(id);
     }
     use serde_json::json;
 
