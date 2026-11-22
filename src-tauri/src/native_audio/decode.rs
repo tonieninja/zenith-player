@@ -116,6 +116,9 @@ pub struct Session {
     stereo: Vec<f32>,
     pcm: Vec<f32>,
     staged: Vec<f32>,
+    // bufory wielokrotnego użytku: wcześniej dwie alokacje na każdy pakiet (~50 na sekundę)
+    sb: Option<SampleBuffer<f32>>,
+    rs_out: Vec<f32>,
 }
 
 fn opus_head(extra: Option<&[u8]>) -> (usize, usize) {
@@ -292,6 +295,8 @@ impl Session {
             stereo: Vec::new(),
             pcm: Vec::new(),
             staged: Vec::new(),
+            sb: None,
+            rs_out: Vec::new(),
         };
         s.reset_dsp();
         Ok(s)
@@ -397,7 +402,10 @@ impl Session {
                 Ok(buf) => {
                     let spec = *buf.spec();
                     let ch = spec.channels.count();
-                    let mut sb = SampleBuffer::<f32>::new(buf.capacity() as u64, spec);
+                    let sb = match &mut self.sb {
+                        Some(sb) if sb.capacity() >= buf.capacity() * ch => sb,
+                        slot => slot.insert(SampleBuffer::<f32>::new(buf.capacity() as u64, spec)),
+                    };
                     sb.copy_interleaved_ref(buf);
                     to_stereo(sb.samples(), ch, &mut self.stereo);
                     self.errors = 0;
@@ -467,11 +475,11 @@ impl Session {
             levels.extend(self.loud.feed(src));
         }
         self.staged.clear();
-        let mut tmp = Vec::new();
         let resampled: &[f32] = match self.rs.as_mut() {
             Some(r) => {
-                r.process(src, &mut tmp);
-                &tmp
+                self.rs_out.clear();
+                r.process(src, &mut self.rs_out);
+                &self.rs_out
             }
             None => src,
         };

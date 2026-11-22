@@ -976,10 +976,21 @@ pub async fn zaudio_tail(url: String, d: f64) -> Option<f64> {
     if url.is_empty() || !d.is_finite() || d < 30.0 {
         return None;
     }
+    // grający plik leży już w spoolu decku; osobne pobieranie końca utworu dublowało ruch
+    let shared = engine().and_then(|e| {
+        let st = e.st.lock().unwrap_or_else(|p| p.into_inner());
+        st.decks
+            .iter()
+            .find(|deck| deck.src == url)
+            .and_then(|deck| deck.buf.clone())
+    });
     tauri::async_runtime::spawn_blocking(move || {
-        let buf = source::open(&url);
+        let own = shared.is_none();
+        let buf = shared.unwrap_or_else(|| source::open(&url));
         let r = decode::audible_end(buf.clone(), d);
-        buf.cancel();
+        if own {
+            buf.cancel();
+        }
         r.ok().flatten()
     })
     .await

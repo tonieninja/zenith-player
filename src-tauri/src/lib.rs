@@ -822,7 +822,6 @@ pub fn run() {
                     }
                 });
             }
-            wv2_mem::start_watch(app.handle());
             Ok(())
         })
         .on_window_event(|window, event| match event {
@@ -853,11 +852,12 @@ pub fn run() {
                     wv2_mem::set_low(&wv, hidden);
                 }
             }
-            WindowEvent::Focused(true) if window.label() == "main" => {
+            WindowEvent::Focused(focused) if window.label() == "main" => {
                 if let Some(wv) = window.app_handle().get_webview_window("main") {
-                    if !wv.is_minimized().unwrap_or(false) {
+                    if *focused && !wv.is_minimized().unwrap_or(false) {
                         wv2_mem::set_low(&wv, false);
                     }
+                    wv2_mem::on_focus(&wv, *focused);
                 }
             }
             // na natywnym Waylandzie tao zgłasza przy każdej zmianie (0,0) i nadpisałby zapisane pozycje

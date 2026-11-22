@@ -191,9 +191,9 @@ pub const LIMIT_CEIL: f32 = 0.944;
 pub struct Limiter {
     sr: u32,
     delay: Vec<[f32; 2]>,
-    need: Vec<f32>,
-    // ile wpisów w oknie wymaga ścięcia; przy zerze minimum to 1.0 bez skanowania 240 wartości
-    below: usize,
+    // minimum okna w kolejce rosnących wartości: O(1) na ramkę zamiast skanu 240 wpisów przy głośnym materiale
+    win: std::collections::VecDeque<(u64, f32)>,
+    t: u64,
     held: Vec<f32>,
     sum: f64,
     i: usize,
@@ -208,8 +208,8 @@ impl Limiter {
         Limiter {
             sr,
             delay: vec![[0.0; 2]; n - 1],
-            need: vec![1.0; n],
-            below: 0,
+            win: std::collections::VecDeque::with_capacity(n + 1),
+            t: 0,
             held: vec![1.0; n],
             sum: n as f64,
             i: 0,
@@ -224,7 +224,7 @@ impl Limiter {
     }
 
     pub fn process(&mut self, stereo: &mut [f32]) {
-        let n = self.need.len();
+        let n = self.held.len();
         for fr in stereo.as_chunks_mut::<2>().0 {
             let peak = fr[0].abs().max(fr[1].abs());
             let want = if peak > LIMIT_CEIL {
@@ -232,13 +232,19 @@ impl Limiter {
             } else {
                 1.0
             };
-            let old = std::mem::replace(&mut self.need[self.i], want);
-            self.below = self.below + usize::from(want < 1.0) - usize::from(old < 1.0);
-            let h = if self.below == 0 {
-                1.0
-            } else {
-                self.need.iter().copied().fold(1.0f32, f32::min)
-            };
+            while self.win.back().is_some_and(|&(_, v)| v >= want) {
+                self.win.pop_back();
+            }
+            self.win.push_back((self.t, want));
+            while self
+                .win
+                .front()
+                .is_some_and(|&(at, _)| at + n as u64 <= self.t)
+            {
+                self.win.pop_front();
+            }
+            self.t += 1;
+            let h = self.win.front().map_or(1.0, |&(_, v)| v);
             self.sum += h as f64 - self.held[self.i] as f64;
             self.held[self.i] = h;
             self.i = (self.i + 1) % n;
@@ -665,6 +671,43 @@ mod tests {
             rms(&sine(60.0, 48000, 0.5, LIMIT_CEIL)),
         );
         assert!(g > -0.5, "{g}");
+    }
+
+    fn pumping(secs: usize) -> Vec<f32> {
+        (0..48000 * secs)
+            .flat_map(|i| {
+                let t = i as f32 / 48000.0;
+                let env = 0.3 + 1.7 * (0.5 + 0.5 * (t * 1.3).sin());
+                let x = env
+                    * ((t * 440.0 * std::f32::consts::TAU).sin() * 0.6
+                        + (t * 97.0 * std::f32::consts::TAU).sin() * 0.4);
+                [x, -x * 0.8]
+            })
+            .collect()
+    }
+
+    #[test]
+    fn limiter_output_is_unchanged_on_a_pumping_signal() {
+        let mut l = Limiter::new(48000);
+        let mut v = pumping(4);
+        l.process(&mut v);
+        // suma z wersji skanującej całe okno: kolejka monotoniczna ma dawać bit w bit to samo
+        let bits = v
+            .iter()
+            .fold(0u64, |h, x| h.rotate_left(5) ^ x.to_bits() as u64);
+        assert_eq!(bits, 4744317704041333788);
+    }
+
+    #[test]
+    #[ignore]
+    fn limiter_speed() {
+        let mut l = Limiter::new(48000);
+        let mut v = pumping(60);
+        let t = std::time::Instant::now();
+        for c in v.chunks_mut(2 * 480) {
+            l.process(c);
+        }
+        println!("LIMITER 60 s audio in {:?}", t.elapsed());
     }
 
     #[test]

@@ -264,6 +264,9 @@ pub fn start() -> bool {
     } else {
         match probe_device() {
             Some(sr) => sr,
+            // słuchawki podłączone po starcie: wątek wyjścia otworzy je sam; bez silnika okno w zasobniku nie zwalnia pamięci.
+            // Tylko Windows, bo na Linuksie cpal bywa ślepy na urządzenie, które gra przez GStreamer w WebView.
+            None if cfg!(windows) => 48000,
             None => return false,
         }
     };
@@ -412,24 +415,43 @@ fn open_cpal(decks: &[Arc<DeckOut>; 2]) -> Option<Opened> {
     let sup = dev.default_output_config().ok()?;
     let sr = sup.sample_rate().0;
     let ch = sup.channels() as usize;
-    let cfg: cpal::StreamConfig = sup.config();
+    let base: cpal::StreamConfig = sup.config();
     let broken = Arc::new(AtomicBool::new(false));
-    let b = broken.clone();
-    let err = move |e: cpal::StreamError| {
-        eprintln!("[zaudio] output error: {e}");
-        b.store(true, Ordering::Relaxed);
-    };
-    let mixer = Mixer::new(decks.clone(), sr);
-    let stream = match sup.sample_format() {
-        cpal::SampleFormat::F32 => build::<f32>(&dev, &cfg, ch, mixer, err),
-        cpal::SampleFormat::I16 => build::<i16>(&dev, &cfg, ch, mixer, err),
-        cpal::SampleFormat::U16 => build::<u16>(&dev, &cfg, ch, mixer, err),
-        cpal::SampleFormat::I32 => build::<i32>(&dev, &cfg, ch, mixer, err),
-        other => {
-            eprintln!("[zaudio] unsupported sample format {other:?}");
-            None
+    let build_with = |cfg: &cpal::StreamConfig| {
+        let b = broken.clone();
+        let err = move |e: cpal::StreamError| {
+            eprintln!("[zaudio] output error: {e}");
+            b.store(true, Ordering::Relaxed);
+        };
+        let mixer = Mixer::new(decks.clone(), sr);
+        match sup.sample_format() {
+            cpal::SampleFormat::F32 => build::<f32>(&dev, cfg, ch, mixer, err),
+            cpal::SampleFormat::I16 => build::<i16>(&dev, cfg, ch, mixer, err),
+            cpal::SampleFormat::U16 => build::<u16>(&dev, cfg, ch, mixer, err),
+            cpal::SampleFormat::I32 => build::<i32>(&dev, cfg, ch, mixer, err),
+            other => {
+                eprintln!("[zaudio] unsupported sample format {other:?}");
+                None
+            }
         }
-    }?;
+    };
+    #[cfg_attr(windows, allow(unused_mut))]
+    let mut fixed = None;
+    // ALSA/CoreAudio domyślnie budzą wątek co kilka ms; ~43 ms bufora to kilka razy mniej wybudzeń. WASAPI ma własny okres
+    #[cfg(not(windows))]
+    if let cpal::SupportedBufferSize::Range { min, max } = *sup.buffer_size() {
+        if min <= max {
+            let cfg = cpal::StreamConfig {
+                buffer_size: cpal::BufferSize::Fixed(2048u32.clamp(min, max)),
+                ..base.clone()
+            };
+            fixed = build_with(&cfg);
+        }
+    }
+    let stream = match fixed {
+        Some(s) => s,
+        None => build_with(&base)?,
+    };
     if let Err(e) = stream.play() {
         eprintln!("[zaudio] output play failed: {e}");
         return None;
