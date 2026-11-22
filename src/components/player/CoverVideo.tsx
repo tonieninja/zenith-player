@@ -44,7 +44,12 @@ export function CoverVideo({ audio, trackId, buffering, onShown }: Props) {
       if (asked || proxiedId(audio.src) !== trackId || audio.paused || audio.currentTime < 4)
         return;
       asked = true;
-      invoke<string | null>('zvideo_stream', { videoId: trackId, maxHeight: 720, avc: canAvc() })
+      // okno teledysku ma ~170 css px wysokości, a 720p to 4x więcej pikseli w dekoderze GPU
+      invoke<string | null>('zvideo_stream', {
+        videoId: trackId,
+        maxHeight: devicePixelRatio > 2 ? 480 : 360,
+        avc: canAvc(),
+      })
         .then((u) => !dead && (u ? setUrl(u) : setOff(true)))
         .catch(() => !dead && setOff(true));
     };

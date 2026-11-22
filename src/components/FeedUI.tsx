@@ -10,8 +10,16 @@ import { preBlur, preBlurred } from '../utils/preBlur';
 
 export { coverAttrs };
 
-function HeroBackdrop({ track }: { track: Track }) {
-  const attrs = coverAttrs(track);
+export function HeroBackdrop({
+  track,
+  className = 'feed-hero-bg',
+  size,
+}: {
+  track: Track;
+  className?: string;
+  size?: 'thumb' | 'small';
+}) {
+  const attrs = coverAttrs(track, size);
   const orig = (attrs as { 'data-orig'?: string })['data-orig'];
   const key = attrs.src || orig || '';
   const [blurred, setBlurred] = useState<string | null | undefined>(() => preBlurred(key));
@@ -26,9 +34,10 @@ function HeroBackdrop({ track }: { track: Track }) {
     };
   }, [key, attrs.src, orig]);
   if (blurred === undefined) return null;
-  if (blurred) return <img alt="" className="feed-hero-bg pre-blurred" aria-hidden src={blurred} />;
+  if (blurred)
+    return <img alt="" className={`${className} pre-blurred`} aria-hidden src={blurred} />;
   return (
-    <img alt="" className="feed-hero-bg" loading="lazy" decoding="async" aria-hidden {...attrs} />
+    <img alt="" className={className} loading="lazy" decoding="async" aria-hidden {...attrs} />
   );
 }
 

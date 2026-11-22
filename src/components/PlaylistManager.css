@@ -602,19 +602,17 @@
 .pm-skeleton span {
   height: 44px;
   border-radius: 8px;
-  background: linear-gradient(
+  background: rgba(255, 255, 255, 0.04);
+  --skeleton-sweep: linear-gradient(
     90deg,
     rgba(255, 255, 255, 0.04),
     rgba(255, 255, 255, 0.09),
     rgba(255, 255, 255, 0.04)
   );
-  background-size: 200% 100%;
-  animation: pmShimmer 1.2s linear infinite;
 }
-@keyframes pmShimmer {
-  to {
-    background-position: -200% 0;
-  }
+.pm-skeleton > span::after {
+  animation-duration: 1.2s;
+  animation-timing-function: linear;
 }
 .pm-back {
   display: none;

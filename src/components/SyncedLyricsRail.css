@@ -49,7 +49,7 @@
   opacity: 0.084;
   text-align: left;
   cursor: default;
-  transform: translate3d(0, 6px, 0) scale(0.96);
+  transform: translate(0, 6px) scale(0.96);
   transform-origin: left center;
   transition:
     opacity var(--slide-ms, 520ms) var(--slide-ease),
@@ -71,23 +71,23 @@
   opacity: 0.0836;
   font-weight: 560;
   font-size: calc(var(--font-size) * 0.9);
-  transform: translate3d(0, -3px, 0) scale(0.94);
+  transform: translate(0, -3px) scale(0.94);
 }
 
 .synced-lyrics-rail .lyric-row.is-upcoming {
   opacity: 0.072;
-  transform: translate3d(0, 5px, 0) scale(0.95);
+  transform: translate(0, 5px) scale(0.95);
 }
 
 .synced-lyrics-rail .lyric-row.is-next {
   opacity: 0.5616;
   font-weight: 620;
-  transform: translate3d(0, 3px, 0) scale(0.985);
+  transform: translate(0, 3px) scale(0.985);
 }
 
 .synced-lyrics-rail .lyric-row.is-active {
   opacity: 1;
-  transform: translate3d(0, 0, 0) scale(1.04);
+  transform: translate(0, 0) scale(1.04);
 }
 
 .synced-lyrics-rail button.lyric-row.is-past:hover {
@@ -109,12 +109,12 @@
   white-space: normal;
   overflow-wrap: anywhere;
   hyphens: auto;
-  transform: translate3d(0, 0, 0);
+  transform: translate(0, 0);
   transition: transform var(--slide-ms, 520ms) var(--slide-ease);
 }
 
 .synced-lyrics-rail .lyric-row.is-next .lyric-row-text {
-  transform: translate3d(0, -1px, 0);
+  transform: translate(0, -1px);
 }
 
 /* poświata na osobnej warstwie: przejście samego text-shadow przerysowywało wiersz w każdej klatce */

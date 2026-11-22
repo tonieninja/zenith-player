@@ -6,6 +6,7 @@ import { coverAttrs } from '../../utils/covers';
 import { formatTime } from '../../utils/playback';
 import { ctxTrackAttr } from '../../utils/tracks';
 import { WindowedList } from '../ui/WindowedList';
+import { HeroBackdrop } from '../FeedUI';
 import { fmtTotal, tracksLabel } from '../PlaylistManager';
 
 type T = (typeof translations)['en'];
@@ -46,15 +47,7 @@ export const CollectionView = memo(function CollectionView({
   return (
     <div className="collection-view">
       <section className="collection-hero" aria-labelledby="collection-title">
-        {cover && (
-          <img
-            className="collection-backdrop"
-            alt=""
-            aria-hidden
-            decoding="async"
-            {...coverAttrs(cover, 'thumb')}
-          />
-        )}
+        {cover && <HeroBackdrop track={cover} className="collection-backdrop" size="thumb" />}
         {cover && (
           <img
             className="collection-cover"
@@ -119,7 +112,7 @@ export const CollectionView = memo(function CollectionView({
                     className="search-result-cover"
                     loading="lazy"
                     decoding="async"
-                    {...coverAttrs(item)}
+                    {...coverAttrs(item, 'thumb')}
                   />
                 </div>
               )}

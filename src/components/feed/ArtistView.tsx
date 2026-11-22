@@ -168,7 +168,7 @@ export const ArtistView = memo(function ArtistView({
                       className="search-result-cover"
                       loading="lazy"
                       decoding="async"
-                      {...coverAttrs(item)}
+                      {...coverAttrs(item, 'thumb')}
                     />
                     <div className="search-result-play-icon">
                       <Play size={14} fill="currentColor" />
