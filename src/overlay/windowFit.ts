@@ -84,27 +84,52 @@ export function attachOverlayWindowFit(panel: HTMLElement): () => void {
     }
   };
 
-  const syncIgnore = async () => {
-    if (stopped) return;
+  // pozycję i skalę okna odświeżają zdarzenia, więc w pętli zostaje jedno IPC (kursor) zamiast trzech
+  let origin: { x: number; y: number } | null = null;
+  let scale = 0;
+  let hitTestOff = false;
+  const refreshGeom = async () => {
     try {
-      const [cursor, origin, scale] = await Promise.all([
-        cursorPosition(),
-        win.innerPosition(),
-        win.scaleFactor(),
-      ]);
+      const [o, s] = await Promise.all([win.innerPosition(), win.scaleFactor()]);
+      origin = o;
+      scale = s;
+    } catch {
+      origin = null;
+    }
+  };
+  const unlisteners = [
+    win.onMoved(({ payload }) => {
+      origin = payload;
+    }),
+    win.onScaleChanged(() => void refreshGeom()),
+  ];
+
+  const syncIgnore = async (): Promise<boolean> => {
+    if (stopped || hitTestOff) return false;
+    try {
+      if (!origin) await refreshGeom();
+      if (!origin) return false;
+      const cursor = await cursorPosition();
       // Wayland podaje kursor i okno jako 0,0: przepuszczanie kliknięć zablokowałoby panel na zawsze
       if (!cursor.x && !cursor.y && !origin.x && !origin.y) {
-        stopped = true;
+        hitTestOff = true;
         if (ignoring !== false) await win.setIgnoreCursorEvents(false);
-        return;
+        return false;
       }
-      const hit = cursorHitsOverlayPanel(cursor, origin, scale, panel.getBoundingClientRect());
+      const rect = panel.getBoundingClientRect();
+      const hit = cursorHitsOverlayPanel(cursor, origin, scale, rect);
       if (ignoring !== !hit) {
         ignoring = !hit;
         await win.setIgnoreCursorEvents(!hit);
       }
+      const lx = (cursor.x - origin.x) / scale;
+      const ly = (cursor.y - origin.y) / scale;
+      const dx = Math.max(rect.left - lx, 0, lx - rect.right);
+      const dy = Math.max(rect.top - ly, 0, ly - rect.bottom);
+      return hit || Math.hypot(dx, dy) < 150;
     } catch {
       ignoring = null;
+      return false;
     }
   };
 
@@ -115,9 +140,10 @@ export function attachOverlayWindowFit(panel: HTMLElement): () => void {
   void resize();
 
   let timer = 0;
+  // kursor daleko od panelu nie musi być sprawdzany 25 razy na sekundę
   const loop = () => {
-    void syncIgnore().finally(() => {
-      if (!stopped) timer = window.setTimeout(loop, 40);
+    void syncIgnore().then((near) => {
+      if (!stopped && !hitTestOff) timer = window.setTimeout(loop, near ? 40 : 200);
     });
   };
   loop();
@@ -125,6 +151,7 @@ export function attachOverlayWindowFit(panel: HTMLElement): () => void {
   return () => {
     stopped = true;
     window.clearTimeout(timer);
+    unlisteners.forEach((u) => void u.then((off) => off()).catch(() => undefined));
     ro.disconnect();
     void win.setIgnoreCursorEvents(false);
   };

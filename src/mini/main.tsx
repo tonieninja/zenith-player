@@ -10,6 +10,7 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from 'react';
 import { createRoot } from 'react-dom/client';
+import { ErrorBoundary } from '../components/ErrorBoundary';
 import { emit, listen } from '@tauri-apps/api/event';
 import {
   currentMonitor,
@@ -606,6 +607,8 @@ function MiniApp() {
 markOpaqueAuxWindow();
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <MiniApp />
+    <ErrorBoundary>
+      <MiniApp />
+    </ErrorBoundary>
   </StrictMode>
 );
