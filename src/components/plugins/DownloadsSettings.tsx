@@ -5,6 +5,7 @@ import { formatTime } from '../../utils/playback';
 import {
   clearDownloads,
   deleteDownload,
+  downloadTags,
   downloadTrack,
   DownloadEntry,
   entryToTrack,
@@ -12,6 +13,7 @@ import {
   listDownloads,
   onDownloadProgress,
 } from '../../plugins/offlineDownloads';
+import { FlagRow } from './MiniPlayerSettings';
 
 type T = (typeof translations)['en'];
 
@@ -78,6 +80,7 @@ export function DownloadsSettings({
   return (
     <div className="plugin-setting-col" data-testid="downloads-settings">
       <p className="plugin-desc">{t.dlHint}</p>
+      <FlagRow flag={downloadTags} label={t.dlTags} desc={t.dlTagsDesc} />
       <div>
         <button
           type="button"

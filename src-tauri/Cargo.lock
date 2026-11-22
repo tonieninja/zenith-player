@@ -7138,6 +7138,7 @@ name = "zenith-player"
 version = "4.6.1"
 dependencies = [
  "axum",
+ "base64 0.22.1",
  "cpal",
  "discord-rich-presence",
  "futures-util",

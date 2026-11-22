@@ -89,7 +89,7 @@ pub fn init_dir(dir: PathBuf) {
     save_index();
 }
 
-const AUDIO_EXTS: [&str; 5] = ["webm", "m4a", "ogg", "mp3", "audio"];
+const AUDIO_EXTS: [&str; 6] = ["webm", "m4a", "ogg", "opus", "mp3", "audio"];
 
 fn ext_for(head: &[u8]) -> &'static str {
     match sniff_mime(head) {
@@ -272,7 +272,11 @@ pub fn downloads_clear() -> Result<usize, String> {
 }
 
 #[tauri::command]
-pub async fn downloads_add(app: AppHandle, meta: DownloadMeta) -> Result<DownloadMeta, String> {
+pub async fn downloads_add(
+    app: AppHandle,
+    meta: DownloadMeta,
+    tags: Option<bool>,
+) -> Result<DownloadMeta, String> {
     if !valid_id(&meta.id) {
         return Err("bad id".into());
     }
@@ -294,7 +298,7 @@ pub async fn downloads_add(app: AppHandle, meta: DownloadMeta) -> Result<Downloa
         d.remove(&meta.id);
     }
     let id = meta.id.clone();
-    let r = fetch_to_disk(&app, &dir, meta).await;
+    let r = fetch_to_disk(&app, &dir, meta, tags.unwrap_or(false)).await;
     if let Ok(mut a) = active().lock() {
         a.remove(&id);
     }
@@ -419,6 +423,7 @@ async fn fetch_to_disk(
     app: &AppHandle,
     dir: &std::path::Path,
     mut meta: DownloadMeta,
+    tags: bool,
 ) -> Result<DownloadMeta, String> {
     let url = crate::stream::get_stream_url(app.clone(), meta.id.clone(), None)
         .await?
@@ -455,7 +460,15 @@ async fn fetch_to_disk(
     let n = std::fs::File::open(&part)
         .and_then(|mut f| f.read(&mut head))
         .unwrap_or(0);
-    meta.file = file_name(&meta, ext_for(&head[..n]));
+    let mut ext = ext_for(&head[..n]);
+    let mut done = done;
+    if tags && ext == "webm" {
+        if let Some(size) = tag_as_opus(&part, &meta).await {
+            ext = "opus";
+            done = size;
+        }
+    }
+    meta.file = file_name(&meta, ext);
     let path = dir.join(&meta.file);
     if let Err(e) = tokio::fs::rename(&part, &path).await {
         let _ = tokio::fs::remove_file(&part).await;
@@ -476,6 +489,47 @@ async fn fetch_to_disk(
         serde_json::json!({ "id": meta.id, "done": done, "total": done, "finished": true }),
     );
     Ok(meta)
+}
+
+// nieudane przepakowanie zostawia oryginalny WebM bez tagów, bo utwór i tak jest już na dysku
+async fn tag_as_opus(part: &std::path::Path, meta: &DownloadMeta) -> Option<u64> {
+    let cover = match meta.cover.as_str() {
+        "" => None,
+        url => crate::cover_cache::get(544, url.to_string()).await.ok(),
+    };
+    let (src, dst, m) = (
+        part.to_path_buf(),
+        part.with_extension("opus.part"),
+        meta.clone(),
+    );
+    let out = dst.clone();
+    let r = tokio::task::spawn_blocking(move || {
+        let tags = crate::opus_tags::Tags {
+            title: &m.title,
+            artist: &m.artist,
+            album: &m.album,
+            cover_jpeg: cover.as_deref(),
+        };
+        crate::opus_tags::webm_to_ogg(&src, &out, &tags)
+    })
+    .await
+    .map_err(|e| e.to_string())
+    .and_then(|r| r);
+    let size = r
+        .and_then(|()| std::fs::rename(&dst, part).map_err(|e| e.to_string()))
+        .and_then(|()| {
+            std::fs::metadata(part)
+                .map(|m| m.len())
+                .map_err(|e| e.to_string())
+        });
+    match size {
+        Ok(n) => Some(n),
+        Err(e) => {
+            eprintln!("[downloads] tags skipped for {}: {e}", meta.id);
+            let _ = std::fs::remove_file(&dst);
+            None
+        }
+    }
 }
 
 pub fn sniff_mime(head: &[u8]) -> &'static str {

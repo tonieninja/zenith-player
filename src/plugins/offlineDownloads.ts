@@ -1,7 +1,10 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import type { Track } from '../api/youtube';
+import { storedFlag } from '../lyrics/flag';
 import { ZenithPlugin } from './types';
+
+export const downloadTags = storedFlag('zenith_download_tags');
 
 export interface DownloadEntry {
   id: string;
@@ -37,6 +40,7 @@ export function downloadTrack(t: Track, duration = 0): Promise<DownloadEntry> {
       size: 0,
       savedAt: 0,
     },
+    tags: downloadTags.get(),
   });
 }
 

@@ -12,7 +12,7 @@ const PART_LABEL: Record<MiniPart, keyof T> = {
   next: 'miniShowNext',
 };
 
-function FlagRow({
+export function FlagRow({
   flag,
   inverted = false,
   label,

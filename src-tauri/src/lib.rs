@@ -13,6 +13,7 @@ mod login_nav;
 #[cfg(target_os = "linux")]
 mod mpris;
 mod native_audio;
+mod opus_tags;
 mod player;
 mod player_js;
 mod portable;
