@@ -822,6 +822,11 @@ pub fn run() {
                     }
                 });
             }
+            // okno uruchomione w tle nie zgłosi utraty fokusu, a is_focused przy starcie bywa prawdą;
+            // odliczanie rusza zawsze, fokus sprawdza się dopiero po 30 s
+            if let Some(w) = app.get_webview_window("main") {
+                wv2_mem::on_focus(&w, false);
+            }
             Ok(())
         })
         .on_window_event(|window, event| match event {

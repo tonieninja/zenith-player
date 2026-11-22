@@ -94,7 +94,10 @@ pub fn on_focus(win: &tauri::WebviewWindow, focused: bool) {
             return;
         }
         // zminimalizowane ma już poziom 2; 3 przywróciłoby SetIsVisible(true)
-        if !w.is_minimized().unwrap_or(false) && w.is_visible().unwrap_or(false) {
+        if !w.is_minimized().unwrap_or(false)
+            && w.is_visible().unwrap_or(false)
+            && !w.is_focused().unwrap_or(true)
+        {
             apply(&w, 3);
         }
     });
