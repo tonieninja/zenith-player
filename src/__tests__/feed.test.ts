@@ -179,3 +179,14 @@ describe('artist bylines from YouTube Music', () => {
     ).toBe('Daft Punk, Pharrell Williams & Nile Rodgers');
   });
 });
+
+describe('byline play counts', () => {
+  it('drops play and view counts but keeps the artist and years', () => {
+    expect(tidyByline('Justin Bieber • 1.5B plays')).toBe('Justin Bieber');
+    expect(tidyByline('Kingfishr • 291K views')).toBe('Kingfishr');
+    expect(tidyByline('Sanah • 1,5 mln odtworzeń')).toBe('Sanah');
+    expect(tidyByline('Sanah • 291 tys. wyświetleń')).toBe('Sanah');
+    expect(tidyByline('Daft Punk • 2013')).toBe('Daft Punk • 2013');
+    expect(tidyByline('Avi, Oskar • 3M plays')).toBe('Avi, Oskar');
+  });
+});

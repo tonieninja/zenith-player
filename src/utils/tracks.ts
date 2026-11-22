@@ -119,5 +119,6 @@ export function withCollectionMeta(
     cover: swap(i.cover) && collection.cover ? collection.cover : i.cover,
     coverSmall: swap(i.coverSmall) && collection.coverSmall ? collection.coverSmall : i.coverSmall,
     coverLarge: swap(i.coverLarge) && collection.coverLarge ? collection.coverLarge : i.coverLarge,
+    ...(album && !i.albumId ? { albumId: collection.id, album: collection.title } : {}),
   }));
 }

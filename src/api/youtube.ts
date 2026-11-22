@@ -1,7 +1,7 @@
 import { fetch } from '@tauri-apps/plugin-http';
 import { invoke } from '@tauri-apps/api/core';
 import { Language, translations } from '../i18n';
-import { resolveFeedItem, bylineFromRuns } from '../utils/feed';
+import { resolveFeedItem, bylineFromRuns, refsFromRuns } from '../utils/feed';
 import { isPlaceholderCover, isYouTubeVideoId, letterCover, localCover } from '../utils/covers';
 import {
   captionsMatchLyrics,
@@ -276,6 +276,9 @@ export interface Track {
   coverSmall?: string;
   coverLarge?: string;
   durationSec?: number;
+  artistId?: string;
+  albumId?: string;
+  album?: string;
 }
 
 export interface Section {
@@ -1328,6 +1331,23 @@ export async function getRadioTracks(
   return extractAllTracks(JSON.parse(await response.text()), translations[lang]).filter(
     (t) => t.type === 'track' && (keepSeed || t.id !== videoId)
   );
+}
+
+const refsCache = new Map<string, Pick<Track, 'artistId' | 'albumId' | 'album'>>();
+
+/** Wykonawca i album utworu zapisanego przed tym, jak parsery zaczęły je zachowywać. */
+export async function getTrackRefs(
+  videoId: string,
+  lang: Language
+): Promise<Pick<Track, 'artistId' | 'albumId' | 'album'>> {
+  const hit = refsCache.get(videoId);
+  if (hit) return hit;
+  const list = await getRadioTracks(videoId, lang, true);
+  // pierwsza pozycja to ten utwór albo, dla teledysku, jego wersja audio
+  const seed = list.find((x) => x.id === videoId) ?? list[0];
+  const refs = seed ? { artistId: seed.artistId, albumId: seed.albumId, album: seed.album } : {};
+  if (seed) refsCache.set(videoId, refs);
+  return refs;
 }
 
 const MIX_CONTINUATION_PAGES = 2;
@@ -3050,6 +3070,15 @@ function buildFallbackCovers(
   return { cover, coverSmall: cover, coverLarge: cover };
 }
 
+// album wiersza playlisty siedzi w 2. lub 3. kolumnie, nie w podtytule
+function rowRuns(r: any): any[] {
+  const cols = (r.flexColumns || []).slice(1);
+  return [
+    ...(r.subtitle?.runs || []),
+    ...cols.flatMap((c: any) => c?.musicResponsiveListItemFlexColumnRenderer?.text?.runs || []),
+  ];
+}
+
 function extractAllTracks(data: any, t: TranslationBundle): Track[] {
   const items: Track[] = [];
 
@@ -3074,9 +3103,8 @@ function extractAllTracks(data: any, t: TranslationBundle): Track[] {
       if (videoId) {
         const trackTitle =
           (panel.title?.runs || []).map((x: any) => x.text).join('') || t.unknownTrack;
-        const byline = (panel.longBylineText?.runs || panel.shortBylineText?.runs || [])
-          .map((x: any) => x.text)
-          .join('');
+        const bylineRuns = panel.longBylineText?.runs || panel.shortBylineText?.runs || [];
+        const byline = bylineRuns.map((x: any) => x.text).join('');
         const artist = byline.split(' • ')[0]?.trim() || t.variousArtists;
         items.push({
           id: videoId,
@@ -3085,6 +3113,7 @@ function extractAllTracks(data: any, t: TranslationBundle): Track[] {
           artist,
           ...coversForItem(extractThumbnails(panel), videoId, trackTitle),
           durationSec: extractDurationSec(panel),
+          ...refsFromRuns(bylineRuns),
         });
       }
       return;
@@ -3123,6 +3152,7 @@ function extractAllTracks(data: any, t: TranslationBundle): Track[] {
           coverSmall,
           coverLarge,
           durationSec: extractDurationSec(r),
+          ...refsFromRuns(rowRuns(r)),
         });
       }
     }
@@ -3235,6 +3265,7 @@ function parseShelves(data: any, t: TranslationBundle): Section[] {
         coverSmall,
         coverLarge,
         durationSec: extractDurationSec(r),
+        ...(type === 'track' ? refsFromRuns(rowRuns(r)) : {}),
       });
     }
     return items;

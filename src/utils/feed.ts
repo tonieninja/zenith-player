@@ -99,9 +99,39 @@ export function bylineFromRuns(runs: { text?: unknown }[]): string {
   );
 }
 
+// licznik odsłuchań z kafelka nie jest częścią wykonawcy, a szedł dalej do MediaSession, Discorda i scrobbli
+const STAT_PART =
+  /^(?:\d[\d.,\s]*\s*(?:[KMB]|tys\.|mln|mld)?\s*(?:plays?|views?|odtworze\p{L}*|wyświetle\p{L}*)|no views)$/iu;
+
 export function tidyByline(artist: string): string {
   if (!artist.includes('•')) return artist;
-  return artist.replace(/\s*•\s*,\s*•\s*/g, ', ').replace(/\s*•\s*([&/+])\s*•\s*/g, ' $1 ');
+  return artist
+    .replace(/\s*•\s*,\s*•\s*/g, ', ')
+    .replace(/\s*•\s*([&/+])\s*•\s*/g, ' $1 ')
+    .split(' • ')
+    .filter((part, i) => i === 0 || !STAT_PART.test(part.trim()))
+    .join(' • ');
+}
+
+type BylineRun = {
+  text?: unknown;
+  navigationEndpoint?: { browseEndpoint?: { browseId?: unknown } };
+};
+
+/** Pierwszy wykonawca (UC…) i album (MPRE…) z runów bylinu, z których dotąd zostawał tylko tekst. */
+export function refsFromRuns(runs: BylineRun[]): Pick<Track, 'artistId' | 'albumId' | 'album'> {
+  const out: Pick<Track, 'artistId' | 'albumId' | 'album'> = {};
+  for (const run of runs || []) {
+    const id = run?.navigationEndpoint?.browseEndpoint?.browseId;
+    if (typeof id !== 'string') continue;
+    if (!out.artistId && id.startsWith('UC')) out.artistId = id;
+    else if (!out.albumId && id.startsWith('MPRE')) {
+      out.albumId = id;
+      const name = String(run.text ?? '').trim();
+      if (name) out.album = name;
+    }
+  }
+  return out;
 }
 
 export function stableOrderSections(sections: Section[]): Section[] {

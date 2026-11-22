@@ -55,6 +55,7 @@ import {
   getUserPlaylists,
   getWatchRelated,
   getRadioTracks,
+  getTrackRefs,
   getRelatedTracks,
   preloadImage,
   resolveLoginState,
@@ -2533,6 +2534,9 @@ export default function App() {
         cover: currentTrack.cover,
         coverSmall: currentTrack.coverSmall,
         coverLarge: currentTrack.coverLarge,
+        artistId: currentTrack.artistId,
+        albumId: currentTrack.albumId,
+        album: currentTrack.album,
       };
       const wasSaved = savedTracks.some((x) => x.id === track.id);
       ratingReqRef.current += 1;
@@ -3940,6 +3944,60 @@ export default function App() {
     return () => stopDuckMonitor();
   }, [audio, pluginStates, volumeRef]);
 
+  const [lookedUpRefs, setLookedUpRefs] = useState<{
+    id: string;
+    refs: Pick<Track, 'artistId' | 'albumId' | 'album'>;
+  } | null>(null);
+  const currentRefs = useMemo((): Pick<Track, 'artistId' | 'albumId' | 'album'> | undefined => {
+    if (!currentTrack) return undefined;
+    const looked = lookedUpRefs?.id === currentTrack.id ? lookedUpRefs.refs : {};
+    return {
+      artistId: currentTrack.artistId ?? looked.artistId,
+      albumId: currentTrack.albumId ?? looked.albumId,
+      album: currentTrack.album ?? looked.album,
+    };
+  }, [currentTrack, lookedUpRefs]);
+  const refsTrackId =
+    currentTrack && !currentTrack.albumId && /^[\w-]{11}$/.test(currentTrack.id)
+      ? currentTrack.id
+      : null;
+  // starsze utwory i wiersze z półki wykonawcy nie mają albumu; dociągamy go tylko, gdy widać odtwarzacz
+  useEffect(() => {
+    if (activeTab !== 'player' || !refsTrackId) return;
+    let live = true;
+    void getTrackRefs(refsTrackId, radioLangRef.current)
+      .then((refs) => live && setLookedUpRefs({ id: refsTrackId, refs }))
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [activeTab, refsTrackId, radioLangRef]);
+
+  const openTrackArtist = useCallback(async () => {
+    if (!currentTrack) return;
+    const refs: Pick<Track, 'artistId'> = currentRefs?.artistId
+      ? currentRefs
+      : refsTrackId
+        ? await getTrackRefs(refsTrackId, radioLangRef.current).catch(() => ({}))
+        : {};
+    if (!refs.artistId) return;
+    const name = currentTrack.artist.split(' • ')[0].split(/,| & /)[0].trim();
+    openBrowsePage({ id: refs.artistId, type: 'artist', title: name, artist: '', cover: '' });
+  }, [currentTrack, currentRefs, refsTrackId, openBrowsePage, radioLangRef]);
+
+  const openTrackAlbum = useCallback(() => {
+    if (!currentTrack || !currentRefs?.albumId) return;
+    void openCollectionPage({
+      id: currentRefs.albumId,
+      type: 'album',
+      title: currentRefs.album || '',
+      artist: currentTrack.artist,
+      cover: currentTrack.cover,
+      coverSmall: currentTrack.coverSmall,
+      coverLarge: currentTrack.coverLarge,
+    });
+  }, [currentTrack, currentRefs, openCollectionPage]);
+
   // samo id z linku: radio zaczyna od tego utworu (dla teledysku od jego wersji audio), a dalej daje kolejkę
   const playLinkRef = useLatest(async (id: string) => {
     if (!pluginManager.isEnabled('zenith-links')) return;
@@ -5232,7 +5290,26 @@ export default function App() {
                     <div className="player-view-meta">
                       <div className="player-view-label">{t.nowPlaying}</div>
                       <h1 className="player-view-title">{currentTrack.title}</h1>
-                      <div className="player-view-artist">{currentTrack.artist}</div>
+                      {refsTrackId || currentRefs?.artistId ? (
+                        <button
+                          type="button"
+                          className="player-view-artist link-btn"
+                          onClick={() => void openTrackArtist()}
+                        >
+                          {currentTrack.artist}
+                        </button>
+                      ) : (
+                        <div className="player-view-artist">{currentTrack.artist}</div>
+                      )}
+                      {currentRefs?.albumId && currentRefs.album && (
+                        <button
+                          type="button"
+                          className="player-view-album link-btn"
+                          onClick={openTrackAlbum}
+                        >
+                          {currentRefs.album}
+                        </button>
+                      )}
                       {playingFrom && (
                         <div className="player-view-from">
                           {t.playingFrom} <strong>{playingFrom}</strong>
@@ -5767,9 +5844,23 @@ export default function App() {
                     <span className="player-title" title={currentTrack.title}>
                       {currentTrack.title}
                     </span>
-                    <span className="player-artist" title={currentTrack.artist}>
-                      {currentTrack.artist}
-                    </span>
+                    {refsTrackId || currentRefs?.artistId ? (
+                      <button
+                        type="button"
+                        className="player-artist link-btn"
+                        title={currentTrack.artist}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          void openTrackArtist();
+                        }}
+                      >
+                        {currentTrack.artist}
+                      </button>
+                    ) : (
+                      <span className="player-artist" title={currentTrack.artist}>
+                        {currentTrack.artist}
+                      </span>
+                    )}
                   </div>
                 </>
               )}

@@ -1318,10 +1318,39 @@ button.nav-item {
   background-clip: text;
 }
 
+.link-btn {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  max-width: 100%;
+  text-underline-offset: 3px;
+}
+
+.link-btn:hover {
+  color: var(--text-primary);
+  text-decoration: underline;
+}
+
+.link-btn:focus-visible {
+  outline: 2px solid var(--accent-1);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
 .player-view-artist {
   font-size: 18px;
   color: var(--text-secondary);
   font-weight: 600;
+}
+
+.player-view-album {
+  font-size: 14px;
+  color: var(--text-muted);
+  font-weight: 500;
+  margin-top: -4px;
 }
 
 .player-view-from {

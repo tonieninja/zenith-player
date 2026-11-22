@@ -54,3 +54,15 @@ describe('artist page header', () => {
     expect(res.sections.length).toBeGreaterThan(1);
   });
 });
+
+describe('artist and album of a track', () => {
+  it('keeps the artist and album ids from the row instead of only their names', async () => {
+    const res = await getArtistPage('UC_kRDKYrUlrbtrSiyu5Tflg', 'en');
+    const top = res.sections.find((s) => s.title === res.header?.songsTitle);
+    const first = top!.items[0];
+    expect(first.artist).toContain('Daft Punk');
+    expect(first.artistId).toMatch(/^UC/);
+    expect(first.albumId).toMatch(/^MPRE/);
+    expect(first.album).toBeTruthy();
+  });
+});
