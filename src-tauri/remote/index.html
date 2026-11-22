@@ -168,7 +168,7 @@ let pin=localStorage.getItem('zenithRemotePin')||'';
 let key=localStorage.getItem('zenithRemoteKey')||'';
 let lyr=null,lyrIdx=-2,lyrTimer=0;
 const auth=()=>`pin=${encodeURIComponent(pin)}&key=${encodeURIComponent(key)}`;
-let ws=null,st={},seeking=false,volDrag=false,raf=0,req=0,retry=0,lastQueueKey='';
+let ws=null,st={},seeking=false,volDrag=false,raf=0,req=0,retry=0,rt=0,lastQueueKey='';
 const fmt=s=>{s=Math.max(0,Math.floor(s||0));return Math.floor(s/60)+':'+String(s%60).padStart(2,'0')};
 const esc=s=>String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const safeImg=u=>/^https:\/\//.test(u||'')?u:'';
@@ -210,16 +210,19 @@ function lyrTick(){
  if(st.isPlaying)lyrTimer=setTimeout(lyrTick,250);
 }
 function connect(){
+ // powrót na kartę i zaplanowane ponowienie nie mogą otworzyć dwóch gniazd naraz
+ clearTimeout(rt);if(ws){ws.onclose=null;try{ws.close()}catch(e){console.debug(e)}}
  const proto=location.protocol==='https:'?'wss':'ws';
- ws=new WebSocket(`${proto}://${location.host}/ws?${auth()}`);
- ws.onopen=()=>{retry=0;$('dot').classList.add('on');$('pin').classList.remove('show')};
- ws.onmessage=e=>{let m;try{m=JSON.parse(e.data)}catch{return}
+ const s=new WebSocket(`${proto}://${location.host}/ws?${auth()}`);ws=s;
+ const later=ms=>{rt=setTimeout(connect,ms)};
+ s.onopen=()=>{retry=0;$('dot').classList.add('on');$('pin').classList.remove('show')};
+ s.onmessage=e=>{let m;try{m=JSON.parse(e.data)}catch{return}
   if(m.type==='state'){st=m;st.at=Date.now();render()}
   else if(m.type==='lyrics'){lyr=m;lyrIdx=-2;renderLyrics()}
   else if(m.type==='search'&&m.req===req)showResults(m.items||[]);
   else if(m.type==='toast')toast(m.text)};
- ws.onclose=()=>{$('dot').classList.remove('on');ws=null;
-  fetch('/api/state?'+auth()).then(r=>{if(r.status===401){$('pin').classList.add('show');$('pinin').focus()}else if(r.status===429){toast('Too many attempts, wait a minute');setTimeout(connect,60000)}else setTimeout(connect,Math.min(10000,500*2**retry++))}).catch(()=>setTimeout(connect,Math.min(10000,500*2**retry++)))};
+ s.onclose=()=>{if(ws!==s)return;$('dot').classList.remove('on');ws=null;
+  fetch('/api/state?'+auth()).then(r=>{if(ws)return;if(r.status===401){$('pin').classList.add('show');$('pinin').focus()}else if(r.status===429){toast('Too many attempts, wait a minute');later(60000)}else later(Math.min(10000,500*2**retry++))}).catch(()=>{if(!ws)later(Math.min(10000,500*2**retry++))})};
 }
 function showResults(items){
  $('results').innerHTML=items.length?items.map((x,i)=>`<div class="it" data-r="${i}">${img(x.cover)}<div class="m"><div class="t">${esc(x.title)}</div><div class="s">${esc(x.artist)}</div></div><div class="acts"><button data-a="playTrack" aria-label="Play"><svg viewBox="0 0 24 24"><path d="${ICON_PLAY}"/></svg></button><button data-a="playNextTrack" aria-label="Play next"><svg viewBox="0 0 24 24"><path d="M3 10h11v2H3zm0-4h11v2H3zm0 8h7v2H3zm13-1v8l6-4z"/></svg></button><button data-a="addTrack" aria-label="Add to queue"><svg viewBox="0 0 24 24"><path d="M14 10H3v2h11v-2zm0-4H3v2h11V6zm4 8v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zM3 16h7v-2H3v2z"/></svg></button></div></div>`).join(''):'<div class="empty">No results</div>';

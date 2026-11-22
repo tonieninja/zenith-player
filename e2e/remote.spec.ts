@@ -108,3 +108,33 @@ test('queue and search tabs are reachable', async ({ page }) => {
   await expect(page.locator('#q')).toBeVisible();
   await page.fill('#q', 'test');
 });
+
+test('reconnect after a drop keeps a single socket', async ({ page }) => {
+  await page.addInitScript(() => {
+    const Native = window.WebSocket;
+    const socks: WebSocket[] = [];
+    (window as unknown as { __socks: WebSocket[] }).__socks = socks;
+    window.WebSocket = class extends Native {
+      constructor(url: string | URL, protocols?: string | string[]) {
+        super(url, protocols);
+        socks.push(this);
+      }
+    } as typeof WebSocket;
+  });
+  await unlock(page);
+  await page.evaluate(async () => {
+    const socks = (window as unknown as { __socks: WebSocket[] }).__socks;
+    socks[socks.length - 1].close();
+    await new Promise((r) => setTimeout(r, 150));
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+  await page.waitForTimeout(2500);
+  const open = await page.evaluate(
+    () =>
+      (window as unknown as { __socks: WebSocket[] }).__socks.filter(
+        (s) => s.readyState === WebSocket.OPEN || s.readyState === WebSocket.CONNECTING
+      ).length
+  );
+  expect(open).toBe(1);
+  await expect(page.locator('#dot')).toHaveClass(/on/);
+});
