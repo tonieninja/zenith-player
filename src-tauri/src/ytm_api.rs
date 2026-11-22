@@ -148,7 +148,14 @@ fn persist_innertube(app: &AppHandle, cfg: &InnertubeConfig) {
     }
 }
 
+// plik czytamy raz na start: później konfigurację zmienia tylko store_innertube w pamięci
+static HYDRATED: std::sync::Once = std::sync::Once::new();
+
 pub fn hydrate_innertube(app: &AppHandle) {
+    HYDRATED.call_once(|| hydrate_innertube_from_disk(app));
+}
+
+fn hydrate_innertube_from_disk(app: &AppHandle) {
     let Some(path) = innertube_path(app) else {
         return;
     };
@@ -424,7 +431,6 @@ fn merge_cookie_headers(a: &str, b: &str) -> String {
 }
 
 fn resolve_cookies(app: &AppHandle) -> String {
-    let from_file = cookies_from_session_file(app);
     let cached = if let Ok(guard) = COOKIE_CACHE.lock() {
         guard.as_ref().map(|(c, _)| c.clone()).unwrap_or_default()
     } else {
@@ -435,6 +441,8 @@ fn resolve_cookies(app: &AppHandle) -> String {
         refresh_in_background(app);
         return cached;
     }
+    // odszyfrowanie pliku sesji przy każdym zapytaniu kosztowało, a cache z logowaniem ma pierwszeństwo
+    let from_file = cookies_from_session_file(app);
     if auth_cookie_score(&from_file) > 0 {
         warm_cookie_cache(from_file.clone());
         return from_file;
