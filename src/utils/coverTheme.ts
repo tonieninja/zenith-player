@@ -120,7 +120,10 @@ export function applyCoverTheme(coverUrl: string | undefined | null) {
       canvas.width = size;
       canvas.height = size;
       const ctx = canvas.getContext('2d');
-      if (!ctx) return;
+      if (!ctx) {
+        resetCoverTheme();
+        return;
+      }
       ctx.drawImage(img, 0, 0, size, size);
       const { data } = ctx.getImageData(0, 0, size, size);
       let r = 0;
@@ -140,7 +143,11 @@ export function applyCoverTheme(coverUrl: string | undefined | null) {
         b += pb;
         n += 1;
       }
-      if (!n) return;
+      // sama czerń albo biel nie daje akcentu, a zostawienie poprzedniego pokazywałoby kolor innej okładki
+      if (!n) {
+        resetCoverTheme();
+        return;
+      }
       r = Math.round(r / n);
       g = Math.round(g / n);
       b = Math.round(b / n);

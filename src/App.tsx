@@ -472,6 +472,7 @@ export default function App() {
     title: '',
     artist: '',
     coverUrl: '',
+    miniCover: '',
     syncedLen: 0,
     textLen: 0,
     provider: '',
@@ -510,8 +511,6 @@ export default function App() {
   const [libLoading, setLibLoading] = useState(false);
   const [libCategory, setLibCategory] = useState<LibraryCategory>('landing');
   const libReqIdRef = useRef(0);
-  const loginPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const loginPollDelayRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const loginFinishingRef = useRef(false);
   const loginClosingRef = useRef(false);
   const loginDoneRef = useRef(false);
@@ -751,7 +750,6 @@ export default function App() {
   const durationRef = useLatest(duration);
   const libAuthedRef = useLatest(libAuthed);
   const activeTabRef = useLatest<ViewTab>(activeTab);
-  const panelTabRef = useLatest<'upnext' | 'related'>(panelTab);
   const currentTrackIdRef = useLatest<string | null>(currentTrack?.id ?? null);
   const loopModeRef = useLatest<LoopMode>(loopMode);
   const lyricsRef = useLatest<LyricsResult | null>(lyrics);
@@ -1427,17 +1425,6 @@ export default function App() {
     return () => window.removeEventListener('online', onOnline);
   }, [lang, loadHome, loadUserPlaylists, refreshAccountProfile, libAuthedRef, homeEmptyRef]);
 
-  const stopLoginPoll = useCallback(() => {
-    if (loginPollDelayRef.current) {
-      clearTimeout(loginPollDelayRef.current);
-      loginPollDelayRef.current = null;
-    }
-    if (loginPollRef.current) {
-      clearInterval(loginPollRef.current);
-      loginPollRef.current = null;
-    }
-  }, []);
-
   const completeLogin = useCallback(async () => {
     if (loginFinishingRef.current) return;
     loginFinishingRef.current = true;
@@ -1463,7 +1450,6 @@ export default function App() {
       }
       loginDoneRef.current = true;
       setLoginBusy(false);
-      stopLoginPoll();
       if (getRememberLogin()) await persistSessionIfWanted();
       else await invoke('forget_ytm_session_file').catch(() => undefined);
       loginClosingRef.current = true;
@@ -1491,7 +1477,6 @@ export default function App() {
     loadUserPlaylists,
     persistSessionIfWanted,
     refreshAccountProfile,
-    stopLoginPoll,
   ]);
 
   const finalizeLoginFromPopup = useCallback(async () => {
@@ -1502,7 +1487,6 @@ export default function App() {
   }, [completeLogin]);
 
   const handleLogout = useCallback(() => {
-    stopLoginPoll();
     setLoginBusy(false);
     loginDoneRef.current = false;
     loginFinishingRef.current = false;
@@ -1547,7 +1531,7 @@ export default function App() {
       clearCaches();
       loadHome(lang);
     })();
-  }, [lang, loadHome, stopLoginPoll]);
+  }, [lang, loadHome]);
 
   const changeLibCategory = useCallback(
     (category: LibraryCategory) => {
@@ -1651,11 +1635,10 @@ export default function App() {
   ]);
 
   const cancelLogin = useCallback(async () => {
-    stopLoginPoll();
     loginDoneRef.current = true;
     setLoginBusy(false);
     await invoke('close_google_login').catch(() => undefined);
-  }, [stopLoginPoll]);
+  }, []);
 
   const refreshAuth = useCallback(() => {
     void (async () => {
@@ -1688,8 +1671,6 @@ export default function App() {
       pushToast(translations[lang].sessionExpired, 'error');
     })();
   }, [lang, loadLibrary, loadHome, loadUserPlaylists, refreshAccountProfile]);
-
-  useEffect(() => () => stopLoginPoll(), [stopLoginPoll]);
 
   useEffect(() => {
     if (!loginBusy || loginDoneRef.current) return;
@@ -1791,25 +1772,8 @@ export default function App() {
           setLyrics(null);
           setLyricsLoading(false);
         });
-
-      if (panelTabRef.current === 'related') {
-        const relReqId = ++relatedReqIdRef.current;
-        setRelatedLoading(true);
-        setRelated(null);
-        getWatchRelated(track.id, lang)
-          .then((data) => {
-            if (relReqId !== relatedReqIdRef.current) return;
-            setRelated(data);
-            setRelatedLoading(false);
-          })
-          .catch(() => {
-            if (relReqId !== relatedReqIdRef.current) return;
-            setRelated(null);
-            setRelatedLoading(false);
-          });
-      }
     },
-    [lang, durationRef, lyricsRef, panelTabRef]
+    [lang, durationRef, lyricsRef]
   );
 
   const fetchRelatedForTrack = useCallback(
@@ -4620,6 +4584,8 @@ export default function App() {
     meta.title = currentTrack.title;
     meta.artist = currentTrack.artist;
     meta.coverUrl = currentTrack.coverLarge || currentTrack.cover;
+    // okładka mini ma 56 px; inny adres w kolejnych wysyłkach ładował i dekodował drugi obraz przy każdym utworze
+    meta.miniCover = currentTrack.coverSmall || currentTrack.cover;
     meta.syncedLen = syncedLen;
     meta.textLen = textLen;
     meta.provider = provider;
@@ -4681,7 +4647,7 @@ export default function App() {
         liked: isSavedRef.current,
         title: m.title,
         artist: m.artist,
-        coverUrl: m.coverUrl,
+        coverUrl: m.miniCover,
         trackId: m.trackId,
         progress: audio.currentTime || progressRef.current,
         duration: durationRef.current,
@@ -4732,7 +4698,7 @@ export default function App() {
         liked: isSavedRef.current,
         title: m.title,
         artist: m.artist,
-        coverUrl: m.coverUrl,
+        coverUrl: m.miniCover,
         trackId: m.trackId,
         progress: progressRef.current,
         duration: durationRef.current,
