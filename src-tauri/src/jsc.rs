@@ -1,8 +1,9 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{channel, Receiver, RecvTimeoutError, Sender};
 use std::sync::{Mutex, OnceLock};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 const LIB: &str = include_str!("ejs/lib.min.js");
 const CORE: &str = include_str!("ejs/core.min.js");
@@ -50,6 +51,14 @@ struct Job {
 }
 
 static TX: Mutex<Option<Sender<Job>>> = Mutex::new(None);
+// zapętlony player.js trzymał wątek solvera, a każde kolejne rozwiązanie czekało 90 s na timeout
+const JOB_BUDGET_MS: u64 = 45_000;
+static DEADLINE_MS: AtomicU64 = AtomicU64::new(u64::MAX);
+
+fn now_ms() -> u64 {
+    static BASE: OnceLock<Instant> = OnceLock::new();
+    BASE.get_or_init(Instant::now).elapsed().as_millis() as u64
+}
 static CACHE_DIR: OnceLock<PathBuf> = OnceLock::new();
 
 pub fn set_cache_dir(dir: PathBuf) {
@@ -147,6 +156,9 @@ fn new_engine() -> Result<Engine, String> {
     let rt = rquickjs::Runtime::new().map_err(|e| e.to_string())?;
     rt.set_memory_limit(MEM_LIMIT);
     rt.set_max_stack_size(STACK);
+    rt.set_interrupt_handler(Some(Box::new(|| {
+        now_ms() > DEADLINE_MS.load(Ordering::Relaxed)
+    })));
     let ctx = rquickjs::Context::full(&rt).map_err(|e| e.to_string())?;
     ctx.with(|ctx| -> Result<(), String> {
         ctx.eval::<(), _>(LIB).map_err(|e| js_err(&ctx, e))?;
@@ -261,7 +273,9 @@ fn worker(rx: Receiver<Job>) {
                     }
                 }
                 let Some(eng) = engine.as_mut() else { continue };
+                DEADLINE_MS.store(now_ms() + JOB_BUDGET_MS, Ordering::Relaxed);
                 let res = handle(eng, &mut job);
+                DEADLINE_MS.store(u64::MAX, Ordering::Relaxed);
                 if res.is_err() {
                     engine = None;
                 }
@@ -280,6 +294,15 @@ fn worker(rx: Receiver<Job>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_runaway_script_is_interrupted() {
+        let e = new_engine().expect("engine");
+        DEADLINE_MS.store(now_ms() + 200, Ordering::Relaxed);
+        let r = e.ctx.with(|ctx| ctx.eval::<(), _>("for(;;){}").is_err());
+        DEADLINE_MS.store(u64::MAX, Ordering::Relaxed);
+        assert!(r);
+    }
 
     #[test]
     fn bundled_solver_loads() {

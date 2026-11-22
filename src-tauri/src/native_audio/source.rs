@@ -298,7 +298,8 @@ fn client(local: bool) -> &'static reqwest::blocking::Client {
         crate::win_proxy::wait();
         let b = reqwest::blocking::Client::builder()
             .connect_timeout(Duration::from_secs(15))
-            .timeout(None::<Duration>)
+            // w blocking to limit na każdy odczyt, nie na całość; zawieszone połączenie wznawiamy od bieżącego bajtu
+            .timeout(Duration::from_secs(120))
             .user_agent("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36");
         let b = if local { b.no_proxy() } else { b };
         b.build().unwrap_or_else(|_| reqwest::blocking::Client::new())
