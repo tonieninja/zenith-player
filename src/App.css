@@ -4999,9 +4999,10 @@ html.has-cover-theme .main-play-pause-circle {
   max-width: 320px;
 }
 
+/* nad .global-modal-overlay (15000): menu z portalu w body inaczej ląduje pod oknem modalnym */
 .zen-popover-menu-list {
   position: fixed;
-  z-index: 5000;
+  z-index: 15500;
   min-width: 200px;
   max-width: 320px;
 }

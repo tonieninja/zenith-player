@@ -11,7 +11,7 @@
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: 320px 1fr;
+  grid-template-columns: 360px 1fr;
   gap: 0;
 }
 .pm-side {
@@ -49,6 +49,18 @@
 }
 .pm-side-tools > :first-child {
   flex: 1;
+  min-width: 0;
+}
+/* stała kolumna: lista sortowania ma się zwęzić, a nie wypchnąć przycisku importu poza panel */
+.pm-side-tools .zen-select-trigger {
+  min-width: 0;
+  width: 100%;
+}
+.pm-side-tools .zen-select-value {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .pm-chips {
   display: flex;

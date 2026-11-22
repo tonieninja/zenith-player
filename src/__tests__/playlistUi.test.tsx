@@ -3,6 +3,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { PopoverMenu, popoverMenuCoords } from '../components/ui/PopoverMenu';
 import { ctxTrackAttr, isVideoTrackId, parseCtxTrackAttr, isPrimaryButton } from '../utils/tracks';
+import appCss from '../App.css?raw';
 
 describe('song context menu payload', () => {
   it('serializes real songs so Add to playlist can open the picker', () => {
@@ -134,5 +135,17 @@ describe('Add to playlist picker', () => {
       });
       host.remove();
     }
+  });
+});
+
+describe('popover menu stacking', () => {
+  const z = (sel: string) => {
+    const block = appCss.slice(appCss.indexOf(`${sel} {`));
+    return Number(/z-index:\s*(\d+)/.exec(block.slice(0, block.indexOf('}')))?.[1]);
+  };
+
+  it('draws above modal overlays so menus inside the playlist manager can be clicked', () => {
+    expect(z('.zen-popover-menu-list')).toBeGreaterThan(z('.global-modal-overlay'));
+    expect(z('.zen-popover-menu-list')).toBeLessThan(20000);
   });
 });
