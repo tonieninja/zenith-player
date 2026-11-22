@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock};
 use std::time::Instant;
 
@@ -286,6 +287,8 @@ impl Player {
 
 static CONN: OnceLock<Option<zbus::blocking::Connection>> = OnceLock::new();
 static LAST: Mutex<Option<State>> = Mutex::new(None);
+static SEQ: AtomicU64 = AtomicU64::new(0);
+static APPLIED: AtomicU64 = AtomicU64::new(0);
 
 fn conn(app: &AppHandle) -> Option<&'static zbus::blocking::Connection> {
     CONN.get_or_init(|| {
@@ -328,6 +331,8 @@ pub fn mpris_update(
     loop_mode: Option<String>,
     shuffle: Option<bool>,
 ) {
+    // każda aktualizacja ma własny wątek; starsza, która skończy później, pokazałaby „pauza”, gdy gra
+    let seq = SEQ.fetch_add(1, Ordering::Relaxed) + 1;
     std::thread::spawn(move || {
         let Some(c) = conn(&app) else { return };
         let Ok(iface) = c.object_server().interface::<_, Player>(PATH) else {
@@ -335,6 +340,10 @@ pub fn mpris_update(
         };
         let now = Instant::now();
         let mut last = LAST.lock().unwrap_or_else(|p| p.into_inner());
+        if seq < APPLIED.load(Ordering::Relaxed) {
+            return;
+        }
+        APPLIED.store(seq, Ordering::Relaxed);
         let prev = last.clone().unwrap_or_default();
         // brak pola = nadawca go nie zna (np. zasobnik bez tempa), więc zostaje poprzednia wartość
         let mut st = State {
