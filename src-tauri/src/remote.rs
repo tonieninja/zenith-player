@@ -40,10 +40,28 @@ lazy_static::lazy_static! {
     static ref APP: Mutex<Option<AppHandle>> = Mutex::new(None);
     // licznik na adres: jeden host z błędnym PIN-em nie blokuje pilota wszystkim pozostałym
     static ref FAILS: Mutex<Fails> = Mutex::new(Fails::new());
-        static ref CLIENTS: Mutex<u32> = Mutex::new(0);
+    // adresów IPv6 w sieci lokalnej jest dowolnie dużo, więc licznik per IP sam nie zatrzyma zgadywania
+    static ref GLOBAL_FAILS: Mutex<GlobalFails> = Mutex::new(GlobalFails::default());
+    static ref CLIENTS: Mutex<u32> = Mutex::new(0);
     static ref LAST_LYRICS: Mutex<String> = Mutex::new(String::new());
     static ref DEVICE_KEYS: Mutex<std::collections::HashSet<String>> = Mutex::new(Default::default());
     static ref KEYS_FILE: Mutex<Option<std::path::PathBuf>> = Mutex::new(None);
+    // podbijany przy każdej zmianie uprawnień; połączone telefony sprawdzają wtedy dostęp od nowa
+    static ref GEN: tokio::sync::watch::Sender<u64> = tokio::sync::watch::channel(0).0;
+}
+
+const GLOBAL_LIMIT: u32 = 20;
+const GLOBAL_WINDOW: Duration = Duration::from_secs(60);
+
+#[derive(Default)]
+struct GlobalFails {
+    window: Option<Instant>,
+    count: u32,
+    until: Option<Instant>,
+}
+
+fn bump_gen() {
+    GEN.send_modify(|g| *g = g.wrapping_add(1));
 }
 
 fn is_lan(ip: IpAddr) -> bool {
@@ -148,17 +166,27 @@ fn load_keys(path: std::path::PathBuf) {
 
 type Fails = std::collections::HashMap<IpAddr, (u32, Option<Instant>)>;
 
-fn auth_ok(q: &PinQuery, ip: IpAddr) -> Result<(), StatusCode> {
-    if let Some(k) = q.key.as_deref() {
-        if !k.is_empty() && DEVICE_KEYS.lock().map(|s| s.contains(k)).unwrap_or(false) {
-            return Ok(());
-        }
-    }
-    let (pin, pair) = SERVER
+fn key_ok(q: &PinQuery) -> bool {
+    q.key.as_deref().is_some_and(|k| {
+        !k.is_empty() && DEVICE_KEYS.lock().map(|s| s.contains(k)).unwrap_or(false)
+    })
+}
+
+fn server_auth() -> Option<(String, bool)> {
+    SERVER
         .lock()
         .ok()
         .and_then(|g| g.as_ref().map(|s| (s.pin.clone(), s.pair)))
-        .unwrap_or_default();
+}
+
+fn auth_ok(q: &PinQuery, ip: IpAddr) -> Result<(), StatusCode> {
+    if key_ok(q) {
+        return Ok(());
+    }
+    // bez wpisu serwera (start, zmiana portu, zatrzymanie) nie ma PIN-u do porównania, więc nikt nie wchodzi
+    let Some((pin, pair)) = server_auth() else {
+        return Err(StatusCode::UNAUTHORIZED);
+    };
     // w trybie QR wpuszcza tylko klucz z parowania, jak obiecuje opis przełącznika; PIN dałby drugą furtkę
     if pair {
         return Err(StatusCode::UNAUTHORIZED);
@@ -166,7 +194,47 @@ fn auth_ok(q: &PinQuery, ip: IpAddr) -> Result<(), StatusCode> {
     if pin.is_empty() {
         return Ok(());
     }
-    pin_ok(q.pin.as_deref(), ip)
+    pin_ok(q.pin.as_deref(), &pin, ip)
+}
+
+// ponowne sprawdzenie po zmianie uprawnień; nie liczy prób, bo telefon niczego tu nie zgaduje
+fn still_ok(q: &PinQuery) -> bool {
+    if key_ok(q) {
+        return true;
+    }
+    match server_auth() {
+        Some((pin, false)) => pin.is_empty() || ct_eq(q.pin.as_deref().unwrap_or(""), &pin),
+        _ => false,
+    }
+}
+
+fn note_global_fail(g: &mut GlobalFails, now: Instant) {
+    if g.window
+        .is_none_or(|w| now.duration_since(w) > GLOBAL_WINDOW)
+    {
+        g.window = Some(now);
+        g.count = 0;
+    }
+    g.count += 1;
+    if g.count >= GLOBAL_LIMIT {
+        g.until = Some(now + GLOBAL_WINDOW);
+        g.window = None;
+    }
+}
+
+fn globally_locked(now: Instant) -> bool {
+    GLOBAL_FAILS
+        .lock()
+        .ok()
+        .and_then(|g| g.until)
+        .is_some_and(|until| now < until)
+}
+
+fn record_fail(f: &mut Fails, ip: IpAddr) {
+    note_fail(f, ip);
+    if let Ok(mut g) = GLOBAL_FAILS.lock() {
+        note_global_fail(&mut g, Instant::now());
+    }
 }
 
 fn note_fail(f: &mut Fails, ip: IpAddr) {
@@ -186,24 +254,18 @@ fn locked(ip: IpAddr) -> Result<std::sync::MutexGuard<'static, Fails>, StatusCod
     let f = FAILS
         .lock()
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    if f.get(&ip)
-        .and_then(|e| e.1)
-        .is_some_and(|until| Instant::now() < until)
+    let now = Instant::now();
+    if globally_locked(now)
+        || f.get(&ip)
+            .and_then(|e| e.1)
+            .is_some_and(|until| now < until)
     {
         return Err(StatusCode::TOO_MANY_REQUESTS);
     }
     Ok(f)
 }
 
-fn pin_ok(given: Option<&str>, ip: IpAddr) -> Result<(), StatusCode> {
-    let want = SERVER
-        .lock()
-        .ok()
-        .and_then(|g| g.as_ref().map(|s| s.pin.clone()))
-        .unwrap_or_default();
-    if want.is_empty() {
-        return Ok(());
-    }
+fn pin_ok(given: Option<&str>, want: &str, ip: IpAddr) -> Result<(), StatusCode> {
     let mut f = locked(ip)?;
     let g = given.unwrap_or("").as_bytes();
     let w = want.as_bytes();
@@ -215,12 +277,12 @@ fn pin_ok(given: Option<&str>, ip: IpAddr) -> Result<(), StatusCode> {
         f.remove(&ip);
         Ok(())
     } else {
-        note_fail(&mut f, ip);
+        record_fail(&mut f, ip);
         Err(StatusCode::UNAUTHORIZED)
     }
 }
 
-#[derive(Deserialize, Default)]
+#[derive(Deserialize, Default, Clone)]
 struct PinQuery {
     pin: Option<String>,
     key: Option<String>,
@@ -257,7 +319,7 @@ async fn api_pair(
         }
     };
     if !ok {
-        note_fail(&mut f, ip);
+        record_fail(&mut f, ip);
         return StatusCode::UNAUTHORIZED.into_response();
     }
     f.remove(&ip);
@@ -365,6 +427,10 @@ fn forward(v: &Value) -> bool {
     let Some(clean) = sanitize(v) else {
         return false;
     };
+    // stare połączenie po zatrzymaniu pilota nie steruje już odtwarzaczem
+    if SERVER.lock().map(|g| g.is_none()).unwrap_or(true) {
+        return false;
+    }
     #[cfg(test)]
     if let Ok(path) = std::env::var("ZENITH_REMOTE_E2E_LOG") {
         use std::io::Write;
@@ -439,13 +505,20 @@ async fn ws_upgrade(
         return code.into_response();
     }
     ws.max_message_size(16 * 1024)
-        .on_upgrade(client)
+        .on_upgrade(move |s| client(s, q))
         .into_response()
 }
 
-async fn client(socket: WebSocket) {
+async fn client(socket: WebSocket, q: PinQuery) {
     let (mut sink, mut stream) = socket.split();
     let mut rx = TX.subscribe();
+    let mut gen = GEN.subscribe();
+    // uprawnienia mogły się zmienić między sprawdzeniem PIN-u a zapisaniem się na zmiany
+    if !still_ok(&q) {
+        let _ = sink.send(Message::Text(BYE.into())).await;
+        let _ = sink.send(Message::Close(None)).await;
+        return;
+    }
     if let Ok(mut c) = CLIENTS.lock() {
         *c += 1;
     }
@@ -458,6 +531,13 @@ async fn client(socket: WebSocket) {
     if ok {
         loop {
             tokio::select! {
+                Ok(()) = gen.changed() => {
+                    if !still_ok(&q) {
+                        let _ = sink.send(Message::Text(BYE.into())).await;
+                        let _ = sink.send(Message::Close(None)).await;
+                        break;
+                    }
+                }
                 msg = rx.recv() => match msg {
                     Ok(s) => {
                         let bye = s == BYE;
@@ -610,6 +690,7 @@ async fn start_server(port: u16, pin: String, pair: bool) -> Result<RemoteInfo, 
                     s.pair_token = random_hex(12).ok_or("no randomness")?;
                 }
                 drop(g);
+                bump_gen();
                 return Ok(info());
             }
             stop_inner(s);
@@ -642,6 +723,17 @@ async fn start_server(port: u16, pin: String, pair: bool) -> Result<RemoteInfo, 
             },
         ));
     let (tx, rx) = tokio::sync::oneshot::channel::<()>();
+    // wpis przed startem nasłuchu, żeby pierwsze żądania nie trafiły na serwer bez PIN-u
+    *SERVER.lock().map_err(|e| e.to_string())? = Some(Server {
+        port,
+        pin,
+        pair,
+        pair_token,
+        shutdown: Some(tx),
+        mdns: None,
+    });
+    FAILS.lock().map_err(|e| e.to_string())?.clear();
+    *GLOBAL_FAILS.lock().map_err(|e| e.to_string())? = GlobalFails::default();
     tokio::spawn(async move {
         let _ = axum::serve(
             listener,
@@ -657,15 +749,16 @@ async fn start_server(port: u16, pin: String, pair: bool) -> Result<RemoteInfo, 
     } else {
         start_mdns(port)
     };
-    *SERVER.lock().map_err(|e| e.to_string())? = Some(Server {
-        port,
-        pin,
-        pair,
-        pair_token,
-        shutdown: Some(tx),
-        mdns,
-    });
-    FAILS.lock().map_err(|e| e.to_string())?.clear();
+    if let Some(d) = mdns {
+        let mut g = SERVER.lock().map_err(|e| e.to_string())?;
+        match g.as_mut().filter(|s| s.port == port) {
+            Some(s) => s.mdns = Some(d),
+            None => {
+                let _ = d.shutdown();
+            }
+        }
+    }
+    bump_gen();
     Ok(info())
 }
 
@@ -677,6 +770,7 @@ pub fn remote_stop() {
         }
     }
     let _ = TX.send(String::from(BYE));
+    bump_gen();
 }
 
 #[tauri::command]
@@ -685,6 +779,7 @@ pub fn remote_forget_devices() -> RemoteInfo {
         k.clear();
     }
     save_keys();
+    bump_gen();
     info()
 }
 
@@ -994,10 +1089,72 @@ mod tests {
             svg.contains("viewBox=") && svg.contains("width=\"100%\""),
             "{svg}"
         );
+        let ws = tokio::task::spawn_blocking(move || {
+            use std::io::{Read, Write};
+            let mut s = std::net::TcpStream::connect(("127.0.0.1", port)).unwrap();
+            s.set_read_timeout(Some(Duration::from_millis(800)))
+                .unwrap();
+            s.write_all(
+                b"GET /ws?pin=1234 HTTP/1.1
+Host: 127.0.0.1
+Connection: Upgrade
+Upgrade: websocket
+Sec-WebSocket-Version: 13
+Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==
+
+",
+            )
+            .unwrap();
+            let mut all = Vec::new();
+            let mut buf = vec![0u8; 65536];
+            let deadline = Instant::now() + Duration::from_secs(3);
+            while Instant::now() < deadline && !String::from_utf8_lossy(&all).contains("isPlaying")
+            {
+                match s.read(&mut buf) {
+                    Ok(0) => break,
+                    Ok(n) => all.extend_from_slice(&buf[..n]),
+                    Err(_) => {}
+                }
+            }
+            let head = String::from_utf8_lossy(&all).into_owned();
+            assert!(
+                head.starts_with("HTTP/1.1 101") && head.contains("isPlaying"),
+                "{head}"
+            );
+            s
+        })
+        .await
+        .unwrap();
+        start_server(port, "9999".into(), false).await.unwrap();
+        let got = tokio::task::spawn_blocking(move || {
+            use std::io::Read;
+            let mut s = ws;
+            let mut all = Vec::new();
+            let mut buf = vec![0u8; 65536];
+            let deadline = Instant::now() + Duration::from_secs(3);
+            while Instant::now() < deadline && !String::from_utf8_lossy(&all).contains(BYE) {
+                match s.read(&mut buf) {
+                    Ok(0) => break,
+                    Ok(n) => all.extend_from_slice(&buf[..n]),
+                    Err(_) => {}
+                }
+            }
+            String::from_utf8_lossy(&all).into_owned()
+        })
+        .await
+        .unwrap();
+        assert!(
+            got.contains(BYE),
+            "phone with the old pin must be dropped: {got}"
+        );
         remote_stop();
         tokio::time::sleep(Duration::from_millis(300)).await;
         assert!(std::net::TcpStream::connect(("127.0.0.1", port)).is_err());
         assert!(!info().running);
+        assert_eq!(
+            auth_ok(&PinQuery::default(), "127.0.0.1".parse().unwrap()),
+            Err(StatusCode::UNAUTHORIZED)
+        );
 
         let port = 18798;
         start_server(port, String::new(), true).await.unwrap();
@@ -1089,6 +1246,24 @@ mod tests {
             note_fail(&mut f, ip);
         }
         assert!(left(&f) <= 3840);
+    }
+
+    #[test]
+    fn global_limit_locks_everyone() {
+        let t0 = Instant::now();
+        let mut g = GlobalFails::default();
+        for _ in 0..GLOBAL_LIMIT - 1 {
+            note_global_fail(&mut g, t0);
+        }
+        assert!(g.until.is_none());
+        note_global_fail(&mut g, t0);
+        assert!(g.until.is_some_and(|u| u > t0));
+        let mut g = GlobalFails::default();
+        for _ in 0..GLOBAL_LIMIT - 1 {
+            note_global_fail(&mut g, t0);
+        }
+        note_global_fail(&mut g, t0 + GLOBAL_WINDOW + Duration::from_secs(1));
+        assert!(g.until.is_none() && g.count == 1);
     }
 
     #[test]
