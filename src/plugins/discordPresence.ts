@@ -1,20 +1,32 @@
 import { invoke } from '@tauri-apps/api/core';
 import { NowPlayingInfo, ZenithPlugin } from './types';
 
-const DEFAULT_CLIENT_ID = '1514342633374486709';
+export const DEFAULT_CLIENT_ID = '1514342633374486709';
 
 const MIN_UPDATE_INTERVAL_MS = 4000;
+const RETRY_MS = 15000;
 
 export function getDiscordClientId(): string {
-  return localStorage.getItem('zenith_discord_client_id') || DEFAULT_CLIENT_ID;
+  const own = localStorage.getItem('zenith_discord_client_id')?.trim() ?? '';
+  // niedokończony lub śmieciowy wpis z pola ustawień nie może po cichu wyłączyć statusu
+  return /^\d{17,20}$/.test(own) ? own : DEFAULT_CLIENT_ID;
 }
 
 let lastSentKey = '';
 let lastSentAt = 0;
 let pendingTimer: ReturnType<typeof setTimeout> | null = null;
+let retryTimer: ReturnType<typeof setTimeout> | null = null;
+
+function stopTimers() {
+  if (pendingTimer) clearTimeout(pendingTimer);
+  if (retryTimer) clearTimeout(retryTimer);
+  pendingTimer = null;
+  retryTimer = null;
+}
 
 function send(info: NowPlayingInfo) {
   lastSentAt = Date.now();
+  const sentAt = lastSentAt;
   void invoke('discord_update_presence', {
     payload: {
       clientId: getDiscordClientId(),
@@ -28,8 +40,15 @@ function send(info: NowPlayingInfo) {
       context: info.context || null,
     },
   }).catch(() => {
-    // Discord jeszcze nie działa, więc następna zmiana utworu wyśle status od nowa
     lastSentKey = '';
+    // Discord włączony po Zenith albo zrestartowany: bez ponowienia status czekałby na następny utwór
+    if (sentAt !== lastSentAt || retryTimer) return;
+    retryTimer = setTimeout(() => {
+      retryTimer = null;
+      if (sentAt !== lastSentAt) return;
+      const shift = info.isPlaying ? (Date.now() - sentAt) / 1000 : 0;
+      send({ ...info, position: info.position + shift });
+    }, RETRY_MS);
   });
 }
 
@@ -42,10 +61,7 @@ export const discordPresencePlugin: ZenithPlugin = {
   defaultEnabled: false,
 
   onNowPlaying(info: NowPlayingInfo | null) {
-    if (pendingTimer) {
-      clearTimeout(pendingTimer);
-      pendingTimer = null;
-    }
+    stopTimers();
     if (!info) {
       lastSentKey = '';
       void invoke('discord_clear_presence');
@@ -67,11 +83,9 @@ export const discordPresencePlugin: ZenithPlugin = {
   },
 
   onDisable() {
-    if (pendingTimer) {
-      clearTimeout(pendingTimer);
-      pendingTimer = null;
-    }
+    stopTimers();
     lastSentKey = '';
+    lastSentAt = 0;
     void invoke('discord_disconnect');
   },
 };

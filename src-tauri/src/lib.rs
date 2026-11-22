@@ -970,7 +970,8 @@ pub fn run() {
             ytm_api::ytm_browse,
             discord::discord_update_presence,
             discord::discord_clear_presence,
-            discord::discord_disconnect
+            discord::discord_disconnect,
+            discord::discord_status
         ])
         .build(windows::with_user_webview_args(tauri::generate_context!()))
         .unwrap_or_else(|e| {

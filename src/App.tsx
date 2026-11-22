@@ -3400,6 +3400,7 @@ export default function App() {
     playingFrom,
     pluginStates,
     isPlaying,
+    discordClientId,
     sendPlanRef,
   ]);
 
@@ -3707,9 +3708,11 @@ export default function App() {
   }, [audio, currentTrack, duration, isPlaying, playingFrom]);
 
   const broadcastOnChange = useEffectEvent(() => broadcastPlayback());
+  const discordOn = Boolean(pluginStates['discord-rpc']);
+  // włączenie statusu albo nowe ID w trakcie utworu ma zadziałać od razu, nie dopiero przy następnym
   useEffect(() => {
     broadcastOnChange();
-  }, [currentTrack?.id, isPlaying]);
+  }, [currentTrack?.id, isPlaying, discordOn, discordClientId]);
 
   useEffect(() => {
     pluginManager.notifyPlayState(isPlaying);

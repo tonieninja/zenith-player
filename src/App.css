@@ -4622,6 +4622,10 @@ html.has-cover-theme .main-play-pause-circle {
   color: #ff7a59;
 }
 
+.discord-status.ok {
+  color: #57f287;
+}
+
 .plugin-setting-row--stacked {
   flex-direction: column;
   align-items: stretch;

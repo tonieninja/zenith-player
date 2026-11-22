@@ -34,6 +34,8 @@ import { DownloadsSettings } from './plugins/DownloadsSettings';
 import { HotkeySettings } from './plugins/HotkeySettings';
 import { MiniPlayerSettings } from './plugins/MiniPlayerSettings';
 import { DuckMeter } from './plugins/DuckMeter';
+import { DiscordStatus } from './plugins/DiscordStatus';
+import { DEFAULT_CLIENT_ID } from '../plugins/discordPresence';
 import type { Track } from '../api/youtube';
 import { getListenStats, resetListenStats } from '../plugins/statsTracker';
 import { clearListeningHistory, getListeningHistory } from '../plugins/listeningHistory';
@@ -436,12 +438,19 @@ export function PluginsPanel({
             <div className="plugin-setting-label">
               <span>{t.discordAppId}</span>
               <span className="plugin-desc">{t.discordAppIdDesc}</span>
+              <DiscordStatus
+                connected={t.discordConnected}
+                waiting={t.discordWaiting}
+                noDiscord={t.discordNoApp}
+                badId={t.discordBadId}
+                rejected={t.discordRejected}
+              />
             </div>
             <input
               className="settings-text-input"
               type="text"
               inputMode="numeric"
-              placeholder="1514342633374486709"
+              placeholder={DEFAULT_CLIENT_ID}
               value={discordClientId}
               onChange={(e) => saveDiscordClientId(e.target.value)}
               spellCheck={false}
