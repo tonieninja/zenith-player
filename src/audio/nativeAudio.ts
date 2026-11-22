@@ -12,6 +12,7 @@ export interface EngineSnapshot {
   crossfading: boolean;
   ended: boolean;
   buffering?: boolean;
+  seq?: number;
 }
 
 type Cmd =
@@ -32,6 +33,9 @@ type Cmd =
 function domError(name: string, message: string) {
   return new DOMException(message, name);
 }
+
+// do odpowiedzi na seek żaden tick nie może nadpisać nowej pozycji, nawet wysłany przed komendą
+const SEEKING = Number.MAX_SAFE_INTEGER;
 
 export class NativeAudio {
   private s: EngineSnapshot = {
@@ -84,16 +88,23 @@ export class NativeAudio {
     this.target.dispatchEvent(new Event(type));
   }
 
-  private take(s: EngineSnapshot) {
+  private take(s: EngineSnapshot, reply = false) {
+    const cur = this.s.seq;
+    // tick wysłany przed seekiem, a odebrany po nim, cofał pasek postępu na ćwierć sekundy
+    if (s.seq != null && cur != null && s.seq < cur && !(reply && cur === SEEKING)) return;
     this.s = s;
     this.at = performance.now();
   }
 
   private send(cmd: Cmd) {
     const seq = ++this.seq;
-    void invoke<EngineSnapshot>('zaudio_cmd', { cmd }).then((s) => {
-      if (seq === this.seq) this.take(s);
-    });
+    void invoke<EngineSnapshot>('zaudio_cmd', { cmd })
+      .then((s) => {
+        if (seq === this.seq) this.take(s, true);
+      })
+      .catch(() => {
+        if (this.s.seq === SEEKING) this.s = { ...this.s, seq: undefined };
+      });
   }
 
   get currentTime() {
@@ -105,7 +116,7 @@ export class NativeAudio {
   }
   set currentTime(v: number) {
     const t = Math.max(0, Number(v) || 0);
-    this.s = { ...this.s, t, ended: false };
+    this.s = { ...this.s, t, ended: false, seq: SEEKING };
     this.at = performance.now();
     this.send({ op: 'seek', t });
   }
@@ -195,7 +206,7 @@ export class NativeAudio {
     this.at = performance.now();
     try {
       const s = await invoke<EngineSnapshot>('zaudio_play');
-      this.take(s);
+      this.take(s, true);
     } catch (err) {
       const msg = String(err);
       throw domError(msg.startsWith('AbortError') ? 'AbortError' : 'NotAllowedError', msg);
@@ -250,6 +261,6 @@ export class NativeAudio {
     const s = await invoke<EngineSnapshot>('zaudio_crossfade', { url, seconds }).catch((err) => {
       throw new Error(String(err));
     });
-    this.take(s);
+    this.take(s, true);
   }
 }

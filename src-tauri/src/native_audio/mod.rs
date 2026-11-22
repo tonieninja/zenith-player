@@ -30,7 +30,11 @@ pub struct Snapshot {
     pub ended: bool,
     pub muted: bool,
     pub buffering: bool,
+    // nadawany pod blokadą stanu: okno odrzuca zdarzenie wyemitowane już po nowszej odpowiedzi na komendę
+    pub seq: u64,
 }
+
+static SNAP_SEQ: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Clone, Serialize)]
 struct Ev {
@@ -192,6 +196,7 @@ fn snap_of(st: &State) -> Snapshot {
         ended: d.ended,
         muted: st.muted,
         buffering: d.buffering,
+        seq: SNAP_SEQ.fetch_add(1, Ordering::Relaxed) + 1,
     }
 }
 
@@ -237,11 +242,16 @@ fn set_playing(d: &Deck, on: bool) {
 }
 
 fn clear_deck(d: &mut Deck) {
+    stop_deck(d);
+    d.out.queue().flush();
+}
+
+// kolejka zostaje do następnego load_deck: mikser wygasza z niej ułamek sekundy zamiast uciąć falę w pół
+fn stop_deck(d: &mut Deck) {
     set_playing(d, false);
     if let Some(b) = d.buf.take() {
         b.cancel();
     }
-    d.out.queue().flush();
     d.out.set_pos(0.0);
     d.out.starved.store(false, Ordering::SeqCst);
     d.out.drained.store(false, Ordering::SeqCst);
@@ -544,7 +554,8 @@ fn cancel_fade(st: &mut State) {
 
 fn silence_other(st: &mut State) {
     let o = 1 - st.active;
-    clear_deck(&mut st.decks[o]);
+    // next w trakcie przejścia ucinał wychodzący utwór bez wyciszenia (trzask)
+    stop_deck(&mut st.decks[o]);
     st.decks[o].gain = 0.0;
     apply_volume(st, o);
 }
