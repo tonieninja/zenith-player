@@ -13,10 +13,17 @@ pub fn safe_name(name: &str) -> String {
         .collect();
     let trimmed = cleaned.trim().trim_matches('.').to_string();
     if trimmed.is_empty() {
-        "playlist".into()
-    } else {
-        trimmed.chars().take(80).collect()
+        return "playlist".into();
     }
+    // system plików liczy 255 bajtów, nie znaków; 80 znaków japońskich to ~240 B jeszcze przed „ [id].webm”
+    let mut out = String::new();
+    for c in trimmed.chars().take(80) {
+        if out.len() + c.len_utf8() > 200 {
+            break;
+        }
+        out.push(c);
+    }
+    out.trim_end_matches([' ', '.']).to_string()
 }
 
 #[tauri::command]
@@ -54,5 +61,12 @@ mod tests {
         assert_eq!(super::safe_name("Gym / Run: 2026?"), "Gym _ Run_ 2026_");
         assert_eq!(super::safe_name("..."), "playlist");
         assert_eq!(super::safe_name("Muzyka łódź"), "Muzyka łódź");
+        let jp = super::safe_name(&"あ".repeat(80));
+        assert!(
+            jp.len() <= 200 && jp.chars().all(|c| c == 'あ'),
+            "{}",
+            jp.len()
+        );
+        assert_eq!(super::safe_name(&"a".repeat(120)).len(), 80);
     }
 }

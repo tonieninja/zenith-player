@@ -115,9 +115,9 @@ fn file_name(meta: &DownloadMeta, ext: &str) -> String {
     )
 }
 
-// nazwa z index.json trafia do join; ukośnik albo „..” wyprowadziłyby ścieżkę poza folder pobrań
+// nazwa z index.json trafia do join; ukośnik, „..” albo „C:x” wyprowadziłyby ścieżkę poza folder pobrań
 fn plain_name(name: &str) -> bool {
-    !name.is_empty() && !name.contains(['/', '\\']) && !name.starts_with('.')
+    !name.is_empty() && !name.contains(['/', '\\', ':']) && !name.starts_with('.')
 }
 
 fn id_of(name: &str) -> Option<String> {
@@ -762,5 +762,6 @@ mod tests {
         assert_eq!(id_of("x [short].webm"), None);
         assert!(plain_name(&name));
         assert!(!plain_name("../index.json") && !plain_name("a/b.webm") && !plain_name("a\\b"));
+        assert!(!plain_name("C:x.webm") && !plain_name("a.webm:stream"));
     }
 }
