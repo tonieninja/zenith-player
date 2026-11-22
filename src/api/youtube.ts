@@ -611,15 +611,18 @@ export function clearHomeBrowseCache() {
   }
 }
 
+const isLibraryBrowseKey = (key: string) =>
+  key.startsWith('FEmusic_liked_') ||
+  key.startsWith('FEmusic_library_') ||
+  key.startsWith('FEmusic_history');
+
+// zapytanie biblioteki rozpoczęte przed wylogowaniem lub edycją nie może zapisać starych danych do cache
+let libraryEpoch = 0;
+
 export function invalidateLibraryCache() {
+  libraryEpoch += 1;
   for (const key of browseCache.keys()) {
-    if (
-      key.startsWith('FEmusic_liked_') ||
-      key.startsWith('FEmusic_library_') ||
-      key.startsWith('FEmusic_history')
-    ) {
-      browseCache.delete(key);
-    }
+    if (isLibraryBrowseKey(key)) browseCache.delete(key);
   }
   librarySectionCache.clear();
   // stary token kontynuacji dokleiłby strony z poprzedniej wersji listy
@@ -958,8 +961,10 @@ async function fetchBrowseUncached(
   const isPl = lang === 'pl';
   const t = translations[lang];
 
+  const libEpoch = libraryEpoch;
   const store = (result: Section[]) => {
     if (isHomeExploreCacheKey(cacheKey) && epoch !== browseEpoch) return result;
+    if (isLibraryBrowseKey(cacheKey) && libEpoch !== libraryEpoch) return result;
     browseCache.set(cacheKey, { data: result, ts: Date.now() });
     pruneOldest(browseCache, BROWSE_CACHE_LIMIT);
     return result;
@@ -1491,7 +1496,9 @@ export async function extendLibrarySections(
   if (!sections.length) return sections;
   const id = LIBRARY_BROWSE_IDS[category];
   const cloned = sections.map((s) => ({ ...s, items: s.items.slice() }));
+  const epoch = libraryEpoch;
   await appendLibraryPages(id, lang, cloned, maxPages);
+  if (epoch !== libraryEpoch) return cloned;
   const cacheKey = libraryCacheKey(category, lang);
   // doczytanie stron nie odświeża danych, więc nie może przesuwać ich wygaśnięcia
   const at = librarySectionCache.get(cacheKey)?.at ?? Date.now();
@@ -1540,9 +1547,11 @@ export async function getLibrary(
   try {
     const id = LIBRARY_BROWSE_IDS[category];
     const maxPages = opts.maxPages ?? LIBRARY_INITIAL_PAGE_LIMIT;
+    const epoch = libraryEpoch;
     const sections = await appendLibraryPages(id, lang, await fetchBrowse(id, lang), maxPages);
     const mapped = sections.map((sec) => ({ ...sec, items: applyPlaylistOverrides(sec.items) }));
-    if (mapped.length) librarySectionCache.set(cacheKey, { at: Date.now(), sections: mapped });
+    if (mapped.length && epoch === libraryEpoch)
+      librarySectionCache.set(cacheKey, { at: Date.now(), sections: mapped });
     const failed = libraryFailures.get(id);
     if (opts.strict && !mapped.length && failed != null) {
       throw failed === 401 ? new SessionExpiredError() : new Error(`library ${failed}`);
@@ -1649,7 +1658,8 @@ export async function getAccountProfile(lang: Language): Promise<AccountProfile 
 export async function getUserPlaylists(lang: Language): Promise<Track[]> {
   if (!(await isLoggedIn())) return [];
   const [playlistSections, landingSections] = await Promise.all([
-    getLibrary('playlists', lang),
+    // „Dodaj do playlisty” musi znać wszystkie playlisty, nie tylko pierwszą stronę biblioteki
+    getLibrary('playlists', lang, { maxPages: LIBRARY_BACKGROUND_PAGE_LIMIT }),
     getLibrary('landing', lang),
   ]);
   const out: Track[] = [];

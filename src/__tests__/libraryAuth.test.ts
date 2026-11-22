@@ -25,6 +25,7 @@ import {
   getLibrary,
   lastSessionCheckWasInconclusive,
   lastSessionCheckWasNetworkError,
+  peekLibraryCache,
   SessionExpiredError,
   verifyYtmSession,
 } from '../api/youtube';
@@ -148,6 +149,38 @@ describe('signed-in library', () => {
     const sections = await getLibrary('playlists', 'en');
     const titles = sections.flatMap((s) => s.items.map((i) => i.title));
     expect(titles).toEqual(expect.arrayContaining(['Gym', 'Sleepy']));
+  });
+
+  it('does not cache a library answer that lands after sign-out', async () => {
+    let release: () => void = () => {};
+    const gate = new Promise<void>((r) => (release = r));
+    fetchMock.mockImplementation(async () => {
+      await gate;
+      return reply({
+        responseContext: ctx('1'),
+        contents: {
+          singleColumnBrowseResultsRenderer: {
+            tabs: [
+              {
+                tabRenderer: {
+                  content: {
+                    sectionListRenderer: {
+                      contents: [{ gridRenderer: { items: [twoRow('PLaaa', 'Private A')] } }],
+                    },
+                  },
+                },
+              },
+            ],
+          },
+        },
+      });
+    });
+    const pending = getLibrary('playlists', 'en');
+    await new Promise((r) => setTimeout(r, 0));
+    clearCaches();
+    release();
+    await pending;
+    expect(peekLibraryCache('playlists', 'en')).toBeNull();
   });
 
   it('follows library continuations and maps library artists to channels', async () => {

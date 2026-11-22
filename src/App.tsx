@@ -1428,6 +1428,7 @@ export default function App() {
     try {
       clearAuthCache();
       clearHomeBrowseCache();
+      invalidateLibraryCache();
       let captured = await invoke<boolean>('capture_ytm_login_session').catch(() => false);
       if (!captured) {
         captured = await invoke<boolean>('sync_ytm_auth_to_main').catch(() => false);
