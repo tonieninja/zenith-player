@@ -100,6 +100,7 @@ import { MoodChips } from './components/feed/MoodChips';
 import { MoodsGenresView } from './components/feed/MoodsGenresView';
 import { QuickPicks, SectionRow } from './components/feed/FeedCarousel';
 import { ArtistSkeleton, ArtistView, type ArtistPlayMode } from './components/feed/ArtistView';
+import { CollectionView } from './components/feed/CollectionView';
 import { UpNextItem } from './components/player/UpNextItem';
 import { CoverVideo } from './components/player/CoverVideo';
 import { WindowedList } from './components/ui/WindowedList';
@@ -294,6 +295,10 @@ import {
   Search,
   Mic2,
   ListMusic,
+  Dumbbell,
+  Moon,
+  Settings2,
+  Heart,
   ListPlus,
   MoreHorizontal,
   Settings,
@@ -4808,6 +4813,40 @@ export default function App() {
       ? artistPage.header
       : null;
 
+  // playlista, album albo ulubione: jedna sekcja samych utworów, którą lepiej czytać jako listę niż karuzelę
+  const collectionPage = useMemo(() => {
+    if (activeTab !== 'mood' || artistHeader || sections.length !== 1) return null;
+    if (!isBrowseMood(activeMood) && activeMood !== FAVORITES_ID) return null;
+    const section = sections[0];
+    if (!section.items.length || !section.items.every((i) => i.type === 'track')) return null;
+    const last = lastCollectionRef.current;
+    const collection: Track =
+      last && browseMoodId(last.id) === activeMood
+        ? last
+        : {
+            id: activeMood ?? '',
+            type: 'playlist',
+            title: browseTitle || section.title,
+            artist: '',
+            cover: '',
+          };
+    return { collection, items: section.items };
+  }, [activeTab, artistHeader, sections, activeMood, browseTitle]);
+
+  const playCollectionPage = useCallback(
+    (mode: 'all' | 'shuffle') => {
+      if (!collectionPage) return;
+      const { collection, items } = collectionPage;
+      const list = mode === 'shuffle' ? smartShuffle(items) : items;
+      void handleItemClick(list[0], collection.title, list);
+      if (mode === 'shuffle') {
+        setShuffleOn(true);
+        originalQueueRef.current = items;
+      }
+    },
+    [collectionPage, handleItemClick]
+  );
+
   const sectionRows = useMemo(
     () =>
       stableOrderSections(activeTab === 'home' ? homeSections : sections).map((section, idx) => (
@@ -5045,33 +5084,7 @@ export default function App() {
             </div>
           </nav>
           <div className="playlists-section">
-            <span className="section-title">{t.playlistsTitle}</span>
-            {libAuthed && (
-              <div
-                className="nav-item playlist-link pm-open-link"
-                role="button"
-                tabIndex={0}
-                aria-label={t.pmOpen}
-                title={t.pmOpen}
-                onKeyDown={clickOnKey}
-                onClick={() => setPmOpen(true)}
-              >
-                <ListMusic size={18} />
-                <span>{t.pmOpen}</span>
-              </div>
-            )}
-            <div
-              className={`nav-item playlist-link ${activeTab === 'mood' && activeMood === FAVORITES_ID ? 'active' : ''}`}
-              role="button"
-              tabIndex={0}
-              aria-label={t.favs}
-              title={t.favs}
-              onKeyDown={clickOnKey}
-              onClick={openFavorites}
-            >
-              <ListMusic size={18} />
-              <span>{t.favs}</span>
-            </div>
+            <span className="section-title">{t.moodsMoments}</span>
             <div
               className={`nav-item playlist-link ${activeTab === 'mood' && activeMood === 'workout' ? 'active' : ''}`}
               role="button"
@@ -5081,20 +5094,46 @@ export default function App() {
               onKeyDown={clickOnKey}
               onClick={() => openMoodById('workout')}
             >
-              <ListMusic size={18} />
+              <Dumbbell size={18} />
               <span>{t.workout}</span>
             </div>
             <div
               className={`nav-item playlist-link ${activeTab === 'mood' && activeMood === 'focus' ? 'active' : ''}`}
               role="button"
               tabIndex={0}
-              aria-label={t.nightCode}
-              title={t.nightCode}
+              aria-label={t.focus}
+              title={t.focus}
               onKeyDown={clickOnKey}
               onClick={() => openMoodById('focus')}
             >
-              <ListMusic size={18} />
-              <span>{t.nightCode}</span>
+              <Moon size={18} />
+              <span>{t.focus}</span>
+            </div>
+            <div className="section-title-row">
+              <span className="section-title">{t.playlistsTitle}</span>
+              {libAuthed && (
+                <button
+                  type="button"
+                  className="section-title-action pm-open-link"
+                  aria-label={t.pmOpen}
+                  title={t.pmOpen}
+                  onClick={() => setPmOpen(true)}
+                >
+                  <Settings2 size={15} />
+                </button>
+              )}
+            </div>
+            <div
+              className={`nav-item playlist-link ${activeTab === 'mood' && activeMood === FAVORITES_ID ? 'active' : ''}`}
+              role="button"
+              tabIndex={0}
+              aria-label={t.favs}
+              title={t.favs}
+              onKeyDown={clickOnKey}
+              onClick={openFavorites}
+            >
+              <Heart size={18} />
+              <span>{t.favs}</span>
             </div>
             {(() => {
               const renderPl = (pl: Track) => (
@@ -5115,7 +5154,17 @@ export default function App() {
                   }}
                   title={pl.title}
                 >
-                  <ListMusic size={18} />
+                  {pl.cover ? (
+                    <img
+                      className="sidebar-pl-cover"
+                      alt=""
+                      loading="lazy"
+                      decoding="async"
+                      {...coverAttrs(pl, 'thumb')}
+                    />
+                  ) : (
+                    <ListMusic size={18} />
+                  )}
                   <span>{pl.title}</span>
                   {
                     <PopoverMenu
@@ -5161,7 +5210,11 @@ export default function App() {
                   }
                 </div>
               );
-              const g = groupPlaylists(plFolders, userPlaylists);
+              // „Liked music” z konta to te same utwory co Ulubione wyżej
+              const g = groupPlaylists(
+                plFolders,
+                userPlaylists.filter((p) => p.id !== 'VLLM' && p.id !== 'LM')
+              );
               return (
                 <>
                   {plFolders.folders.map((f) => (
@@ -5614,9 +5667,12 @@ export default function App() {
                                       <span className="search-result-title">{item.title}</span>
                                       <span className="search-result-artist">{item.artist}</span>
                                     </div>
-                                    <span className="search-result-badge">
-                                      {typeLabel(item.type)}
-                                    </span>
+                                    {/* w sekcji samych playlist plakietka „Playlista” przy każdym wierszu nic nie mówi */}
+                                    {section.items.some((x) => x.type !== item.type) && (
+                                      <span className="search-result-badge">
+                                        {typeLabel(item.type)}
+                                      </span>
+                                    )}
                                   </button>
                                 );
                               }}
@@ -5640,13 +5696,13 @@ export default function App() {
                     </div>
                   ) : activeTab === 'mood' && browseEmptyKind === 'episodes' ? (
                     <div className="empty-state-message">
-                      {browseTitle && <h2 className="library-section-title">{browseTitle}</h2>}
+                      {browseTitle && <span className="empty-state-eyebrow">{browseTitle}</span>}
                       <h2>{t.episodesEmptyTitle}</h2>
                       <p>{t.episodesEmptyDesc}</p>
                     </div>
                   ) : activeTab === 'mood' && browseEmptyKind === 'collection' ? (
                     <div className="empty-state-message">
-                      {browseTitle && <h2 className="library-section-title">{browseTitle}</h2>}
+                      {browseTitle && <span className="empty-state-eyebrow">{browseTitle}</span>}
                       <h2>{t.collectionEmptyTitle}</h2>
                       <p>{t.collectionEmptyDesc}</p>
                     </div>
@@ -5706,6 +5762,7 @@ export default function App() {
                     {activeTab === 'mood' &&
                       browseTitle &&
                       !artistHeader &&
+                      !collectionPage &&
                       (isBrowseMood(activeMood) || activeMood === FAVORITES_ID) && (
                         <h2 className="library-section-title">{browseTitle}</h2>
                       )}
@@ -5810,6 +5867,22 @@ export default function App() {
                           onItemClick={handleItemClick}
                           onPlay={playArtist}
                           onShowAll={showArtistSongs}
+                          t={t}
+                        />
+                      </div>
+                    ) : collectionPage ? (
+                      <div className="sections-container">
+                        <CollectionView
+                          collection={collectionPage.collection}
+                          kind={typeLabel(collectionPage.collection.type)}
+                          items={collectionPage.items}
+                          album={
+                            collectionPage.collection.type === 'album' ||
+                            isAlbumCollectionId(collectionPage.collection.id)
+                          }
+                          currentId={currentTrack?.id}
+                          onItemClick={handleItemClick}
+                          onPlay={playCollectionPage}
                           t={t}
                         />
                       </div>

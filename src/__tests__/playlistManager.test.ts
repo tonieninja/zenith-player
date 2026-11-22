@@ -290,3 +290,13 @@ describe('tracksLabel', () => {
     expect(tracksLabel(22, translations.pl)).toBe('22 utwory');
   });
 });
+
+describe('fmtTotal', () => {
+  it('carries rounded minutes into the hour instead of showing 60 min', async () => {
+    const { fmtTotal } = await import('../components/PlaylistManager');
+    expect(fmtTotal(7170)).toBe('2 h 0 min');
+    expect(fmtTotal(3570)).toBe('1 h 0 min');
+    expect(fmtTotal(3725)).toBe('1 h 2 min');
+    expect(fmtTotal(125)).toBe('2 min');
+  });
+});

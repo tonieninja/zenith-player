@@ -77,10 +77,13 @@ export const SectionRow = memo(function SectionRow({
   sectionIndex: number;
   onItemClick: ItemClick;
 }) {
-  const { ref, pageSize } = useResponsivePageSize(176, PAGE_SIZE);
+  // miniatura teledysku w kwadracie traci boki kadru, więc taka sekcja dostaje szersze karty 16:9
+  const video =
+    section.items.length > 0 && section.items.every((i) => i.cover.includes('i.ytimg.com/vi/'));
+  const { ref, pageSize } = useResponsivePageSize(video ? 260 : 176, video ? 5 : PAGE_SIZE);
   const pg = usePager(section.items, pageSize);
   return (
-    <section className="yt-section" ref={ref}>
+    <section className={'yt-section' + (video ? ' yt-section-video' : '')} ref={ref}>
       <div className="yt-section-head">
         <h2 className="yt-section-title">{section.title}</h2>
         <div className="yt-section-arrows">

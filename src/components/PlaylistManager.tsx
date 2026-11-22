@@ -84,9 +84,11 @@ export function tracksLabel(
   return (few ? L.pmTracksFew : L.pmTracks).replace('{n}', String(n));
 }
 
-const fmtTotal = (sec: number) => {
-  const h = Math.floor(sec / 3600);
-  const m = Math.round((sec % 3600) / 60);
+export const fmtTotal = (sec: number) => {
+  // zaokrąglenie całości, bo reszta z godziny zaokrąglona osobno dawała „1 h 60 min”
+  const all = Math.round(sec / 60);
+  const h = Math.floor(all / 60);
+  const m = all % 60;
   return h ? `${h} h ${m} min` : `${m} min`;
 };
 
