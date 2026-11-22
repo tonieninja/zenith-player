@@ -230,13 +230,14 @@ async fn close_google_login(app: tauri::AppHandle) -> Result<(), String> {
     let Some(win) = app.get_webview_window("google-login") else {
         return Ok(());
     };
-    let (tx, rx) = std::sync::mpsc::channel();
+    let (tx, rx) = tokio::sync::oneshot::channel();
     app.run_on_main_thread(move || {
         let _ = win.destroy();
         let _ = tx.send(());
     })
     .map_err(|e| e.to_string())?;
-    let _ = rx.recv_timeout(std::time::Duration::from_secs(3));
+    // czekanie bez blokowania wątku tokio, na którym chodzą też inne komendy
+    let _ = tokio::time::timeout(std::time::Duration::from_secs(3), rx).await;
     Ok(())
 }
 
@@ -346,7 +347,7 @@ async fn clear_login_webview_data(app: tauri::AppHandle) -> Result<(), String> {
                     eprintln!("[Zenith] could not wipe login profile: {e}");
                 }
             }
-            Err(_) => std::thread::sleep(std::time::Duration::from_millis(150)),
+            Err(_) => tokio::time::sleep(std::time::Duration::from_millis(150)).await,
         }
     }
     reset_login_sync_state();
