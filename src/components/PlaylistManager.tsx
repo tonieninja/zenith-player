@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useLatest } from '../hooks/useLatest';
 import { invoke } from '@tauri-apps/api/core';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import {
@@ -97,6 +98,81 @@ const fmtDur = (s: number | null) =>
 
 const COVER_HUES = [262, 218, 330, 188, 24, 145, 290, 205];
 
+const asTracks = (list: PlaylistEntry[]): Track[] =>
+  list.map((e) => ({
+    id: e.videoId,
+    type: 'track',
+    title: e.title,
+    artist: e.artist,
+    cover: e.cover,
+  }));
+
+type PmRowActions = {
+  dragStart: (i: number) => void;
+  dragOver: (i: number) => boolean;
+  dragEnd: () => void;
+  drop: (i: number) => void;
+  play: (i: number) => void;
+  toggle: (key: string) => void;
+};
+
+const PmTrackRow = memo(function PmTrackRow({
+  entry: e,
+  index: i,
+  rowKey,
+  selected,
+  dropTarget,
+  dragging,
+  canDrag,
+  actions,
+}: {
+  entry: PlaylistEntry;
+  index: number;
+  rowKey: string;
+  selected: boolean;
+  dropTarget: boolean;
+  dragging: boolean;
+  canDrag: boolean;
+  actions: PmRowActions;
+}) {
+  return (
+    <div
+      className={`pm-track ${selected ? 'sel' : ''} ${dropTarget ? 'drop' : ''} ${dragging ? 'dragging' : ''}`}
+      draggable={canDrag}
+      onDragStart={(ev) => {
+        actions.dragStart(i);
+        ev.dataTransfer.effectAllowed = 'move';
+        ev.dataTransfer.setData('text/plain', String(i));
+      }}
+      onDragOver={(ev) => {
+        if (actions.dragOver(i)) ev.preventDefault();
+      }}
+      onDragEnd={actions.dragEnd}
+      onDrop={(ev) => {
+        ev.preventDefault();
+        actions.drop(i);
+      }}
+      onDoubleClick={() => actions.play(i)}
+    >
+      {canDrag && <GripVertical size={15} className="pm-grip" />}
+      <input
+        type="checkbox"
+        aria-label={e.title}
+        checked={selected}
+        onChange={() => actions.toggle(rowKey)}
+      />
+      <span className="pm-track-n">{i + 1}</span>
+      <PmCover className="pm-track-cover" src={e.cover} seed={e.title} size={14} />
+      <span className="pm-track-text">
+        <span className="pm-track-title">{e.title}</span>
+        <span className="pm-track-artist">{e.artist}</span>
+      </span>
+      <span className="pm-track-album">{e.album}</span>
+      <span className="pm-track-dur">{fmtDur(e.durationSec)}</span>
+    </div>
+  );
+});
+
 function hueFor(seed: string): number {
   let h = 0;
   for (let i = 0; i < seed.length; i += 1) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
@@ -187,6 +263,15 @@ export function PlaylistManager({
   const [spotifyOpen, setSpotifyOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const reqRef = useRef(0);
+  const aliveRef = useRef(true);
+  // po zamknięciu menedżera doczytywanie stron i sprawdzanie właściciela zabierały limit zapytań odtwarzaczowi
+  useEffect(() => {
+    aliveRef.current = true;
+    return () => {
+      aliveRef.current = false;
+      reqRef.current += 1;
+    };
+  }, []);
 
   const refreshLists = useCallback(async () => {
     try {
@@ -197,7 +282,7 @@ export function PlaylistManager({
       const mine: string[] = [];
       void Promise.all(
         Array.from({ length: 3 }, async () => {
-          for (let p = todo.shift(); p; p = todo.shift()) {
+          for (let p = todo.shift(); p && aliveRef.current; p = todo.shift()) {
             const d = await loadPlaylistDetails(p.id, lang, 0).catch(() => null);
             if (d?.owned) mine.push(p.id);
           }
@@ -255,11 +340,17 @@ export function PlaylistManager({
       setDetailState('loading');
       setPartial(true);
       try {
-        const d = await loadPlaylistDetails(id, lang, 60, (part) => {
-          if (req !== reqRef.current) return;
-          setDetails(part);
-          setDetailState('idle');
-        });
+        const d = await loadPlaylistDetails(
+          id,
+          lang,
+          60,
+          (part) => {
+            if (req !== reqRef.current) return;
+            setDetails(part);
+            setDetailState('idle');
+          },
+          () => req !== reqRef.current
+        );
         if (req !== reqRef.current) return;
         setPartial(false);
         setDetails(d);
@@ -297,17 +388,18 @@ export function PlaylistManager({
   };
 
   const entries = details?.entries ?? [];
+  // mozaika bierze 4 okładki, a przeliczanie całej listy szło przy każdym kliknięciu w edytorze
+  const mosaic = useMemo(() => {
+    const seen = new Set<string>();
+    for (const e of details?.entries ?? []) {
+      if (e.cover) seen.add(e.cover);
+      if (seen.size === 4) break;
+    }
+    return [...seen];
+  }, [details?.entries]);
   const totalSec = entries.reduce((sum, e) => sum + (e.durationSec ?? 0), 0);
   const selectedEntries = entries.filter((e) => selected.has(e.setVideoId || e.videoId));
   const keyOf = (e: PlaylistEntry) => e.setVideoId || e.videoId;
-  const asTracks = (list: PlaylistEntry[]): Track[] =>
-    list.map((e) => ({
-      id: e.videoId,
-      type: 'track',
-      title: e.title,
-      artist: e.artist,
-      cover: e.cover,
-    }));
 
   const saveDetails = () =>
     run(async () => {
@@ -434,6 +526,42 @@ export function PlaylistManager({
       pushToast(fill(t.pmAdded, { count: tracksLabel(added, t), name: target.title }), 'success');
       onChanged?.();
     });
+
+  const rowStateRef = useLatest({
+    dragFrom,
+    entries,
+    active,
+    onPlay,
+    onDrop: (to: number) => onDrop(to),
+  });
+  // stałe akcje: wiersze w memo renderują się tylko, gdy zmienia się ich własny stan, a nie cała lista
+  const rowActions = useMemo<PmRowActions>(
+    () => ({
+      dragStart: (i) => setDragFrom(i),
+      dragOver: (i) => {
+        if (rowStateRef.current.dragFrom === null) return false;
+        setDragOver(i);
+        return true;
+      },
+      dragEnd: () => {
+        setDragFrom(null);
+        setDragOver(null);
+      },
+      drop: (i) => rowStateRef.current.onDrop(i),
+      play: (i) => {
+        const r = rowStateRef.current;
+        if (r.active) r.onPlay(asTracks(r.entries), i, r.active.title);
+      },
+      toggle: (k) =>
+        setSelected((prev) => {
+          const next = new Set(prev);
+          if (next.has(k)) next.delete(k);
+          else next.add(k);
+          return next;
+        }),
+    }),
+    [rowStateRef]
+  );
 
   const onDrop = (to: number) => {
     const from = dragFrom;
@@ -582,7 +710,7 @@ export function PlaylistManager({
                     seed={active.title}
                     kind={active.kind}
                     size={40}
-                    mosaic={Array.from(new Set(entries.map((e) => e.cover)))}
+                    mosaic={mosaic}
                   />
                   <div className="pm-head-fields">
                     <span className="pm-head-stats">
@@ -788,60 +916,18 @@ export function PlaylistManager({
                   )}
                   {entries.map((e, i) => {
                     const k = keyOf(e);
-                    const canDrag = active.editable && !partial && Boolean(e.setVideoId);
                     return (
-                      <div
+                      <PmTrackRow
                         key={`${k}-${i}`}
-                        className={`pm-track ${selected.has(k) ? 'sel' : ''} ${dragOver === i ? 'drop' : ''} ${dragFrom === i ? 'dragging' : ''}`}
-                        draggable={canDrag}
-                        onDragStart={(ev) => {
-                          setDragFrom(i);
-                          ev.dataTransfer.effectAllowed = 'move';
-                          ev.dataTransfer.setData('text/plain', String(i));
-                        }}
-                        onDragOver={(ev) => {
-                          if (dragFrom === null) return;
-                          ev.preventDefault();
-                          setDragOver(i);
-                        }}
-                        onDragEnd={() => {
-                          setDragFrom(null);
-                          setDragOver(null);
-                        }}
-                        onDrop={(ev) => {
-                          ev.preventDefault();
-                          onDrop(i);
-                        }}
-                        onDoubleClick={() => onPlay(asTracks(entries), i, active.title)}
-                      >
-                        {canDrag && <GripVertical size={15} className="pm-grip" />}
-                        <input
-                          type="checkbox"
-                          aria-label={e.title}
-                          checked={selected.has(k)}
-                          onChange={() =>
-                            setSelected((prev) => {
-                              const next = new Set(prev);
-                              if (next.has(k)) next.delete(k);
-                              else next.add(k);
-                              return next;
-                            })
-                          }
-                        />
-                        <span className="pm-track-n">{i + 1}</span>
-                        <PmCover
-                          className="pm-track-cover"
-                          src={e.cover}
-                          seed={e.title}
-                          size={14}
-                        />
-                        <span className="pm-track-text">
-                          <span className="pm-track-title">{e.title}</span>
-                          <span className="pm-track-artist">{e.artist}</span>
-                        </span>
-                        <span className="pm-track-album">{e.album}</span>
-                        <span className="pm-track-dur">{fmtDur(e.durationSec)}</span>
-                      </div>
+                        entry={e}
+                        index={i}
+                        rowKey={k}
+                        selected={selected.has(k)}
+                        dropTarget={dragOver === i}
+                        dragging={dragFrom === i}
+                        canDrag={active.editable && !partial && Boolean(e.setVideoId)}
+                        actions={rowActions}
+                      />
                     );
                   })}
                 </div>

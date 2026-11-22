@@ -195,14 +195,15 @@ export async function loadPlaylistDetails(
   id: string,
   lang: Language,
   maxPages = 60,
-  onPage?: (partial: PlaylistDetails) => void
+  onPage?: (partial: PlaylistDetails) => void,
+  stop?: () => boolean
 ): Promise<PlaylistDetails> {
   const first = await ytmBrowseRaw({ browseId: toPlaylistBrowseId(toPlainPlaylistId(id)) }, lang);
   const head = findHeader(first);
   const entries = collectEntries(first);
   let token = findContinuationToken(first);
   if (token) onPage?.({ ...head, entries: [...entries] });
-  for (let i = 0; token && i < maxPages; i += 1) {
+  for (let i = 0; token && i < maxPages && !stop?.(); i += 1) {
     const page = await ytmBrowseRaw({ continuation: token }, lang);
     entries.push(...collectEntries(page));
     onPage?.({ ...head, entries: [...entries] });
