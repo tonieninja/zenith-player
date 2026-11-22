@@ -31,6 +31,20 @@ pub fn stop() {
     super::set_duck(1.0, || true);
 }
 
+fn release(gen: u64) {
+    let mut slot = STOP.lock().unwrap_or_else(|p| p.into_inner());
+    if !slot.as_ref().is_some_and(|(g, _)| *g == gen) {
+        return;
+    }
+    if let Some((_, tx)) = slot.take() {
+        let _ = tx.send(());
+    }
+    drop(slot);
+    METER.store(0, Ordering::Relaxed);
+    DUCKING.store(false, Ordering::Relaxed);
+    super::set_duck(1.0, || true);
+}
+
 pub fn meter() -> (f64, bool) {
     (load(&METER), DUCKING.load(Ordering::Relaxed))
 }
@@ -103,7 +117,13 @@ fn build<T: SizedSample + 'static>(
                 });
             }
         },
-        |e| eprintln!("[zaudio] mic stream error: {e}"),
+        move |e| {
+            eprintln!("[zaudio] mic stream error: {e}");
+            // odłączony mikrofon nie wyśle już ciszy, która zdjęłaby wyciszenie
+            if matches!(e, cpal::StreamError::DeviceNotAvailable) {
+                release(gen);
+            }
+        },
         None,
     )
     .map_err(|e| e.to_string())
@@ -158,6 +178,24 @@ pub fn start() -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::Gate;
+
+    #[test]
+    fn a_lost_mic_frees_the_slot_and_stops_ducking() {
+        use super::{release, DUCKING, STOP};
+        use std::sync::atomic::Ordering;
+        let (tx, rx) = std::sync::mpsc::channel();
+        *STOP.lock().unwrap() = Some((7, tx));
+        DUCKING.store(true, Ordering::Relaxed);
+        release(6);
+        assert!(
+            STOP.lock().unwrap().is_some(),
+            "an older stream must not free a newer one"
+        );
+        release(7);
+        assert!(STOP.lock().unwrap().is_none());
+        assert!(rx.try_recv().is_ok());
+        assert!(!DUCKING.load(Ordering::Relaxed));
+    }
 
     #[test]
     fn ducks_on_loud_window_and_releases_with_hysteresis() {
