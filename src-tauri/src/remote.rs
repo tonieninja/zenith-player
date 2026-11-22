@@ -678,6 +678,20 @@ fn start_mdns(port: u16) -> Option<mdns_sd::ServiceDaemon> {
     Some(d)
 }
 
+// zatrzymany serwer zwalnia port, dopiero gdy jego zadanie się obudzi; szybkie wył./wł. trafiało na „port zajęty”
+async fn bind_retry(addr: SocketAddr) -> std::io::Result<tokio::net::TcpListener> {
+    let mut tries = 0;
+    loop {
+        match tokio::net::TcpListener::bind(addr).await {
+            Err(e) if e.kind() == std::io::ErrorKind::AddrInUse && tries < 10 => {
+                tries += 1;
+                tokio::time::sleep(Duration::from_millis(100)).await;
+            }
+            r => return r,
+        }
+    }
+}
+
 async fn start_server(port: u16, pin: String, pair: bool) -> Result<RemoteInfo, String> {
     let pin: String = pin.trim().chars().take(32).collect();
     {
@@ -700,7 +714,7 @@ async fn start_server(port: u16, pin: String, pair: bool) -> Result<RemoteInfo, 
     let port = if port == 0 { 8765 } else { port };
     let pair_token = random_hex(12).ok_or("no randomness")?;
     let host = [0, 0, 0, 0];
-    let listener = tokio::net::TcpListener::bind(SocketAddr::from((host, port)))
+    let listener = bind_retry(SocketAddr::from((host, port)))
         .await
         .map_err(|e| format!("port {port}: {e}"))?;
     let router = Router::new()

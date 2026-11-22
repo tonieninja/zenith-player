@@ -257,6 +257,9 @@ pub fn room_join(code: String) -> Result<bool, String> {
 pub fn room_leave() -> Result<(), String> {
     let mut guard = HUB.room.lock().map_err(|e| e.to_string())?;
     *guard = None;
+    drop(guard);
+    // budzi pętle gości: widzą, że pokoju już nie ma, i zamykają gniazdo zamiast czekać na następny stan
+    let _ = HUB.tx.send(String::new());
     Ok(())
 }
 

@@ -606,8 +606,9 @@ fn apply_global_shortcuts(app: &tauri::AppHandle, enabled: bool) -> usize {
     use tauri_plugin_global_shortcut::GlobalShortcutExt;
     let _guard = HOTKEY_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let gs = app.global_shortcut();
-    let mut live = HOTKEY_LIVE.lock().unwrap_or_else(|e| e.into_inner());
-    for (sc, _) in live.drain(..) {
+    // HOTKEY_LIVE czyta handler skrótu na wątku X11; trzymany podczas register() mógł zakleszczyć oba wątki
+    let old = std::mem::take(&mut *HOTKEY_LIVE.lock().unwrap_or_else(|e| e.into_inner()));
+    for (sc, _) in old {
         if gs.is_registered(sc) {
             let _ = gs.unregister(sc);
         }
@@ -632,6 +633,7 @@ fn apply_global_shortcuts(app: &tauri::AppHandle, enabled: bool) -> usize {
     if !enabled {
         return 0;
     }
+    let mut live = Vec::new();
     for (shortcut, action) in zenith_shortcuts() {
         match gs.register(shortcut) {
             Ok(()) => live.push((shortcut, action)),
@@ -642,7 +644,9 @@ fn apply_global_shortcuts(app: &tauri::AppHandle, enabled: bool) -> usize {
             }
         }
     }
-    live.len()
+    let n = live.len();
+    *HOTKEY_LIVE.lock().unwrap_or_else(|e| e.into_inner()) = live;
+    n
 }
 
 #[tauri::command]

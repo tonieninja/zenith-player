@@ -445,7 +445,7 @@ pub(crate) fn kwin_pin_aux_windows() {
             let file = std::env::var_os("XDG_RUNTIME_DIR")
                 .map(std::path::PathBuf::from)
                 .unwrap_or_else(std::env::temp_dir)
-                .join("zenith-kwin-pin.js");
+                .join(format!("zenith-kwin-pin-{}.js", std::process::id()));
             // KWin 6 ma stackingOrder i windowAdded, KWin 5 clientList() i clientAdded
             const PIN_JS: &str = r#"function pin(w) {
   if (w && w.pid == ZENITH_PID && /^Zenith (Lyrics|Mini)/.test(w.caption)) {
@@ -457,7 +457,15 @@ pub(crate) fn kwin_pin_aux_windows() {
 (workspace.windowAdded || workspace.clientAdded).connect(pin);
 "#;
             let js = PIN_JS.replace("ZENITH_PID", &std::process::id().to_string());
-            std::fs::write(&file, js)?;
+            let _ = std::fs::remove_file(&file);
+            // create_new nie pójdzie za dowiązaniem podłożonym we wspólnym /tmp ani nie nadpisze cudzego pliku
+            std::io::Write::write_all(
+                &mut std::fs::OpenOptions::new()
+                    .write(true)
+                    .create_new(true)
+                    .open(&file)?,
+                js.as_bytes(),
+            )?;
             let path = file.to_string_lossy().to_string();
             let _ = conn.call_method(
                 KWIN,

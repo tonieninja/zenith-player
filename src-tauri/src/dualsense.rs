@@ -359,20 +359,17 @@ fn poll_loop(app: AppHandle) {
 
 #[tauri::command(async)]
 pub fn dualsense_start(app: AppHandle) -> Result<(), String> {
+    // jedna blokada na sprawdzenie i start: dwa równoległe wywołania uruchamiały dwa wątki czytające pada
+    let mut guard = POLL_THREAD.lock().unwrap_or_else(|p| p.into_inner());
     if RUNNING.load(Ordering::SeqCst) {
         let _ = app.emit("zenith-dualsense-status", "already-running");
         return Ok(());
     }
-    if let Ok(mut guard) = POLL_THREAD.lock() {
-        if let Some(handle) = guard.take() {
-            let _ = handle.join();
-        }
+    if let Some(handle) = guard.take() {
+        let _ = handle.join();
     }
     RUNNING.store(true, Ordering::SeqCst);
-    let handle = thread::spawn(move || poll_loop(app));
-    if let Ok(mut guard) = POLL_THREAD.lock() {
-        *guard = Some(handle);
-    }
+    *guard = Some(thread::spawn(move || poll_loop(app)));
     Ok(())
 }
 
