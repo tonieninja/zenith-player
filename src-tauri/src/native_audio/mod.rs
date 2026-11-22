@@ -474,11 +474,13 @@ fn tick_loop() {
         }));
         watch_decks(e);
         let mut st = e.st.lock().unwrap_or_else(|p| p.into_inner());
-        // nowe urządzenie z inną częstotliwością: dekoder bez ponownego seeka grałby wolniej i niżej
+        // nowe urządzenie z inną częstotliwością: dekoder bez ponownego seeka grałby wolniej i niżej;
+        // porównanie z sesjami dekoderów łapie też zmianę sprzed pierwszego tyknięcia tej pętli
         static LAST_SR: AtomicU32 = AtomicU32::new(0);
         let sr = output::sample_rate();
         let prev = LAST_SR.swap(sr, Ordering::Relaxed);
-        if prev != 0 && prev != sr {
+        let dec = decode::DEC_SR.swap(sr, Ordering::Relaxed);
+        if (prev != 0 && prev != sr) || (dec != 0 && dec != sr) {
             let rate = st.rate;
             for d in st
                 .decks
@@ -682,7 +684,9 @@ pub fn run_cmd(cmd: Cmd) -> Snapshot {
             }
             Cmd::Load => {
                 let d = &mut st.decks[a];
-                if !d.src.is_empty() {
+                // ponowny load po timeoucie play() nie wyrzuca tego, co już się pobrało; zepsute pobieranie startuje od nowa
+                let alive = !d.errored && d.buf.as_ref().is_some_and(|b| b.healthy());
+                if !d.src.is_empty() && !alive {
                     let url = d.src.clone();
                     let wp = d.want_play;
                     load_deck(d, &url, rate);
@@ -708,6 +712,10 @@ pub async fn play() -> Result<Snapshot, String> {
         let d = &mut st.decks[a];
         if d.src.is_empty() {
             return Err("NotSupportedError: no source".into());
+        }
+        // zepsuty dekoder nigdy nie da „ready”; włączone wyjście wisiałoby w „waiting” do końca świata
+        if d.errored {
+            return Err("decode error".into());
         }
         if d.ended {
             d.ended = false;

@@ -212,6 +212,10 @@ impl Buf {
         self.cancel.load(Ordering::SeqCst)
     }
 
+    pub fn healthy(&self) -> bool {
+        !self.cancelled() && self.lock().err.is_none()
+    }
+
     fn lock(&self) -> std::sync::MutexGuard<'_, Data> {
         self.d.lock().unwrap_or_else(|p| p.into_inner())
     }

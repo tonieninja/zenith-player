@@ -336,7 +336,13 @@ impl Session {
                 track_id: Some(track),
             };
             if let Err(e) = self.fmt.seek(SeekMode::Accurate, to) {
-                if !matches!(e, SymError::SeekError(_)) {
+                // bufor czeka na brakujące bajty, więc koniec strumienia przy seeku to naprawdę koniec utworu
+                let past_end = match &e {
+                    SymError::SeekError(_) => true,
+                    SymError::IoError(io) => io.kind() == std::io::ErrorKind::UnexpectedEof,
+                    _ => false,
+                };
+                if !past_end {
                     return Err(format!("seek: {e}"));
                 }
                 self.eof = true;
@@ -346,6 +352,16 @@ impl Session {
         self.t_next = t;
         self.reset_dsp();
         Ok(())
+    }
+
+    // seek za ostatnią próbkę kończy utwór od razu; bez flagi w kolejce wyjście czekałoby bez końca
+    pub fn finish_if_past_end(&self, out: &DeckOut) {
+        if self.eof {
+            let mut q = out.queue();
+            if q.epoch == self.epoch {
+                q.eof = true;
+            }
+        }
     }
 
     fn decode_packet(&mut self) -> Result<Option<f64>, String> {
@@ -493,6 +509,9 @@ pub fn spawn(i: usize, out: Arc<DeckOut>, sink: Sink) -> Sender<DecCmd> {
     tx
 }
 
+// częstotliwość, z jaką dekodery ostatnio otwierały sesję; inna niż urządzenia = utwór gra wolniej i niżej
+pub static DEC_SR: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+
 fn worker(i: usize, out: Arc<DeckOut>, rx: Receiver<DecCmd>, sink: Sink) {
     let mut s: Option<Session> = None;
     let mut levels = Vec::new();
@@ -527,8 +546,12 @@ fn worker(i: usize, out: Arc<DeckOut>, rx: Receiver<DecCmd>, sink: Sink) {
                 rate,
             }) => {
                 s = None;
-                match Session::open(buf.clone(), gen, epoch, rate, super::output::sample_rate()) {
-                    Ok(n) => s = Some(n),
+                let sr = super::output::sample_rate();
+                match Session::open(buf.clone(), gen, epoch, rate, sr) {
+                    Ok(n) => {
+                        DEC_SR.store(sr, Ordering::Relaxed);
+                        s = Some(n)
+                    }
                     Err(e) => {
                         if !buf.cancelled() {
                             eprintln!("[zaudio] deck{i} open failed: {e}");
@@ -541,13 +564,22 @@ fn worker(i: usize, out: Arc<DeckOut>, rx: Receiver<DecCmd>, sink: Sink) {
             Some(DecCmd::Seek { t, epoch, rate }) => {
                 if let Some(cur) = s.as_mut() {
                     let started = std::time::Instant::now();
-                    if let Err(e) = cur.seek(t, epoch, rate, super::output::sample_rate()) {
+                    let sr = super::output::sample_rate();
+                    DEC_SR.store(sr, Ordering::Relaxed);
+                    if let Err(e) = cur.seek(t, epoch, rate, sr) {
                         if !cur.buf.cancelled() {
                             sink(i, cur.gen, DeckEv::Error(e));
                         }
                         s = None;
-                    } else if crate::debug_log_enabled() {
-                        eprintln!("[zaudio] deck{i} seek {t:.2} took {:?}", started.elapsed());
+                    } else {
+                        cur.finish_if_past_end(&out);
+                        if cur.eof && !cur.ready {
+                            cur.ready = true;
+                            sink(i, cur.gen, DeckEv::Ready(cur.duration()));
+                        }
+                        if crate::debug_log_enabled() {
+                            eprintln!("[zaudio] deck{i} seek {t:.2} took {:?}", started.elapsed());
+                        }
                     }
                 }
                 continue;
@@ -669,6 +701,24 @@ mod tests {
             assert!(
                 (secs - 2.5).abs() < 0.1,
                 "{name}: {secs}s after seeking back"
+            );
+        }
+    }
+
+    #[test]
+    fn seek_past_the_end_finishes_the_track() {
+        for name in ["tone.webm", "tone.m4a"] {
+            let out = DeckOut::default();
+            let mut s = Session::open(fixture(name), 1, 0, 1.0, 48000).unwrap();
+            let epoch = out.queue().flush();
+            s.seek(10.0, epoch, 1.0, 48000).unwrap();
+            s.finish_if_past_end(&out);
+            if !s.eof {
+                drain(&mut s, &out);
+            }
+            assert!(
+                out.queue().eof,
+                "{name}: seek past the end must end the track"
             );
         }
     }
