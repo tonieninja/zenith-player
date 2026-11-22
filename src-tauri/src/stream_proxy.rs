@@ -124,10 +124,10 @@ async fn send_upstream(
     match first_try.await {
         Ok(r) => Ok(r),
         Err(e) => {
-            eprintln!(
+            crate::diag::log(format!(
                 "[Zenith] upstream route failed ({}), trying the other one",
                 e
-            );
+            ));
             match build(second).send().await {
                 Ok(r) => {
                     PREFER_DIRECT.store(!direct_first, Ordering::Relaxed);
@@ -334,7 +334,7 @@ pub async fn start_background() {
 
                 tokio::spawn(async move {
                     if let Err(e) = axum::serve(listener, app).await {
-                        eprintln!("[Zenith] stream proxy error: {}", e);
+                        crate::diag::log(format!("[Zenith] stream proxy error: {}", e));
                     }
                 });
                 return;
@@ -345,7 +345,7 @@ pub async fn start_background() {
             }
         }
     }
-    eprintln!("[Zenith] stream proxy bind failed: {last_err}");
+    crate::diag::log(format!("[Zenith] stream proxy bind failed: {last_err}"));
 }
 
 async fn proxy_stream(
@@ -379,7 +379,7 @@ async fn proxy_stream(
             .ok_or(StatusCode::NOT_FOUND)?,
     };
     if !allowed_upstream(&upstream.url) {
-        eprintln!("[Zenith] refused non-YouTube upstream for {}", id);
+        crate::diag::log(format!("[Zenith] refused non-YouTube upstream for {}", id));
         remove_direct_url(&id);
         return Err(StatusCode::BAD_GATEWAY);
     }
@@ -520,21 +520,31 @@ async fn fetch_upstream(
 ) -> Result<reqwest::Response, StatusCode> {
     // wygasły link (403/410) odświeżamy; 429 oddajemy od razu, bo kolejne rozwiązania tylko pogłębiają limit IP
     loop {
-        let res = send_upstream(&upstream.url, &upstream.user_agent, range).await;
+        let mut res = send_upstream(&upstream.url, &upstream.user_agent, range).await;
+        // zerwane połączenie to sieć, nie wygasły link: ten sam adres jeszcze dwa razy, bez nowego /player
+        for wait in TRANSPORT_RETRY_MS {
+            if res.is_ok() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(wait)).await;
+            res = send_upstream(&upstream.url, &upstream.user_agent, range).await;
+        }
         let refused = match &res {
             Ok(r) => matches!(r.status().as_u16(), 403 | 410),
-            Err(_) => true,
+            Err(_) => false,
         };
         if !refused {
+            if let Err(e) = &res {
+                crate::diag::log(format!("[Zenith] proxy upstream error ({}): {}", id, e));
+            }
             return res.map_err(|_| StatusCode::BAD_GATEWAY);
         }
-        match &res {
-            Ok(r) => eprintln!(
+        if let Ok(r) = &res {
+            crate::diag::log(format!(
                 "[Zenith] proxy {} from googlevideo for {}",
                 r.status().as_u16(),
                 id
-            ),
-            Err(e) => eprintln!("[Zenith] proxy upstream error ({}): {}", id, e),
+            ));
         }
         let failed_url = upstream.url.clone();
         remove_direct_url(id);
@@ -559,6 +569,8 @@ async fn fetch_upstream(
         }
     }
 }
+
+const TRANSPORT_RETRY_MS: [u64; 2] = [500, 1500];
 
 async fn continue_recovery_delay(attempt: usize) {
     tokio::time::sleep(Duration::from_millis(400 * attempt as u64)).await;

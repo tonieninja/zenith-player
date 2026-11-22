@@ -95,6 +95,11 @@ const en = {
   ctxCopyLink: 'Copy link',
   ctxCopyLinkAt: 'Copy link at {time}',
   linkCopied: 'Link copied',
+  playbackLog: 'Playback log',
+  playbackLogDesc:
+    'The last 300 playback events, without stream addresses or cookies. Paste it into a bug report when songs stop playing.',
+  playbackLogCopy: 'Copy',
+  playbackLogCopied: 'Playback log copied',
   linkCopyFailed: "Couldn't copy the link",
   ctxNoPlaylists: 'No playlists you can edit yet',
   favs: 'Favorites',
@@ -442,8 +447,10 @@ const en = {
     'YouTube wants you to sign in on this network (shared IP). Sign in to keep listening.',
   streamBlockedComponent:
     "Couldn't load YouTube's player script. This network might be blocking it. Try it once on another network.",
-  streamUnavailableStuck: 'YouTube blocked the stream. Try another track or sign in.',
-  streamUnavailableStuckSignedIn: 'YouTube blocked the stream. Try another track.',
+  streamUnavailableStuck: "Couldn't get this song from YouTube. Try another track or sign in.",
+  streamUnavailableStuckSignedIn: "Couldn't get this song from YouTube. Try another track.",
+  streamRateLimited:
+    'YouTube is limiting playback from this connection for a few minutes. Zenith stopped instead of skipping through your queue.',
   streamBlockedBotSignedIn:
     "YouTube's still blocking playback on this network (shared IP). Try another track.",
   streamAgeRestricted: 'This song is age-restricted on YouTube. Sign in to play it.',
@@ -719,6 +726,11 @@ const pl: Record<keyof typeof en, string> = {
   ctxCopyLink: 'Kopiuj link',
   ctxCopyLinkAt: 'Kopiuj link od {time}',
   linkCopied: 'Skopiowano link',
+  playbackLog: 'Dziennik odtwarzania',
+  playbackLogDesc:
+    'Ostatnie 300 zdarzeń odtwarzania, bez adresów strumieni i ciasteczek. Wklej go do zgłoszenia, gdy utwory przestają grać.',
+  playbackLogCopy: 'Kopiuj',
+  playbackLogCopied: 'Skopiowano dziennik odtwarzania',
   linkCopyFailed: 'Nie udało się skopiować linku',
   ctxNoPlaylists: 'Nie masz jeszcze playlist do edycji',
   favs: 'Ulubione',
@@ -1066,8 +1078,11 @@ const pl: Record<keyof typeof en, string> = {
     'YouTube wymaga logowania w tej sieci (wspólny adres IP). Zaloguj się i słuchaj dalej.',
   streamBlockedComponent:
     'Nie udało się pobrać skryptu odtwarzacza YouTube, ta sieć może go blokować. Spróbuj raz z innej sieci.',
-  streamUnavailableStuck: 'YouTube zablokował odtwarzanie. Spróbuj innego utworu albo zaloguj się.',
-  streamUnavailableStuckSignedIn: 'YouTube zablokował odtwarzanie. Spróbuj innego utworu.',
+  streamUnavailableStuck:
+    'Nie udało się pobrać tego utworu z YouTube. Spróbuj innego albo zaloguj się.',
+  streamUnavailableStuckSignedIn: 'Nie udało się pobrać tego utworu z YouTube. Spróbuj innego.',
+  streamRateLimited:
+    'YouTube na kilka minut ogranicza odtwarzanie z tego połączenia. Zenith stanął, zamiast przeskakiwać kolejkę.',
   streamBlockedBotSignedIn:
     'YouTube nadal blokuje odtwarzanie z tej sieci (wspólny adres IP). Spróbuj innego utworu.',
   streamAgeRestricted:
@@ -1261,17 +1276,18 @@ export function streamStuckMessage(
   if (kind === 'age') return signedIn ? t.streamAgeRestrictedSignedIn : t.streamAgeRestricted;
   if (kind === 'gone') return t.streamGone;
   if (kind === 'region') return t.streamRegion;
+  if (kind === 'ratelimit') return t.streamRateLimited;
   return signedIn ? t.streamUnavailableStuckSignedIn : t.streamUnavailableStuck;
 }
 
 // usunięty film, blokada regionu i zła sieć nie znikają po zalogowaniu, więc tam przycisk tylko by mylił
 export function streamStuckAsksSignIn(kind: string | null | undefined, signedIn: boolean): boolean {
-  return !signedIn && !['network', 'component', 'gone', 'region'].includes(kind ?? '');
+  return !signedIn && !['network', 'component', 'gone', 'region', 'ratelimit'].includes(kind ?? '');
 }
 
 // te powody są pewne już po pierwszej porażce, a ogólne „pomijam” nie mówi, że ponowna próba nic nie da
 export function isDefiniteStreamFailure(kind: string | null | undefined): boolean {
-  return kind === 'age' || kind === 'gone' || kind === 'region';
+  return kind === 'age' || kind === 'gone' || kind === 'region' || kind === 'ratelimit';
 }
 
 // komunikaty z Rusta i API są po angielsku; znane przypadki tłumaczymy, resztę pokazujemy bez zmian

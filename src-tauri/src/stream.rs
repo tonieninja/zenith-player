@@ -248,7 +248,9 @@ pub async fn recover_upstream(
     if got.url == failed_url {
         return None;
     }
-    eprintln!("[Zenith] stream recovered for {video_id} (client set {attempt})");
+    crate::diag::log(format!(
+        "[Zenith] stream recovered for {video_id} (client set {attempt})"
+    ));
     let _ = remember_and_proxy(video_id, &got.url, &got.user_agent, now_secs());
     Some(stream_proxy::Upstream {
         url: got.url,
@@ -265,7 +267,7 @@ pub(crate) fn note_network_failure() {
 // wiek, region i usunięcie zna tylko odpowiedź YouTube, a skoro przyszła, to sieć działała
 fn reported_failure(kind: Option<&'static str>, network_at: u64, now: u64) -> Option<&'static str> {
     match kind {
-        Some(k @ ("age" | "region" | "gone")) => Some(k),
+        Some(k @ ("age" | "region" | "gone" | "ratelimit")) => Some(k),
         _ if network_at > 0 && now.saturating_sub(network_at) < 60 => Some("network"),
         k => k,
     }
@@ -385,6 +387,16 @@ pub async fn get_stream_url(
     video_id: String,
     fresh: Option<bool>,
 ) -> Result<Option<String>, String> {
+    resolve(app, video_id, fresh, false).await
+}
+
+// light: wersja zastępcza bez 45 s eskalacji, bo każda z kilku kandydatek powtarzałaby cały łańcuch zapytań
+async fn resolve(
+    app: AppHandle,
+    video_id: String,
+    fresh: Option<bool>,
+    light: bool,
+) -> Result<Option<String>, String> {
     validate_video_id(&video_id)?;
     // także przy fresh: ścieżki błędów odtwarzania wołają fresh, a bez sieci pobrany plik to jedyne źródło
     if crate::downloads::is_downloaded(&video_id) {
@@ -399,7 +411,7 @@ pub async fn get_stream_url(
     let _held = lock.lock().await;
     let waited = started.elapsed() > Duration::from_millis(200);
     let vid = video_id.clone();
-    let r = get_stream_url_locked(app, video_id, fresh.filter(|f| *f && !waited)).await;
+    let r = get_stream_url_locked(app, video_id, fresh.filter(|f| *f && !waited), light).await;
     crate::mark(format!(
         "get_stream_url end {vid} ok={}",
         matches!(r, Ok(Some(_)))
@@ -411,6 +423,7 @@ async fn get_stream_url_locked(
     app: AppHandle,
     video_id: String,
     fresh: Option<bool>,
+    light: bool,
 ) -> Result<Option<String>, String> {
     stream_proxy::ensure_ready().await?;
     let now = now_secs();
@@ -440,6 +453,26 @@ async fn get_stream_url_locked(
     }
     let _ = app;
     player::forget_failure(&video_id);
+    // po limicie każde zapytanie przedłuża blokadę: najwyżej jedna próba z kontem, potem cisza do końca przerwy
+    if player::bot_blocked() {
+        if !player::rate_limited() {
+            if let Some(a) = auth() {
+                if let Some(got) = run_clients(&video_id, resolve_plan::SIGNED_IN, Some(&a)).await {
+                    return remember_and_proxy(&video_id, &got.url, &got.user_agent, now).map(Some);
+                }
+            }
+        }
+        let kind = if player::rate_limited() {
+            "ratelimit"
+        } else {
+            "bot"
+        };
+        player::note_kind(&video_id, kind);
+        crate::diag::log(format!(
+            "[Zenith] {video_id} skipped during {kind} cooldown"
+        ));
+        return Ok(None);
+    }
     let struggling = innertube_struggling();
     let head_start = if struggling {
         0
@@ -456,10 +489,11 @@ async fn get_stream_url_locked(
                 crate::mark(format!("layer innertube {video_id}"));
                 return remember_and_proxy(&video_id, &got.url, &got.user_agent, now).map(Some);
             }
+            INNERTUBE_MISS.store(now.max(1), Ordering::SeqCst);
         }
+        // samo przekroczenie czasu to nie porażka; zapisane tutaj trzymało oba wyścigi na zawsze, podwajając zapytania
         _ = tokio::time::sleep(Duration::from_millis(head_start)) => {}
     }
-    INNERTUBE_MISS.store(now.max(1), Ordering::SeqCst);
     let signed = auth();
     let mut second: Vec<Client> = Vec::new();
     if let Some(p) = preferred_client() {
@@ -495,6 +529,7 @@ async fn get_stream_url_locked(
                     crate::mark(format!("layer innertube {video_id}"));
                     return remember_and_proxy(&video_id, &got.url, &got.user_agent, now).map(Some);
                 }
+                INNERTUBE_MISS.store(now.max(1), Ordering::SeqCst);
             }
         }
     }
@@ -502,9 +537,9 @@ async fn get_stream_url_locked(
     // każdy klient dostaje tę samą bramkę wieku albo brak filmu; 45 s eskalacji tylko opóźniałoby wersję zastępczą
     let hopeless = matches!(
         player::failure_of(&video_id),
-        Some("age" | "region" | "gone")
+        Some("age" | "region" | "gone" | "ratelimit" | "bot")
     );
-    if !hopeless {
+    if !hopeless && !light {
         if let Some(got) = escalate(&video_id, signed).await {
             crate::mark(format!("layer escalation {video_id}"));
             return remember_and_proxy(&video_id, &got.url, &got.user_agent, now).map(Some);
@@ -520,6 +555,10 @@ async fn get_stream_url_locked(
             },
         );
     }
+    crate::diag::log(format!(
+        "[Zenith] no stream for {video_id}: {}",
+        player::failure_of(&video_id).unwrap_or("?")
+    ));
     Ok(None)
 }
 
@@ -527,8 +566,9 @@ async fn escalate(video_id: &str, signed: Option<Auth>) -> Option<DirectAudio> {
     let deadline = std::time::Instant::now() + Duration::from_secs(45);
     crate::potoken::want();
     let pot = crate::potoken::wait_ready(Duration::from_secs(8)).await;
+    let blocked = || player::rate_limited() || (signed.is_none() && player::bot_blocked());
     for (round, delay) in resolve_plan::retry_delays_ms().iter().enumerate() {
-        if std::time::Instant::now() >= deadline {
+        if std::time::Instant::now() >= deadline || blocked() {
             break;
         }
         if *delay > 0 {
@@ -543,7 +583,7 @@ async fn escalate(video_id: &str, signed: Option<Auth>) -> Option<DirectAudio> {
         }
         let steps = resolve_plan::escalation(signed.is_some(), pot && crate::potoken::ready());
         for step in steps {
-            if std::time::Instant::now() >= deadline {
+            if std::time::Instant::now() >= deadline || blocked() {
                 break;
             }
             let left = deadline.saturating_duration_since(std::time::Instant::now());
@@ -727,12 +767,19 @@ pub async fn resolve_alternate_stream(
     if player::failure_of(&video_id) == Some("age") && age_bypass == Some(false) {
         return Ok(None);
     }
+    // inne nagranie tego samego utworu trafi w tę samą blokadę adresu, a tylko dołoży zapytań
+    if matches!(player::failure_of(&video_id), Some("ratelimit" | "bot"))
+        || player::rate_limited()
+        || (player::bot_blocked() && auth().is_none())
+    {
+        return Ok(None);
+    }
     // piosenka z YouTube Music zwykle nie ma blokady wieku teledysku, a jej tytuł nie pasuje do filtru wyszukiwania filmów
     let twins = candidates
         .unwrap_or_default()
         .into_iter()
         .filter(|c| c != &video_id && validate_video_id(c).is_ok());
-    for alt in twins.take(3) {
+    for alt in twins.take(2) {
         if let Some(url) = play_alternate(&app, &video_id, alt).await {
             return Ok(Some(url));
         }
@@ -756,7 +803,7 @@ pub async fn resolve_alternate_stream(
         .map(|f| (f.id, f.duration, f.channel))
         .collect();
     let picks = pick_alternates(&video_id, duration, found);
-    for alt in picks.into_iter().take(2) {
+    for alt in picks.into_iter().take(1) {
         if let Some(url) = play_alternate(&app, &video_id, alt).await {
             return Ok(Some(url));
         }
@@ -765,12 +812,13 @@ pub async fn resolve_alternate_stream(
 }
 
 async fn play_alternate(app: &AppHandle, video_id: &str, alt: String) -> Option<String> {
-    get_stream_url(app.clone(), alt.clone(), None)
-        .await
-        .ok()??;
+    resolve(app.clone(), alt.clone(), None, true).await.ok()??;
     // adres pod id zastępczego nagrania: po wygaśnięciu linku proxy odświeża ten film, nie oryginał
     stream_proxy::current_upstream(&alt)?;
-    eprintln!("[Zenith] playing alternate upload {} for {}", alt, video_id);
+    crate::diag::log(format!(
+        "[Zenith] playing alternate upload {} for {}",
+        alt, video_id
+    ));
     stream_proxy::proxy_url(&alt)
 }
 
@@ -897,6 +945,10 @@ mod tests {
     fn a_youtube_verdict_beats_an_old_network_error() {
         use super::reported_failure;
         assert_eq!(reported_failure(Some("age"), 1000, 1010), Some("age"));
+        assert_eq!(
+            reported_failure(Some("ratelimit"), 1000, 1010),
+            Some("ratelimit")
+        );
         assert_eq!(
             reported_failure(Some("blocked"), 1000, 1010),
             Some("network")

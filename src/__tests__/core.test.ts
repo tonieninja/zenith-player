@@ -286,6 +286,9 @@ describe('stream stuck toast', () => {
     expect(streamStuckAsksSignIn('network', false)).toBe(false);
     expect(isDefiniteStreamFailure('age')).toBe(true);
     expect(isDefiniteStreamFailure('blocked')).toBe(false);
+    expect(streamStuckMessage(en, 'ratelimit', false)).toBe(en.streamRateLimited);
+    expect(streamStuckAsksSignIn('ratelimit', false)).toBe(false);
+    expect(isDefiniteStreamFailure('ratelimit')).toBe(true);
     expect(isDefiniteStreamFailure(null)).toBe(false);
   });
 });

@@ -1,6 +1,7 @@
 mod auth_store;
 mod cover_cache;
 mod deps;
+mod diag;
 mod discord;
 mod downloads;
 mod dualsense;
@@ -971,7 +972,8 @@ pub fn run() {
             discord::discord_update_presence,
             discord::discord_clear_presence,
             discord::discord_disconnect,
-            discord::discord_status
+            discord::discord_status,
+            diag::stream_diagnostics
         ])
         .build(windows::with_user_webview_args(tauri::generate_context!()))
         .unwrap_or_else(|e| {

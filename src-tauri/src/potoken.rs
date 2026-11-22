@@ -176,7 +176,7 @@ fn open() {
     start_reaper();
     std::thread::spawn(move || {
         if let Err(e) = build(&app) {
-            eprintln!("[Zenith] po token page failed: {e}");
+            crate::diag::log(format!("[Zenith] po token page failed: {e}"));
             mark_broken();
         }
         OPENING.store(false, Ordering::SeqCst);
@@ -261,7 +261,7 @@ fn deliver(u: &tauri::Url) {
             .find(|(k, _)| k == "e")
             .map(|(_, v)| v.chars().take(160).collect())
             .unwrap_or_default();
-        eprintln!("[Zenith] po token mint failed: {err}");
+        crate::diag::log(format!("[Zenith] po token mint failed: {err}"));
     }
     if let Some(tx) = pending().lock().ok().and_then(|mut g| g.remove(&id)) {
         let _ = tx.send(tok);
@@ -382,7 +382,7 @@ pub async fn mint(binding: &str) -> Option<String> {
         None => {
             if FAILS.fetch_add(1, Ordering::SeqCst) + 1 >= 3 {
                 FAILS.store(0, Ordering::SeqCst);
-                eprintln!("[Zenith] po token page gave up, resting for a while");
+                crate::diag::log("[Zenith] po token page gave up, resting for a while".into());
                 mark_broken();
             }
             None

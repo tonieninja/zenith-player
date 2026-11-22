@@ -382,7 +382,7 @@ impl Session {
                 if self.buf.cancelled() {
                     return Err("cancelled".into());
                 }
-                eprintln!("[zaudio] demux stopped: {e}");
+                crate::diag::log(format!("[zaudio] demux stopped: {e}"));
                 return Ok(None);
             }
         };
@@ -554,7 +554,7 @@ fn worker(i: usize, out: Arc<DeckOut>, rx: Receiver<DecCmd>, sink: Sink) {
                     }
                     Err(e) => {
                         if !buf.cancelled() {
-                            eprintln!("[zaudio] deck{i} open failed: {e}");
+                            crate::diag::log(format!("[zaudio] deck{i} open failed: {e}"));
                             sink(i, gen, DeckEv::Error(e));
                         }
                     }
@@ -578,7 +578,10 @@ fn worker(i: usize, out: Arc<DeckOut>, rx: Receiver<DecCmd>, sink: Sink) {
                             sink(i, cur.gen, DeckEv::Ready(cur.duration()));
                         }
                         if crate::debug_log_enabled() {
-                            eprintln!("[zaudio] deck{i} seek {t:.2} took {:?}", started.elapsed());
+                            crate::diag::log(format!(
+                                "[zaudio] deck{i} seek {t:.2} took {:?}",
+                                started.elapsed()
+                            ));
                         }
                     }
                 }
@@ -615,7 +618,7 @@ fn worker(i: usize, out: Arc<DeckOut>, rx: Receiver<DecCmd>, sink: Sink) {
             }
             Err(e) => {
                 if !cur.buf.cancelled() {
-                    eprintln!("[zaudio] deck{i} decode failed: {e}");
+                    crate::diag::log(format!("[zaudio] deck{i} decode failed: {e}"));
                     sink(i, gen, DeckEv::Error(e));
                 }
                 s = None;

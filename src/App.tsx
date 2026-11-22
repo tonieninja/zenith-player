@@ -2051,6 +2051,18 @@ export default function App() {
             audioDurationTrackIdRef.current = null;
             setIsPlaying(false);
             setBuffering(false);
+            const kind = await invoke<string | null>('stream_last_failure', {
+              videoId: track.id,
+            }).catch(() => null);
+            if (stale()) return;
+            // limit albo „not a bot” dotyczy całego połączenia; przeskakiwanie kolejki tylko przedłużałoby blokadę
+            if (kind === 'ratelimit' || kind === 'bot') {
+              void showStreamStuck(
+                (localStorage.getItem('zenith_lang') as Language) || 'en',
+                track.id
+              );
+              return;
+            }
             skipOnFail();
             return;
           }
@@ -6327,6 +6339,24 @@ export default function App() {
                     {updateBusy ? t.checkingUpdates : t.checkUpdatesShort}
                   </button>
                 )}
+              </div>
+              <div className="settings-row-item settings-toggle-row">
+                <div className="settings-account-info">
+                  <span className="setting-label">{t.playbackLog}</span>
+                  <span className="plugin-desc">{t.playbackLogDesc}</span>
+                </div>
+                <button
+                  type="button"
+                  className="lang-option-btn settings-action-btn"
+                  onClick={() =>
+                    void invoke<string>('stream_diagnostics')
+                      .then((log) => navigator.clipboard.writeText(log || '-'))
+                      .then(() => pushToast(t.playbackLogCopied, 'success'))
+                      .catch(() => pushToast(t.loadFailed, 'error'))
+                  }
+                >
+                  {t.playbackLogCopy}
+                </button>
               </div>
               <div className="settings-row-item settings-toggle-row">
                 <div className="settings-account-info">

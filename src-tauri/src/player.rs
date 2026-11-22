@@ -42,6 +42,10 @@ const BOT_COOLDOWN: Duration = Duration::from_secs(10 * 60);
 
 static VISITOR: Mutex<Option<(String, Instant)>> = Mutex::new(None);
 static BOT_BLOCKED_AT: Mutex<Option<Instant>> = Mutex::new(None);
+static RATE_LIMITED_AT: Mutex<Option<Instant>> = Mutex::new(None);
+// po limicie YouTube każda kolejna próba przedłuża blokadę; 12 wywołań /player na utwór wystarcza na wszystkie warstwy
+const CALLS_PER_VIDEO: u32 = 12;
+const CALLS_WINDOW: Duration = Duration::from_secs(10 * 60);
 
 fn parse_visitor_data(body: &str) -> Option<String> {
     let start = body.find('[')?;
@@ -118,6 +122,9 @@ fn failure_kind(data: &Value) -> &'static str {
         "age"
     } else if is_bot_check(data) {
         "bot"
+    } else if reason.contains("try again later") {
+        // ten sam status ERROR co usunięty film, ale to limit zapytań z tego adresu (jak w yt-dlp)
+        "ratelimit"
     } else if reason.contains("country") {
         "region"
     } else if status == "ERROR"
@@ -141,6 +148,7 @@ fn kinds() -> &'static Kinds {
 // klienci mówią różnie o tym samym filmie (np. visionos "not available" przy filmie dla dzieci), wygrywa najpewniejszy
 fn kind_rank(k: &str) -> u8 {
     match k {
+        "ratelimit" => 7,
         "dead" => 6,
         "age" => 5,
         "region" => 4,
@@ -176,31 +184,68 @@ pub fn forget_failure(video_id: &str) {
         .remove(video_id);
 }
 
-pub fn bot_blocked() -> bool {
-    BOT_BLOCKED_AT
-        .lock()
+fn active(at: &Mutex<Option<Instant>>) -> bool {
+    at.lock()
         .ok()
         .and_then(|g| *g)
-        .map(|at| at.elapsed() < BOT_COOLDOWN)
-        .unwrap_or(false)
+        .is_some_and(|at| at.elapsed() < BOT_COOLDOWN)
 }
 
+// blokada gościa: „not a bot” albo limit; zalogowany ma inne liczniki po stronie YouTube
+pub fn bot_blocked() -> bool {
+    active(&BOT_BLOCKED_AT) || rate_limited()
+}
+
+pub fn rate_limited() -> bool {
+    active(&RATE_LIMITED_AT)
+}
+
+// nowy visitor, ale bez kasowania blokady: eskalacja zerująca ją sama napędzała lawinę zapytań
 pub fn fresh_start() {
-    if let Ok(mut g) = BOT_BLOCKED_AT.lock() {
-        *g = None;
-    }
     if let Ok(mut g) = VISITOR.lock() {
         *g = None;
     }
 }
 
 fn mark_bot_blocked() {
+    crate::diag::log("[Zenith] guest cooldown: youtube asked to confirm not a bot".into());
     if let Ok(mut g) = BOT_BLOCKED_AT.lock() {
         *g = Some(Instant::now());
     }
-    if let Ok(mut g) = VISITOR.lock() {
-        *g = None;
+    fresh_start();
+}
+
+fn mark_rate_limited(video_id: &str) {
+    crate::diag::log(format!("[Zenith] rate limited by youtube at {video_id}"));
+    if let Ok(mut g) = RATE_LIMITED_AT.lock() {
+        *g = Some(Instant::now());
     }
+    note_kind(video_id, "ratelimit");
+}
+
+type Calls = Mutex<HashMap<String, (u32, Instant)>>;
+
+fn calls() -> &'static Calls {
+    static C: OnceLock<Calls> = OnceLock::new();
+    C.get_or_init(Default::default)
+}
+
+fn take_call(video_id: &str, now: Instant) -> bool {
+    let mut m = calls().lock().unwrap_or_else(|p| p.into_inner());
+    m.retain(|_, (_, at)| now.duration_since(*at) < CALLS_WINDOW);
+    let e = m.entry(video_id.to_string()).or_insert((0, now));
+    if e.0 >= CALLS_PER_VIDEO {
+        return false;
+    }
+    e.0 += 1;
+    true
+}
+
+fn calls_done(video_id: &str) {
+    calls()
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .remove(video_id);
 }
 
 #[derive(Clone, Debug)]
@@ -675,12 +720,15 @@ async fn player_request(
     }
     let res = req.json(&body).send().await.ok()?;
     if !res.status().is_success() {
-        eprintln!(
+        crate::diag::log(format!(
             "[Zenith] innertube {} {} http {}",
             spec.name,
             video_id,
             res.status().as_u16()
-        );
+        ));
+        if res.status().as_u16() == 429 {
+            mark_rate_limited(video_id);
+        }
         return None;
     }
     let data: Value = res.json().await.ok()?;
@@ -732,7 +780,7 @@ async fn finish_url(
         let solved = match crate::player_js::solve(&p.id, n_in, sig_in).await {
             Ok(s) => s,
             Err(e) => {
-                eprintln!("[Zenith] js challenge failed: {e}");
+                crate::diag::log(format!("[Zenith] js challenge failed: {e}"));
                 return None;
             }
         };
@@ -757,6 +805,13 @@ pub async fn client_once(
 ) -> Option<DirectAudio> {
     let spec = spec(client);
     let auth = auth.filter(|_| spec.cookies);
+    if rate_limited() || (auth.is_none() && bot_blocked()) {
+        return None;
+    }
+    if !take_call(video_id, Instant::now()) {
+        crate::diag::log(format!("[Zenith] innertube budget used up for {video_id}"));
+        return None;
+    }
     let player = if spec.needs_js {
         Some(crate::player_js::current().await?)
     } else {
@@ -787,8 +842,12 @@ pub async fn client_once(
         .pointer("/playabilityStatus/status")
         .and_then(|v| v.as_str())
         .unwrap_or("?");
-    if is_bot_check(&data) && auth.is_none() && client == Client::Visionos {
+    // „not a bot” u gościa dotyczy adresu IP, nie klienta, więc pozostali goście dostaliby to samo
+    if is_bot_check(&data) && auth.is_none() {
         mark_bot_blocked();
+    }
+    if failure_kind(&data) == "ratelimit" {
+        mark_rate_limited(video_id);
     }
     if !playable(&data) {
         let why = data
@@ -796,20 +855,21 @@ pub async fn client_once(
             .or_else(|| data.pointer("/playabilityStatus/reason"))
             .and_then(|v| v.as_str())
             .unwrap_or("");
-        eprintln!(
+        crate::diag::log(format!(
             "[Zenith] innertube {} {}: {} {}",
             spec.name, video_id, status, why
-        );
+        ));
         note_kind(video_id, failure_kind(&data));
         return None;
     }
     let list = candidates(&data);
     if list.is_empty() {
-        eprintln!(
+        crate::diag::log(format!(
             "[Zenith] innertube {} {} playable but no progressive audio",
             spec.name, video_id
-        );
-        note_kind(video_id, "dead");
+        ));
+        // same strumienie SABR mówią coś tylko o tym kliencie; „dead” zasłaniałby prawdziwy powód od innych
+        note_kind(video_id, "sabr");
         return None;
     }
     for c in list.iter().take(3) {
@@ -819,16 +879,20 @@ pub async fn client_once(
         tokio::time::sleep_until(ready_at).await;
         if url_reachable(&url, spec.user_agent).await && tail_reachable(&url, spec.user_agent).await
         {
-            eprintln!("[Zenith] innertube {} ok for {}", spec.name, video_id);
+            crate::diag::log(format!(
+                "[Zenith] innertube {} ok for {}",
+                spec.name, video_id
+            ));
+            calls_done(video_id);
             return Some(DirectAudio {
                 url,
                 user_agent: spec.user_agent.to_string(),
             });
         }
-        eprintln!(
+        crate::diag::log(format!(
             "[Zenith] innertube {} url dead (403?) for {}",
             spec.name, video_id
-        );
+        ));
     }
     // klient przeszedł bramkę, więc to nie wiek ani region i eskalacja z odświeżonym player JS ma sens
     note_kind(video_id, "dead");
@@ -898,7 +962,7 @@ async fn probe(url: &str, user_agent: &str, range: &str) -> Option<bool> {
             Some(n) if r.status().is_redirection() => at = n,
             _ if code == 403 => return Some(false),
             _ => {
-                eprintln!("[Zenith] stream probe http {code}");
+                crate::diag::log(format!("[Zenith] stream probe http {code}"));
                 return None;
             }
         }
@@ -908,10 +972,10 @@ async fn probe(url: &str, user_agent: &str, range: &str) -> Option<bool> {
 
 pub async fn fetch_direct_audio(video_id: &str) -> Option<DirectAudio> {
     if bot_blocked() {
-        eprintln!(
+        crate::diag::log(format!(
             "[Zenith] innertube skipped for {} (bot check cooldown)",
             video_id
-        );
+        ));
         return None;
     }
     let visitor = visitor_data().await;
@@ -1119,6 +1183,35 @@ mod tests {
             failure_kind(&ps("UNPLAYABLE", "This video is not available")),
             "blocked"
         );
+        assert_eq!(
+            failure_kind(&ps(
+                "ERROR",
+                "This content isn't available, try again later."
+            )),
+            "ratelimit"
+        );
+    }
+
+    #[test]
+    fn each_video_gets_a_bounded_number_of_player_calls() {
+        use super::{calls_done, take_call, CALLS_PER_VIDEO, CALLS_WINDOW};
+        let t0 = std::time::Instant::now();
+        let id = "budget00001";
+        calls_done(id);
+        for _ in 0..CALLS_PER_VIDEO {
+            assert!(take_call(id, t0));
+        }
+        assert!(!take_call(id, t0), "13th call must be refused");
+        assert!(
+            take_call("budget00002", t0),
+            "other videos keep their own budget"
+        );
+        assert!(
+            take_call(id, t0 + CALLS_WINDOW),
+            "budget comes back after the window"
+        );
+        calls_done(id);
+        calls_done("budget00002");
     }
 
     #[test]
@@ -1133,6 +1226,14 @@ mod tests {
         assert_eq!(failure_of(id), Some("age"));
         note_kind(id, "dead");
         assert_eq!(failure_of(id), Some("dead"));
+        note_kind(id, "sabr");
+        assert_eq!(failure_of(id), Some("dead"));
+        note_kind(id, "ratelimit");
+        assert_eq!(
+            failure_of(id),
+            Some("ratelimit"),
+            "a limit stops everything"
+        );
         assert_eq!(failure_of("kindtest002"), None);
         forget_failure(id);
         assert_eq!(failure_of(id), None);
