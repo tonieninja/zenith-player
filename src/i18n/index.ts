@@ -349,9 +349,6 @@ const en = {
   pluginNoMatch: 'No plugins match that.',
   offlineBadge: 'Offline',
   offlineHint: "No connection. You're still signed in, and downloaded tracks keep playing.",
-  offlineDownloads: 'Offline downloads',
-  offlineDownloadsDesc:
-    'Save tracks to disk and play them without internet. Manage them in Plugins → Offline downloads.',
   dlPlay: 'Play',
   dlDelete: 'Delete',
   dlClearAll: 'Delete all downloads',
@@ -972,9 +969,6 @@ const pl: Record<keyof typeof en, string> = {
   pluginNoMatch: 'Żadna wtyczka nie pasuje.',
   offlineBadge: 'Offline',
   offlineHint: 'Nie masz internetu. Konto zostaje, a pobrane kawałki grają dalej.',
-  offlineDownloads: 'Pobrane offline',
-  offlineDownloadsDesc:
-    'Zapisuj utwory na dysku i słuchaj ich bez internetu. Zarządzasz nimi w oknie Wtyczki → Pobrane offline.',
   dlPlay: 'Odtwórz',
   dlDelete: 'Usuń',
   dlClearAll: 'Usuń wszystkie pobrane',

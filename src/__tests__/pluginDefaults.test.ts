@@ -57,4 +57,15 @@ describe('saved plugin choices after a storage restore', () => {
     localStorage.removeItem('zenith_plugins_enabled');
     pluginManager.reloadFromStorage();
   });
+
+  it('offline downloads is off for new users and kept for users who already download', () => {
+    localStorage.removeItem('zenith_plugins_enabled');
+    pluginManager.reloadFromStorage();
+    expect(pluginManager.isEnabled('offline-downloads')).toBe(false);
+    localStorage.setItem('zenith_plugins_enabled', JSON.stringify({ 'offline-downloads': true }));
+    pluginManager.reloadFromStorage();
+    expect(pluginManager.isEnabled('offline-downloads')).toBe(true);
+    localStorage.removeItem('zenith_plugins_enabled');
+    pluginManager.reloadFromStorage();
+  });
 });

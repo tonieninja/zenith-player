@@ -5196,15 +5196,6 @@ export default function App() {
                         </div>
                       )}
                       <div className="player-view-actions">
-                        {currentTrack && /^[\w-]{11}$/.test(currentTrack.id) && (
-                          <YtmRatingButtons
-                            rating={trackRating}
-                            onLike={toggleLike}
-                            onDislike={toggleDislike}
-                            likeLabel={t.likeTrack}
-                            dislikeLabel={t.dislikeTrack}
-                          />
-                        )}
                         <button className="primary-action-btn" onClick={toggleSave}>
                           {isSaved ? t.saved : t.save}
                         </button>
@@ -6118,24 +6109,6 @@ export default function App() {
               </button>
             </div>
             <div className="modal-body">
-              <div className="settings-row-item settings-toggle-row">
-                <div className="settings-account-info">
-                  <span className="setting-label" id="set-offline-label">
-                    {t.offlineDownloads}
-                  </span>
-                  <span className="plugin-desc">{t.offlineDownloadsDesc}</span>
-                </div>
-                <button
-                  type="button"
-                  className={`lang-option-btn remember-login-toggle${pluginStates['offline-downloads'] ? ' active' : ''}`}
-                  aria-pressed={Boolean(pluginStates['offline-downloads'])}
-                  aria-labelledby="set-offline-label"
-                  data-testid="offline-downloads-toggle"
-                  onClick={() => togglePlugin('offline-downloads')}
-                >
-                  {pluginStates['offline-downloads'] ? t.toggleOn : t.toggleOff}
-                </button>
-              </div>
               <div className="settings-row-item settings-toggle-row">
                 <div className="settings-account-info">
                   <span className="setting-label" id="set-remember-label">

@@ -5351,7 +5351,3 @@ html.window-occluded *::after {
   color: var(--theme-accent, var(--accent-1));
   background: rgba(255, 255, 255, 0.1);
 }
-
-.player-view-actions .ytm-rating-btns {
-  margin-right: 4px;
-}
