@@ -36,6 +36,7 @@ import { webhookPlugin } from './webhook';
 import { windowTitlePlugin } from './windowTitle';
 import { taskbarButtonsPlugin } from './taskbarButtons';
 import { zenithLinksPlugin } from './zenithLinks';
+import { blockArtistsPlugin } from './blockArtists';
 import { NowPlayingInfo, PluginCategory, PLUGIN_CATEGORY_ORDER, ZenithPlugin } from './types';
 
 const STORAGE_KEY = 'zenith_plugins_enabled';
@@ -50,6 +51,7 @@ export const PLUGIN_ORDER = [
   'playback-speed',
   'ab-loop',
   'sponsorblock',
+  'block-artists',
   'auto-pause-blur',
   'equalizer',
   'loudness-normalization',
@@ -97,6 +99,7 @@ type PluginListener = (states: Record<string, boolean>) => void;
 
 export const ALL_PLUGINS: ZenithPlugin[] = [
   abLoopPlugin,
+  blockArtistsPlugin,
   ambientGlowPlugin,
   autoPauseBlurPlugin,
   copyTrackLinkPlugin,

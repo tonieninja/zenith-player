@@ -33,6 +33,7 @@ import { ModalOverlay } from './ui/ModalOverlay';
 import { DownloadsSettings } from './plugins/DownloadsSettings';
 import { HotkeySettings } from './plugins/HotkeySettings';
 import { MiniPlayerSettings } from './plugins/MiniPlayerSettings';
+import { BlockArtistsSettings } from './plugins/BlockArtistsSettings';
 import { DuckMeter } from './plugins/DuckMeter';
 import { DiscordStatus } from './plugins/DiscordStatus';
 import { DEFAULT_CLIENT_ID } from '../plugins/discordPresence';
@@ -390,6 +391,8 @@ export function PluginsPanel({
         return <HotkeySettings t={t} />;
       case 'mini-player':
         return <MiniPlayerSettings t={t} />;
+      case 'block-artists':
+        return <BlockArtistsSettings t={t} currentTrack={currentTrack} />;
       case 'sleep-timer':
         return (
           <div className="plugin-setting-row">
@@ -1378,6 +1381,7 @@ export function PluginsPanel({
       'crossfade',
       'sleep-timer',
       'offline-downloads',
+      'block-artists',
       'global-hotkeys',
       'playback-speed',
       'discord-rpc',

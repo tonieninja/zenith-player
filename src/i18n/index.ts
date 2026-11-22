@@ -364,6 +364,13 @@ const en = {
   dlClearAll: 'Delete all downloads',
   dlClearConfirm: 'Click again to delete everything',
   dlHint: 'Downloaded tracks play from disk, so they work even with no connection.',
+  baHint:
+    'Tracks by these artists are skipped as soon as they start. Whole names only: Prince does not block Princess Nokia.',
+  baBlockCurrent: 'Block {artist}',
+  baPlaceholder: 'Artist name',
+  baAdd: 'Add',
+  baEmpty: 'No blocked artists yet.',
+  baRemove: 'Remove',
   dlTags: 'Title, artist and cover in the file',
   dlTagsDesc:
     'New downloads are saved as .opus with tags, so other players show them properly. Files already on disk stay as they are.',
@@ -1018,6 +1025,13 @@ const pl: Record<keyof typeof en, string> = {
   dlClearAll: 'Usuń wszystkie pobrane',
   dlClearConfirm: 'Kliknij jeszcze raz, żeby usunąć wszystko',
   dlHint: 'Pobrane utwory lecą z dysku, więc działają nawet bez internetu.',
+  baHint:
+    'Utwory tych wykonawców są pomijane zaraz po starcie. Liczą się całe nazwy: Prince nie blokuje Princess Nokia.',
+  baBlockCurrent: 'Zablokuj: {artist}',
+  baPlaceholder: 'Nazwa wykonawcy',
+  baAdd: 'Dodaj',
+  baEmpty: 'Nie ma jeszcze zablokowanych wykonawców.',
+  baRemove: 'Usuń',
   dlTags: 'Tytuł, wykonawca i okładka w pliku',
   dlTagsDesc:
     'Nowe pobrania zapisują się jako .opus z tagami, więc inne odtwarzacze pokazują je poprawnie. Pliki już pobrane zostają bez zmian.',

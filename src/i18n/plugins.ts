@@ -257,6 +257,16 @@ const CATALOG: Record<string, Record<Language, PluginText>> = {
       desc: 'Poprzedni, odtwórz/pauza i następny pod podglądem okna na pasku zadań. Tylko Windows.',
     },
   },
+  'block-artists': {
+    en: {
+      name: 'Block artists',
+      desc: 'Skips tracks by artists you block, also in radio and mixes.',
+    },
+    pl: {
+      name: 'Blokowanie wykonawców',
+      desc: 'Pomija utwory zablokowanych wykonawców, także w radiu i mixach.',
+    },
+  },
   'zenith-links': {
     en: {
       name: 'zenith:// links',
