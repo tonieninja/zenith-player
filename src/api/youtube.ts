@@ -1302,7 +1302,11 @@ export function playlistContentRoot(data: any, browseId: string): any {
 
 export type PlaylistLoad = { items: Track[]; status: 'ok' | 'empty' | 'failed' };
 
-export async function getRadioTracks(videoId: string, lang: Language): Promise<Track[]> {
+export async function getRadioTracks(
+  videoId: string,
+  lang: Language,
+  keepSeed = false
+): Promise<Track[]> {
   if (!isYoutubeVideoId(videoId)) return [];
   const response = await fetchWithTimeout(
     ytmUrl('next'),
@@ -1322,7 +1326,7 @@ export async function getRadioTracks(videoId: string, lang: Language): Promise<T
   );
   if (!response.ok) return [];
   return extractAllTracks(JSON.parse(await response.text()), translations[lang]).filter(
-    (t) => t.type === 'track' && t.id !== videoId
+    (t) => t.type === 'track' && (keepSeed || t.id !== videoId)
   );
 }
 

@@ -1,5 +1,6 @@
 mod auth_store;
 mod cover_cache;
+mod deeplink;
 mod deps;
 mod diag;
 mod discord;
@@ -739,7 +740,11 @@ pub fn run() {
     #[cfg(target_os = "linux")]
     webkit2gtk::glib::set_prgname(Some("Zenith"));
     tauri::Builder::default()
-        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+        .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+            // link zenith:// z przeglądarki uruchamia drugą instancję, która oddaje go tutaj
+            if let Some(id) = deeplink::from_args(&args) {
+                deeplink::deliver(app, &id);
+            }
             if windows::ensure_main(app) {
                 return;
             }
@@ -824,6 +829,9 @@ pub fn run() {
                     }
                 });
             }
+            if let Some(id) = deeplink::from_args(&std::env::args().collect::<Vec<_>>()) {
+                deeplink::deliver(app.handle(), &id);
+            }
             // okno uruchomione w tle nie zgłosi utraty fokusu, a is_focused przy starcie bywa prawdą;
             // odliczanie rusza zawsze, fokus sprawdza się dopiero po 30 s
             if let Some(w) = app.get_webview_window("main") {
@@ -901,6 +909,7 @@ pub fn run() {
             native_audio::zaudio_output_devices,
             native_audio::zaudio_set_output_device,
             thumbbar::thumbbar_update,
+            deeplink::deeplink_register,
             native_audio::zaudio_plan,
             native_audio::zaudio_attach,
             native_audio::zaudio_snapshot,

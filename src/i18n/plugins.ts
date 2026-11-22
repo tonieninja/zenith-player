@@ -257,6 +257,16 @@ const CATALOG: Record<string, Record<Language, PluginText>> = {
       desc: 'Poprzedni, odtwórz/pauza i następny pod podglądem okna na pasku zadań. Tylko Windows.',
     },
   },
+  'zenith-links': {
+    en: {
+      name: 'zenith:// links',
+      desc: 'Links like zenith://play?v=<id> from the browser or other apps open in Zenith. Windows and Linux.',
+    },
+    pl: {
+      name: 'Linki zenith://',
+      desc: 'Linki w rodzaju zenith://play?v=<id> z przeglądarki albo innych programów otwierają się w Zenith. Windows i Linux.',
+    },
+  },
   'window-title': {
     en: { name: 'Window title', desc: "Shows what's playing in the window title." },
     pl: { name: 'Tytuł okna', desc: 'Pokazuje w tytule okna, co teraz leci.' },

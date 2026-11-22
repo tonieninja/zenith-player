@@ -3939,6 +3939,14 @@ export default function App() {
     return () => stopDuckMonitor();
   }, [audio, pluginStates, volumeRef]);
 
+  // samo id z linku: radio zaczyna od tego utworu (dla teledysku od jego wersji audio), a dalej daje kolejkę
+  const playLinkRef = useLatest(async (id: string) => {
+    if (!pluginManager.isEnabled('zenith-links')) return;
+    const list = await getRadioTracks(id, radioLangRef.current, true).catch(() => []);
+    const seed = list.find((x) => x.id === id) ?? list[0];
+    if (seed) await handleItemClick(seed, undefined, list);
+  });
+
   useEffect(() => {
     // jedna subskrypcja na życie okna: ponowne listen przy zmianie głośności dublowało akcje
     let disposed = false;
@@ -3963,17 +3971,19 @@ export default function App() {
         if (Number.isFinite(t) && t >= 0) seekToRef.current(t);
       }
     });
+    const link = listen<string>('zenith-deeplink', (e) => void playLinkRef.current(e.payload));
     keep(tray);
     keep(mini);
+    keep(link);
     // Rust trzyma akcje z czasu odbudowy okna, dopóki nie wie, że nasłuchy już stoją
-    void Promise.all([tray, mini])
+    void Promise.all([tray, mini, link])
       .then(() => invoke('ui_ready'))
       .catch(() => undefined);
     return () => {
       disposed = true;
       offs.forEach((fn) => fn());
     };
-  }, [togglePlayRef, playNextRef, playPrevRef, toggleSaveRef, seekToRef]);
+  }, [togglePlayRef, playNextRef, playPrevRef, toggleSaveRef, seekToRef, playLinkRef]);
 
   useEffect(() => {
     registerRoomStatusHandler(() => setRoomSyncTick((n) => n + 1));

@@ -412,6 +412,19 @@ describe('radio', () => {
     const tracks = await getRadioTracks('zzzzzzzzzzz', 'en');
     expect(tracks.map((t) => t.id)).toEqual(['aaaaaaaaaaa', 'ccccccccccc']);
   });
+
+  it('drops the seed unless asked to keep it', async () => {
+    const panel = (videoId: string) => ({
+      playlistPanelVideoRenderer: { videoId, title: { runs: [{ text: videoId }] } },
+    });
+    const body = { contents: [panel('aaaaaaaaaaa'), panel('ccccccccccc')] };
+    fetchMock.mockResolvedValueOnce(jsonResponse(body));
+    fetchMock.mockResolvedValueOnce(jsonResponse(body));
+    const plain = await getRadioTracks('aaaaaaaaaaa', 'en');
+    const kept = await getRadioTracks('aaaaaaaaaaa', 'en', true);
+    expect(plain.map((t) => t.id)).toEqual(['ccccccccccc']);
+    expect(kept.map((t) => t.id)).toEqual(['aaaaaaaaaaa', 'ccccccccccc']);
+  });
 });
 
 describe('song twin of an age-gated video', () => {

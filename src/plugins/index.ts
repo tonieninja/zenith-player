@@ -35,6 +35,7 @@ import { systemTrayPlugin } from './systemTray';
 import { webhookPlugin } from './webhook';
 import { windowTitlePlugin } from './windowTitle';
 import { taskbarButtonsPlugin } from './taskbarButtons';
+import { zenithLinksPlugin } from './zenithLinks';
 import { NowPlayingInfo, PluginCategory, PLUGIN_CATEGORY_ORDER, ZenithPlugin } from './types';
 
 const STORAGE_KEY = 'zenith_plugins_enabled';
@@ -60,6 +61,7 @@ export const PLUGIN_ORDER = [
   'second-screen-lyrics',
   'media-session',
   'taskbar-buttons',
+  'zenith-links',
   'global-hotkeys',
   'keyboard-shortcuts',
   'remote-control',
@@ -131,6 +133,7 @@ export const ALL_PLUGINS: ZenithPlugin[] = [
   taskbarButtonsPlugin,
   webhookPlugin,
   windowTitlePlugin,
+  zenithLinksPlugin,
   zenithStagePlugin,
 ];
 
