@@ -410,8 +410,9 @@ export function PlaylistManager({
   const removeSelected = () =>
     run(async () => {
       if (!active || !details || partial || !selectedEntries.length) return;
-      await removeEntries(active.id, selectedEntries, lang);
-      const gone = new Set(selectedEntries.map(keyOf));
+      const removed = await removeEntries(active.id, selectedEntries, lang);
+      if (!removed.length) throw new Error('nothing removable');
+      const gone = new Set(removed.map(keyOf));
       setDetails({ ...details, entries: entries.filter((e) => !gone.has(keyOf(e))) });
       setSelected(new Set());
       pushToast(fill(t.pmRemoved, { count: tracksLabel(gone.size, t) }), 'success');

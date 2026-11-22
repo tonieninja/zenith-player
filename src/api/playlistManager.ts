@@ -267,15 +267,23 @@ export async function addMissingTracks(id: string, videoIds: string[], lang: Lan
   return missing.length;
 }
 
-export async function removeEntries(id: string, entries: PlaylistEntry[], lang: Language) {
-  const actions = entries
-    .filter((e) => e.setVideoId)
-    .map((e) => ({
+// zwraca tylko faktycznie usunięte: wpis bez setVideoId YouTube pomija, a komunikat liczył i jego
+export async function removeEntries(
+  id: string,
+  entries: PlaylistEntry[],
+  lang: Language
+): Promise<PlaylistEntry[]> {
+  const removable = entries.filter((e) => e.setVideoId);
+  await edit(
+    id,
+    removable.map((e) => ({
       action: 'ACTION_REMOVE_VIDEO',
       setVideoId: e.setVideoId,
       removedVideoId: e.videoId,
-    }));
-  await edit(id, actions, lang);
+    })),
+    lang
+  );
+  return removable;
 }
 
 export function moveAction(

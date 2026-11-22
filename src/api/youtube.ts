@@ -104,27 +104,27 @@ export function clearAuthCache() {
   ytCookieCache = null;
 }
 
+// null = IPC nie odpowiedział; takiego wyniku nie zapamiętujemy, bo udawałby wylogowanie przez 45 s
+const readYtmCookie = () =>
+  Promise.race([
+    invoke<string>('get_ytm_cookies'),
+    new Promise<null>((resolve) => window.setTimeout(() => resolve(null), 8000)),
+  ]).catch(() => null);
+
 async function getYtmCookie(): Promise<string> {
   if (ytCookieCache && Date.now() - ytCookieCache.ts < YT_COOKIE_TTL) return ytCookieCache.cookie;
-  try {
-    let cookie = await Promise.race([
-      invoke<string>('get_ytm_cookies'),
-      new Promise<string>((resolve) => window.setTimeout(() => resolve(''), 8000)),
-    ]);
-    const hasSapi = Boolean(extractSapisid(cookie));
-    const hasPsid = cookie.includes('__Secure-1PSID=') || cookie.includes('__Secure-3PSID=');
-    if (hasSapi && !hasPsid) {
-      clearAuthCache();
-      cookie = await Promise.race([
-        invoke<string>('get_ytm_cookies'),
-        new Promise<string>((resolve) => window.setTimeout(() => resolve(''), 8000)),
-      ]);
-    }
-    ytCookieCache = { cookie: cookie || '', ts: Date.now() };
-  } catch {
-    ytCookieCache = { cookie: '', ts: Date.now() };
+  let cookie = await readYtmCookie();
+  const hasSapi = Boolean(cookie && extractSapisid(cookie));
+  const hasPsid = Boolean(
+    cookie && (cookie.includes('__Secure-1PSID=') || cookie.includes('__Secure-3PSID='))
+  );
+  if (hasSapi && !hasPsid) {
+    clearAuthCache();
+    cookie = await readYtmCookie();
   }
-  return ytCookieCache.cookie;
+  if (cookie == null) return '';
+  ytCookieCache = { cookie, ts: Date.now() };
+  return cookie;
 }
 
 function cookieValue(cookie: string, name: string): string | null {
@@ -875,13 +875,24 @@ function findContinuationToken(node: any): string | null {
 
 function dedupeSections(sections: Section[]): Section[] {
   const seen = new Set<string>();
-  return sections.filter((s) => {
-    const key = s.title.toLowerCase().trim();
-    if (!key) return false;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
+  return sections
+    .filter((s) => {
+      const key = s.title.toLowerCase().trim();
+      if (!key) return false;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .map((s) => {
+      // YouTube potrafi dać ten sam utwór dwa razy w półce; zdublowany klucz React gubił kafelki
+      const ids = new Set<string>();
+      const items = s.items.filter((i) => {
+        if (ids.has(i.id)) return false;
+        ids.add(i.id);
+        return true;
+      });
+      return items.length === s.items.length ? s : { ...s, items };
+    });
 }
 
 async function fetchWithTimeout(

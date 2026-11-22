@@ -68,4 +68,37 @@ describe('scrobbler', () => {
     );
     expect(submit).toHaveBeenCalledTimes(2);
   });
+
+  it('keeps a listen queued during a flush even when the queue is full', async () => {
+    const key = 'test.q3';
+    const old = Array.from({ length: 50 }, (_, i) => ({
+      artist: 'a',
+      track: `t${i}`,
+      timestamp: i,
+    }));
+    localStorage.setItem(key, JSON.stringify(old));
+    const late = { artist: 'b', track: 'late', timestamp: 999 };
+    let added = false;
+    const submit = vi.fn(async () => {
+      if (!added) {
+        added = true;
+        const q = JSON.parse(localStorage.getItem(key) || '[]');
+        localStorage.setItem(key, JSON.stringify([...q, late].slice(-50)));
+      }
+      throw new Error('offline');
+    });
+    const p = createScrobbler({
+      id: 'x',
+      name: 'x',
+      description: 'x',
+      queueKey: key,
+      nowPlaying: () => Promise.resolve(),
+      submit,
+    });
+    p.onEnable?.();
+    await vi.waitFor(() => expect(submit).toHaveBeenCalledTimes(50));
+    await vi.waitFor(() =>
+      expect(JSON.parse(localStorage.getItem(key) || '[]')).toContainEqual(late)
+    );
+  });
 });

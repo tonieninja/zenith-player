@@ -84,8 +84,9 @@ export function createScrobbler(o: ScrobblerOptions): ZenithPlugin {
     try {
       const sent = new Set<Scrobble>();
       for (const p of q) if (await send(p)) sent.add(p);
-      // odsłuchy dopisane w trakcie wysyłki zostają w kolejce
-      const added = readQueue().slice(q.length);
+      // odsłuchy dopisane w trakcie wysyłki zostają; po indeksie ginęły, gdy pełna kolejka zrzuciła najstarszy
+      const before = new Set(q.map((p) => JSON.stringify(p)));
+      const added = readQueue().filter((p) => !before.has(JSON.stringify(p)));
       writeQueue([...q.filter((p) => !sent.has(p)), ...added]);
     } finally {
       flushing = false;
