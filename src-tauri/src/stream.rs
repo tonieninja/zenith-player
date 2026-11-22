@@ -601,6 +601,58 @@ async fn escalate(video_id: &str, signed: Option<Auth>) -> Option<DirectAudio> {
     None
 }
 
+// ustawienia ostatniego żądania, żeby odświeżenie po 403 w proxy wybrało ten sam rodzaj obrazu
+static VIDEO_WANT: Mutex<(u32, bool)> = Mutex::new((720, true));
+
+/// Adres w lokalnym proxy do samego obrazu teledysku albo None, gdy go nie ma (okładka zostaje).
+#[command]
+pub async fn zvideo_stream(
+    video_id: String,
+    max_height: u32,
+    avc: bool,
+) -> Result<Option<String>, String> {
+    validate_video_id(&video_id)?;
+    let max_h = max_height.clamp(144, 1080);
+    stream_proxy::ensure_ready().await?;
+    if let Ok(mut w) = VIDEO_WANT.lock() {
+        *w = (max_h, avc);
+    }
+    let lock = resolve_lock(&format!("v:{video_id}"));
+    let _held = lock.lock().await;
+    let now = now_secs();
+    let hit =
+        stream_proxy::video_upstream(&video_id).filter(|(u, at)| cache_fresh(&u.url, *at, now));
+    if hit.is_none() {
+        let Some(got) = player::fetch_video(&video_id, max_h, avc).await else {
+            return Ok(None);
+        };
+        let up = stream_proxy::Upstream {
+            url: got.url,
+            user_agent: got.user_agent,
+        };
+        stream_proxy::store_video(&video_id, up, now);
+    }
+    Ok(stream_proxy::video_url(&video_id))
+}
+
+pub async fn recover_video(video_id: &str, failed_url: &str) -> Option<stream_proxy::Upstream> {
+    let lock = resolve_lock(&format!("v:{video_id}"));
+    let _held = lock.lock().await;
+    if let Some((cur, _)) = stream_proxy::video_upstream(video_id) {
+        if cur.url != failed_url {
+            return Some(cur);
+        }
+    }
+    let (max_h, avc) = VIDEO_WANT.lock().map(|w| *w).unwrap_or((720, true));
+    let got = player::fetch_video(video_id, max_h, avc).await?;
+    let up = stream_proxy::Upstream {
+        url: got.url,
+        user_agent: got.user_agent,
+    };
+    stream_proxy::store_video(video_id, up.clone(), now_secs());
+    Some(up)
+}
+
 #[command]
 pub fn clear_stream_cache() {
     if let Ok(mut cache) = get_cache().lock() {

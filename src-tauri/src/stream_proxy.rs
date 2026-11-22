@@ -22,6 +22,15 @@ pub struct Upstream {
 }
 
 static DIRECT_URLS: OnceLock<Mutex<HashMap<String, Upstream>>> = OnceLock::new();
+// teledysk ma osobną mapę: wpis obrazu pod tym samym id nadpisałby albo wyrzucił adres dźwięku
+static VIDEO_URLS: OnceLock<Mutex<HashMap<String, (Upstream, u64)>>> = OnceLock::new();
+const MAX_VIDEO_URLS: usize = 4;
+
+#[derive(Clone, Copy, PartialEq)]
+enum Kind {
+    Audio,
+    Video,
+}
 static PROXY_PORT: OnceLock<u16> = OnceLock::new();
 static PROXY_TOKEN: OnceLock<String> = OnceLock::new();
 static HTTP: OnceLock<Client> = OnceLock::new();
@@ -191,6 +200,39 @@ pub fn store_upstream(video_id: &str, upstream: Upstream) {
     }
 }
 
+fn video_map() -> &'static Mutex<HashMap<String, (Upstream, u64)>> {
+    VIDEO_URLS.get_or_init(Default::default)
+}
+
+pub fn store_video(video_id: &str, upstream: Upstream, fetched_at: u64) {
+    let mut map = video_map().lock().unwrap_or_else(|e| e.into_inner());
+    map.insert(video_id.to_string(), (upstream, fetched_at));
+    while map.len() > MAX_VIDEO_URLS {
+        let Some(k) = map
+            .iter()
+            .min_by_key(|(_, (_, at))| *at)
+            .map(|(k, _)| k.clone())
+        else {
+            break;
+        };
+        map.remove(&k);
+    }
+}
+
+pub fn video_upstream(video_id: &str) -> Option<(Upstream, u64)> {
+    video_map().lock().ok()?.get(video_id).cloned()
+}
+
+pub fn video_url(video_id: &str) -> Option<String> {
+    let port = PROXY_PORT.get().copied()?;
+    Some(format!(
+        "http://127.0.0.1:{}/zvideo/{}/{}",
+        port,
+        proxy_token(),
+        video_id
+    ))
+}
+
 pub fn remove_direct_url(video_id: &str) {
     if let Ok(mut map) = url_map().lock() {
         map.remove(video_id);
@@ -326,6 +368,7 @@ pub async fn start_background() {
 
                 let app = Router::new()
                     .route("/zenith/{token}/{id}", get(proxy_stream))
+                    .route("/zvideo/{token}/{id}", get(proxy_video))
                     .route("/cover/{token}/{px}/{*url}", get(proxy_cover))
                     .route("/offline/{token}/{id}", get(serve_offline))
                     .with_state(());
@@ -352,16 +395,7 @@ async fn proxy_stream(
     Path((token, id)): Path<(String, String)>,
     headers: HeaderMap,
 ) -> Result<Response, StatusCode> {
-    if token != proxy_token() {
-        return Err(StatusCode::FORBIDDEN);
-    }
-    if id.len() != 11
-        || !id
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
-    {
-        return Err(StatusCode::BAD_REQUEST);
-    }
+    check_path(&token, &id)?;
     // adres /zenith/ z prefetchu żyje dłużej niż moment pobrania utworu; bez sieci musi grać z dysku
     if crate::downloads::is_downloaded(&id) {
         return serve_offline(Path((token, id)), headers).await;
@@ -383,7 +417,42 @@ async fn proxy_stream(
         remove_direct_url(&id);
         return Err(StatusCode::BAD_GATEWAY);
     }
+    serve(id, upstream, headers, Kind::Audio).await
+}
 
+fn check_path(token: &str, id: &str) -> Result<(), StatusCode> {
+    if token != proxy_token() {
+        return Err(StatusCode::FORBIDDEN);
+    }
+    if id.len() != 11
+        || !id
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    Ok(())
+}
+
+// bez plików offline i bez rozwiązywania na żądanie: obraz istnieje tylko po zvideo_stream
+async fn proxy_video(
+    Path((token, id)): Path<(String, String)>,
+    headers: HeaderMap,
+) -> Result<Response, StatusCode> {
+    check_path(&token, &id)?;
+    let (upstream, _) = video_upstream(&id).ok_or(StatusCode::NOT_FOUND)?;
+    if !allowed_upstream(&upstream.url) {
+        return Err(StatusCode::BAD_GATEWAY);
+    }
+    serve(id, upstream, headers, Kind::Video).await
+}
+
+async fn serve(
+    id: String,
+    upstream: Upstream,
+    headers: HeaderMap,
+    kind: Kind,
+) -> Result<Response, StatusCode> {
     crate::mark(format!(
         "proxy request {id} range={:?}",
         headers.get(header::RANGE).and_then(|v| v.to_str().ok())
@@ -397,6 +466,7 @@ async fn proxy_stream(
     let want = range.as_deref().and_then(parse_range);
     let first = want.map(|(s, e)| format!("bytes={s}-{}", chunk_last(s, e)));
     let upstream_res = fetch_upstream(
+        kind,
         &id,
         &mut upstream,
         &mut attempt,
@@ -454,7 +524,7 @@ async fn proxy_stream(
                 return None;
             }
             let range = format!("bytes={next}-{}", chunk_last(next, Some(last)));
-            let res = fetch_upstream(&id, &mut upstream, &mut attempt, Some(&range)).await;
+            let res = fetch_upstream(kind, &id, &mut upstream, &mut attempt, Some(&range)).await;
             let piece = res.ok().and_then(|r| {
                 let (a, b, t) = content_range(&r)?;
                 // odświeżony link może wskazać inny format; inny rozmiar to błąd, nie cichy zlepek
@@ -513,6 +583,7 @@ pub(crate) fn parse_content_range(v: &str) -> Option<(u64, u64, u64)> {
 }
 
 async fn fetch_upstream(
+    kind: Kind,
     id: &str,
     upstream: &mut Upstream,
     attempt: &mut usize,
@@ -547,6 +618,28 @@ async fn fetch_upstream(
             ));
         }
         let failed_url = upstream.url.clone();
+        // obraz odświeża tylko siebie i najwyżej raz: ścieżka dźwięku ani jego pamięć podręczna nie są ruszane
+        if kind == Kind::Video {
+            let next = if *attempt == 0 {
+                *attempt = 1;
+                crate::stream::recover_video(id, &failed_url).await
+            } else {
+                None
+            };
+            match next.filter(|u| allowed_upstream(&u.url)) {
+                Some(u) => {
+                    *upstream = u;
+                    continue;
+                }
+                None => {
+                    video_map()
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .remove(id);
+                    return res.map_err(|_| StatusCode::BAD_GATEWAY);
+                }
+            }
+        }
         remove_direct_url(id);
         crate::stream::evict_cached_url(id);
         let mut recovered = None;
@@ -583,6 +676,35 @@ pub fn current_upstream(id: &str) -> Option<Upstream> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn video_map_leaves_audio_alone() {
+        let up = |u: &str| Upstream {
+            url: u.into(),
+            user_agent: "ua".into(),
+        };
+        store_upstream("aaaaaaaaaaa", up("https://a.googlevideo.com/audio"));
+        for (i, id) in [
+            "aaaaaaaaaaa",
+            "bbbbbbbbbbb",
+            "ccccccccccc",
+            "ddddddddddd",
+            "eeeeeeeeeee",
+        ]
+        .iter()
+        .enumerate()
+        {
+            store_video(id, up("https://a.googlevideo.com/video"), i as u64);
+        }
+        let audio = current_upstream("aaaaaaaaaaa").map(|u| u.url);
+        assert_eq!(audio.as_deref(), Some("https://a.googlevideo.com/audio"));
+        assert!(
+            video_upstream("aaaaaaaaaaa").is_none(),
+            "oldest video evicted"
+        );
+        assert_eq!(video_upstream("eeeeeeeeeee").map(|v| v.1), Some(4));
+        assert_eq!(video_map().lock().unwrap().len(), MAX_VIDEO_URLS);
+    }
 
     #[test]
     fn ranges_split_into_chunks() {
