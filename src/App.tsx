@@ -1148,13 +1148,18 @@ export default function App() {
       const safety = window.setTimeout(() => setFeedTabLoading('mood', false), 45000);
       try {
         const various = translations[lang].variousArtists;
-        const res = await loadPlaylistItems(collection.id, lang, (items) => {
-          if (dataSeq !== feedSeqRef.current.mood) return;
-          setSections([
-            { title: collection.title, items: withCollectionMeta(collection, items, various) },
-          ]);
-          setFeedTabLoading('mood', false);
-        });
+        const res = await loadPlaylistItems(
+          collection.id,
+          lang,
+          (items) => {
+            if (dataSeq !== feedSeqRef.current.mood) return;
+            setSections([
+              { title: collection.title, items: withCollectionMeta(collection, items, various) },
+            ]);
+            setFeedTabLoading('mood', false);
+          },
+          () => dataSeq !== feedSeqRef.current.mood
+        );
         if (dataSeq !== feedSeqRef.current.mood) return;
         if (res.items.length) {
           setBrowseEmptyKind(null);
@@ -2214,38 +2219,66 @@ export default function App() {
           pushToast(L.openingPlaylist.replace('{name}', collection.title), 'info', 2000);
         }
       }, 700);
-      try {
-        openPlayer();
-        setPlayingFrom(collection.title);
-        const res = await loadPlaylistItems(collection.id, lang);
-        if (req !== collectionReqRef.current) return;
-        const items = res.items;
-        if (!items.length) {
-          await openCollectionPage(collection);
-          return;
-        }
-
-        const itemsWithCover = withCollectionMeta(collection, items, L.variousArtists);
-
+      const sourceId = opts?.sourceId ?? toPlainPlaylistId(collection.id);
+      const start = (itemsWithCover: Track[]) => {
+        window.clearTimeout(slowHint);
         const list = opts?.shuffle ? smartShuffle(itemsWithCover) : itemsWithCover;
+        queueRef.current = list;
         setQueue(list);
         setQueueIndex(0);
         setShuffleOn(!!opts?.shuffle);
         originalQueueRef.current = opts?.shuffle ? itemsWithCover : null;
         setPlayingFrom(collection.title);
-        playingFromIdRef.current = opts?.sourceId ?? toPlainPlaylistId(collection.id);
+        playingFromIdRef.current = sourceId;
         // lista utworów wykonawcy ma id OLAK5uy jak album, ale to składanka, więc bez gapless i z crossfade
         playingAlbumRef.current =
           !opts?.sourceId && (collection.type === 'album' || isAlbumCollectionId(collection.id));
         openPlayer();
-        await loadTrack(list[0]);
+        return loadTrack(list[0]);
+      };
+      // bez losowania gramy już z pierwszej strony; długa lista doczytywała się kilkanaście sekund w ciszy
+      let started: Track[] | null = null;
+      const onPage = opts?.shuffle
+        ? undefined
+        : (items: Track[]) => {
+            if (started || !items.length || req !== collectionReqRef.current) return;
+            started = withCollectionMeta(collection, items, L.variousArtists);
+            void start(started);
+          };
+      try {
+        openPlayer();
+        const res = await loadPlaylistItems(
+          collection.id,
+          lang,
+          onPage,
+          () => req !== collectionReqRef.current
+        );
+        if (req !== collectionReqRef.current) return;
+        const first = started as Track[] | null;
+        if (first) {
+          const all = withCollectionMeta(collection, res.items, L.variousArtists);
+          if (all.length <= first.length || playingFromIdRef.current !== sourceId) return;
+          const tail = all.slice(first.length);
+          const q = queueRef.current;
+          const have = new Set(q.map((t) => t.id));
+          const next =
+            q === first ? [...q, ...tail] : [...q, ...tail.filter((t) => !have.has(t.id))];
+          queueRef.current = next;
+          setQueue(next);
+          return;
+        }
+        if (!res.items.length) {
+          await openCollectionPage(collection);
+          return;
+        }
+        await start(withCollectionMeta(collection, res.items, L.variousArtists));
       } catch {
         if (req === collectionReqRef.current) pushToast(L.playlistOpenFailed, 'error');
       } finally {
         window.clearTimeout(slowHint);
       }
     },
-    [lang, openPlayer, loadTrack, openCollectionPage]
+    [lang, openPlayer, loadTrack, openCollectionPage, queueRef]
   );
 
   const handleItemClick = useCallback(
@@ -2261,6 +2294,8 @@ export default function App() {
         await handleCollectionClick(track);
         return;
       }
+      // wybór użytkownika unieważnia playlistę, która jeszcze się wczytuje
+      ++collectionReqRef.current;
       openPlayer();
       const items = (sectionItems || []).filter(
         (i) => i.type === 'track' || /^[\w-]{11}$/.test(i.id)
@@ -2418,21 +2453,26 @@ export default function App() {
   const extendRadioLatest = useLatest(extendQueueWithRadio);
   extendRadioRef.current = extendQueueWithRadio;
 
-  const playNext = useCallback(() => {
-    const idx = queueIndexRef.current;
-    const q = queueRef.current;
-    if (idx < q.length - 1) playByIndex(idx + 1);
-    else if (loopMode === 'all' && q.length > 0) playByIndex(0);
-    else if (q.length > 0) {
-      const at = q.length;
-      void extendQueueWithRadio().then((added) => {
-        if (added > 0 && queueIndexRef.current === idx) void playByIndexRef.current(at);
-      });
-    }
-  }, [playByIndex, loopMode, extendQueueWithRadio, queueIndexRef, queueRef]);
+  const playNext = useCallback(
+    (auto?: boolean) => {
+      if (auto !== true) ++collectionReqRef.current;
+      const idx = queueIndexRef.current;
+      const q = queueRef.current;
+      if (idx < q.length - 1) playByIndex(idx + 1);
+      else if (loopMode === 'all' && q.length > 0) playByIndex(0);
+      else if (q.length > 0) {
+        const at = q.length;
+        void extendQueueWithRadio().then((added) => {
+          if (added > 0 && queueIndexRef.current === idx) void playByIndexRef.current(at);
+        });
+      }
+    },
+    [playByIndex, loopMode, extendQueueWithRadio, queueIndexRef, queueRef]
+  );
 
   const playPrev = useCallback(() => {
     if (!currentTrack) return;
+    ++collectionReqRef.current;
     const positionSec = pickPrevPosition(progressRef.current, audioRef.current?.currentTime);
     const q = queueRef.current;
     const decision = decidePrevious({
@@ -3047,7 +3087,7 @@ export default function App() {
         audio.play().catch(() => setIsPlaying(false));
         return;
       }
-      if (queueIndex < queue.length - 1) playNext();
+      if (queueIndex < queue.length - 1) playNext(true);
       else if (loopMode === 'all' && queue.length > 0) playByIndex(0);
       else if (queue.length > 0) {
         const at = queueRef.current.length;
@@ -3355,7 +3395,7 @@ export default function App() {
       }
       plan.queue.slice(idx + 1, idx + 3).forEach((t) => prefetchStream(t));
       // Rust przerwał start następnego, bo okno wróciło; dokończyć musi JS
-      if (snap.ended && r.pending) window.setTimeout(() => playNextRef.current(), 0);
+      if (snap.ended && r.pending) window.setTimeout(() => playNextRef.current(true), 0);
       return true;
     }
     const disk = r.disk;
@@ -4730,6 +4770,14 @@ export default function App() {
     [sections, activeTab]
   );
 
+  // jak w szufladzie kolejki: pozycja zamiast id, bez gubienia losowania, trybu albumu i historii
+  const playUpNext = useCallback(
+    (i: number) => {
+      ++collectionReqRef.current;
+      void playByIndexRef.current(queueIndexRef.current + 1 + i);
+    },
+    [queueIndexRef]
+  );
   const upNextTracks = useMemo(
     () => queue.slice(queueIndex + 1, queueIndex + 51),
     [queue, queueIndex]
@@ -5418,13 +5466,12 @@ export default function App() {
                           {upNextTracks.length === 0 ? (
                             <div className="up-next-empty">{t.upNextEmpty}</div>
                           ) : (
-                            upNextTracks.map((track) => (
+                            upNextTracks.map((track, i) => (
                               <UpNextItem
-                                key={track.id}
+                                key={`${track.id}-${i}`}
                                 track={track}
-                                onClick={() =>
-                                  handleItemClick(track, playingFrom || undefined, queue)
-                                }
+                                index={i}
+                                onPlay={playUpNext}
                               />
                             ))
                           )}
@@ -5980,7 +6027,7 @@ export default function App() {
                   className="control-icon-btn"
                   aria-label={t.nextTrack}
                   title={t.nextTrack}
-                  onClick={playNext}
+                  onClick={() => playNext()}
                 >
                   <SkipForward size={22} />
                 </button>
@@ -6192,6 +6239,7 @@ export default function App() {
             t={t}
             onClose={() => setQueueOpen(false)}
             onSelectTrack={(idx) => {
+              ++collectionReqRef.current;
               if (idx !== queueIndex) void playByIndex(idx);
             }}
             onRemoveTrack={(idx) => {

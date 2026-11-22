@@ -4,13 +4,15 @@ import { coverAttrs } from '../../utils/covers';
 
 export const UpNextItem = memo(function UpNextItem({
   track,
-  onClick,
+  index,
+  onPlay,
 }: {
   track: Track;
-  onClick: () => void;
+  index: number;
+  onPlay: (index: number) => void;
 }) {
   return (
-    <button type="button" className="up-next-item" onClick={onClick}>
+    <button type="button" className="up-next-item" onClick={() => onPlay(index)}>
       <img
         loading="lazy"
         decoding="async"

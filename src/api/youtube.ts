@@ -1375,7 +1375,8 @@ async function loadWatchQueue(playlistId: string, lang: Language): Promise<Track
 export async function loadPlaylistItems(
   browseId: string,
   lang: Language,
-  onPage?: (items: Track[]) => void
+  onPage?: (items: Track[]) => void,
+  isStale?: () => boolean
 ): Promise<PlaylistLoad> {
   const ids = playlistBrowseCandidates(browseId);
   const generated = isGeneratedMixId(browseId);
@@ -1427,7 +1428,8 @@ export async function loadPlaylistItems(
         addFrom(root);
         if (tracks.length) onPage?.(tracks.slice());
         let token = findContinuationToken(root);
-        for (let round = 0; token && round < maxPages; round += 1) {
+        // porzucony widok nie musi ściągać i parsować kolejnych 50 stron
+        for (let round = 0; token && round < maxPages && !isStale?.(); round += 1) {
           let cont: { data: unknown; next: string | null };
           try {
             cont = await fetchPlaylistContinuation(token, lang);
