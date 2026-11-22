@@ -960,27 +960,33 @@ export default function App() {
     [lang, navigateTo, setFeedTabLoading]
   );
 
-  const startBackgroundPrefetch = useCallback((tracks: Track[]) => {
-    if (!tracks || tracks.length === 0) {
-      setPrefetchComplete(true);
-      return;
-    }
-    const covers = tracks
-      .filter((t) => Boolean(t.cover))
-      .slice(0, 2)
-      .map((t) => preloadImage(t.coverSmall || t.cover));
-    setPrefetchTotal(covers.length || 1);
-    setPrefetchDone(0);
-    setPrefetchComplete(false);
-    if (!covers.length) {
-      setPrefetchComplete(true);
-      return;
-    }
-    covers.forEach((p) => p.finally(() => setPrefetchDone((prev) => prev + 1)));
-    Promise.allSettled(covers).then(() => {
-      if (mountedRef.current) setPrefetchComplete(true);
-    });
-  }, []);
+  const showSplashRef = useLatest(showSplash);
+  const startBackgroundPrefetch = useCallback(
+    (tracks: Track[]) => {
+      // ten stan rysuje tylko pasek ekranu startowego; później każde wejście na Główną dokładało 3 rendery
+      if (!showSplashRef.current) return;
+      if (!tracks || tracks.length === 0) {
+        setPrefetchComplete(true);
+        return;
+      }
+      const covers = tracks
+        .filter((t) => Boolean(t.cover))
+        .slice(0, 2)
+        .map((t) => preloadImage(t.coverSmall || t.cover));
+      setPrefetchTotal(covers.length || 1);
+      setPrefetchDone(0);
+      setPrefetchComplete(false);
+      if (!covers.length) {
+        setPrefetchComplete(true);
+        return;
+      }
+      covers.forEach((p) => p.finally(() => setPrefetchDone((prev) => prev + 1)));
+      Promise.allSettled(covers).then(() => {
+        if (mountedRef.current) setPrefetchComplete(true);
+      });
+    },
+    [showSplashRef]
+  );
 
   const loadHome = useCallback(
     (language: Language = lang, navigate = true) => {
@@ -1841,21 +1847,25 @@ export default function App() {
       progressFillRef.current?.style.setProperty('width', `${pct}%`);
       // wartość suwaka idzie tą samą drogą co pasek, bez renderu Reacta przy każdym timeupdate
       const seekTrack = progressFillRef.current?.parentElement;
-      seekTrack?.setAttribute('aria-valuenow', String(Math.round(t)));
-      seekTrack?.setAttribute('aria-valuetext', `${formatTime(t)} / ${formatTime(d)}`);
+      // wywołanie co 500 ms, a napisy zmieniają się raz na sekundę albo wcale, więc piszemy tylko różnice
+      const setText = (el: Element | null | undefined, text: string) => {
+        if (el && el.textContent !== text) el.textContent = text;
+      };
+      const setAttr = (el: Element | null | undefined, name: string, value: string) => {
+        if (el && el.getAttribute(name) !== value) el.setAttribute(name, value);
+      };
+      setAttr(seekTrack, 'aria-valuenow', String(Math.round(t)));
+      setAttr(seekTrack, 'aria-valuetext', `${formatTime(t)} / ${formatTime(d)}`);
       progressHandleRef.current?.style.setProperty('left', `${pct}%`);
-      if (!progressScrubRef.current) {
-        progressTimeElRef.current?.replaceChildren(document.createTextNode(formatTime(t)));
-      }
-      if (showRemainingRef.current && d > 0) {
-        durationTimeElRef.current?.replaceChildren(
-          document.createTextNode(`-${formatTime(Math.max(0, d - t))}`)
-        );
-      } else {
-        durationTimeElRef.current?.replaceChildren(
-          document.createTextNode(d > 0 ? formatTime(d) : '0:00')
-        );
-      }
+      if (!progressScrubRef.current) setText(progressTimeElRef.current, formatTime(t));
+      setText(
+        durationTimeElRef.current,
+        showRemainingRef.current && d > 0
+          ? `-${formatTime(Math.max(0, d - t))}`
+          : d > 0
+            ? formatTime(d)
+            : '0:00'
+      );
     },
     [durationRef, showRemainingRef]
   );
@@ -5682,7 +5692,7 @@ export default function App() {
                                         className="search-result-cover"
                                         loading="lazy"
                                         decoding="async"
-                                        {...coverAttrs(item)}
+                                        {...coverAttrs(item, 'thumb')}
                                       />
                                       <div className="search-result-play-icon">
                                         <Play size={14} fill="currentColor" />
@@ -5844,7 +5854,7 @@ export default function App() {
                                     className="search-result-cover"
                                     loading="lazy"
                                     decoding="async"
-                                    {...coverAttrs(item)}
+                                    {...coverAttrs(item, 'thumb')}
                                   />
                                   <div className="search-result-play-icon">
                                     <Play size={14} fill="currentColor" />

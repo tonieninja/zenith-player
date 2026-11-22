@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import { useLightLyrics } from '../lyrics/light';
 
 // wymazywanie skacze 30 razy na sekundę: przy miękkiej krawędzi wygląda płynnie, a WebView2 nie rysuje 60 klatek
@@ -264,7 +264,7 @@ type Props = {
   playing?: boolean;
 };
 
-export function LyricKaraokeText({
+export const LyricKaraokeText = memo(function LyricKaraokeText({
   text,
   active: activeProp,
   start,
@@ -330,4 +330,4 @@ export function LyricKaraokeText({
       </span>
     </span>
   );
-}
+});

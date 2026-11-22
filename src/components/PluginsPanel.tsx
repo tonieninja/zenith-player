@@ -1506,9 +1506,11 @@ export function PluginsPanel({
                           setExpandedId((prev) => (prev === plugin.id ? null : plugin.id))
                         }
                         settings={
-                          hasSettings(plugin.id)
-                            ? renderSettings(plugin.id)
-                            : renderSettings('default')
+                          expandedId !== plugin.id
+                            ? undefined
+                            : hasSettings(plugin.id)
+                              ? renderSettings(plugin.id)
+                              : renderSettings('default')
                         }
                         t={t}
                       />

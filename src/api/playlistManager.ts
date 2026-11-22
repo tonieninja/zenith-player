@@ -21,6 +21,8 @@ export interface PlaylistSummary {
   title: string;
   subtitle: string;
   cover: string;
+  // kafelek listy ma 44 px, a okładka 544 px dekodowała się ~20 razy większa
+  thumb?: string;
   count: number | null;
   kind: PlaylistKind;
   editable: boolean;
@@ -76,6 +78,7 @@ export async function listAllPlaylists(
       title: p.title,
       subtitle: p.artist,
       cover: p.coverLarge || p.cover,
+      thumb: p.coverSmall || p.cover,
       count: parseTrackCount(p.artist),
       kind,
       editable: kind === 'own' && isEditablePlaylist(p.id),

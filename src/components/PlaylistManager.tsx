@@ -676,7 +676,12 @@ export function PlaylistManager({
                     className={`pm-list-row ${p.id === activeId ? 'active' : ''}`}
                     onClick={() => void openPlaylist(p.id)}
                   >
-                    <PmCover className="pm-list-cover" src={p.cover} seed={p.title} kind={p.kind} />
+                    <PmCover
+                      className="pm-list-cover"
+                      src={p.thumb || p.cover}
+                      seed={p.title}
+                      kind={p.kind}
+                    />
                     <span className="pm-list-text">
                       <span className="pm-list-title">{p.title}</span>
                       <span className="pm-list-sub">
