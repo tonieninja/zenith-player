@@ -427,12 +427,30 @@ pub async fn restore_ytm_session(app: AppHandle, webview: tauri::Webview) -> Res
     }
     let cookies_for_apply = cookies.clone();
     let app2 = app.clone();
-    crate::ytm_api::warm_cookie_cache(stored_to_header(&cookies));
-    let applied = tauri::async_runtime::spawn_blocking(move || {
-        with_webview_on_main(&app2, move |app| Ok(apply_to_main(app, &cookies_for_apply)))
+    // Google rotuje ciasteczka w profilu webview; stara kopia z pliku nadpisana na nowsze kończy się wylogowaniem
+    let (applied, live) = tauri::async_runtime::spawn_blocking(move || {
+        with_webview_on_main(&app2, move |app| {
+            let live: Vec<StoredCookie> = collect_all_cookies(app)
+                .into_iter()
+                .filter(is_session_cookie)
+                .collect();
+            if has_auth_marker(&live) {
+                return Ok((0, Some(live)));
+            }
+            Ok((apply_to_main(app, &cookies_for_apply), None))
+        })
     })
     .await
     .map_err(|e| e.to_string())??;
+    if let Some(live) = live {
+        crate::ytm_api::warm_cookie_cache(stored_to_header(&live));
+        if let Ok(json) = serde_json::to_string(&live) {
+            let _ = crate::secret_store::write_session(&path, &json);
+        }
+        let _ = crate::ytm_api::resolve_cookies_public(&app);
+        return Ok(true);
+    }
+    crate::ytm_api::warm_cookie_cache(stored_to_header(&cookies));
     if applied > 0 && (was_legacy || load_path != path) {
         let json = serde_json::to_string(&cookies).map_err(|e| e.to_string())?;
         crate::secret_store::write_session(&path, &json)?;

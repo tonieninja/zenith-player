@@ -14,6 +14,7 @@ const YTM_BROWSE: &str = "https://music.youtube.com/youtubei/v1/browse";
 const YTM_HOME: &str = "https://music.youtube.com/";
 
 static COOKIE_CACHE: Mutex<Option<(String, Instant)>> = Mutex::new(None);
+static COOKIE_REFRESH_AT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 const COOKIE_TTL: std::time::Duration = std::time::Duration::from_secs(120);
 
 #[derive(Serialize, Deserialize, Clone, Default)]
@@ -431,6 +432,7 @@ fn resolve_cookies(app: &AppHandle) -> String {
     };
 
     if auth_cookie_score(&cached) > 0 {
+        refresh_in_background(app);
         return cached;
     }
     if auth_cookie_score(&from_file) > 0 {
@@ -473,6 +475,23 @@ pub fn warm_cookie_cache(cookie_header: String) {
 }
 
 static COOKIE_COLLECT_LOCK: Mutex<()> = Mutex::new(());
+
+// okno tokenów PO i strony Google rotują ciasteczka w profilu; kopia sprzed godzin daje odpowiedzi „wylogowany”
+fn refresh_in_background(app: &AppHandle) {
+    let stale = COOKIE_CACHE
+        .lock()
+        .ok()
+        .and_then(|g| g.as_ref().map(|(_, at)| at.elapsed() >= COOKIE_TTL))
+        .unwrap_or(false);
+    let now = crate::now_secs();
+    let last = COOKIE_REFRESH_AT.load(std::sync::atomic::Ordering::Relaxed);
+    if !stale || now.saturating_sub(last) < COOKIE_TTL.as_secs() {
+        return;
+    }
+    COOKIE_REFRESH_AT.store(now, std::sync::atomic::Ordering::Relaxed);
+    let app = app.clone();
+    std::thread::spawn(move || refresh_cookie_cache_from_webview(&app));
+}
 
 pub fn refresh_cookie_cache_from_webview(app: &AppHandle) {
     let _guard = match COOKIE_COLLECT_LOCK.lock() {
