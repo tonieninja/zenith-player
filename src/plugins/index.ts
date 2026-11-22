@@ -154,6 +154,8 @@ class PluginManager {
     } catch {
       stored = {};
     }
+    // zapisane „null” albo liczba dawały biały ekran przy starcie
+    if (!stored || typeof stored !== 'object') stored = {};
     for (const plugin of this.plugins) {
       this.enabled[plugin.id] = stored[plugin.id] ?? plugin.defaultEnabled;
     }

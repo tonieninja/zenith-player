@@ -2272,13 +2272,14 @@ function parseVtt(text: string): LyricsLine[] {
     if (!m) continue;
     const hours = m[1] ? Number(m[1]) : 0;
     const time = hours * 3600 + Number(m[2]) * 60 + Number(m[3]) + Number(m[4]) / 1000;
-    const payload = block
-      .split('\n')
-      .filter((l) => l && !l.includes('-->') && l !== 'WEBVTT' && !/^\d+$/.test(l.trim()))
-      .join(' ')
-      .replace(/<[^>]+>/g, '')
-      .replace(/&nbsp;/g, ' ')
-      .trim();
+    const payload = decodeHtmlEntities(
+      block
+        .split('\n')
+        .filter((l) => l && !l.includes('-->') && l !== 'WEBVTT' && !/^\d+$/.test(l.trim()))
+        .join(' ')
+        .replace(/<[^>]+>/g, '')
+        .replace(/&nbsp;/g, ' ')
+    ).trim();
     if (!payload || /^[♪♫*\-_.\s]+$/.test(payload)) continue;
     lines.push({ time, text: payload });
   }

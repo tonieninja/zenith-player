@@ -99,7 +99,12 @@ export async function joinRoom(code: string): Promise<boolean> {
       };
     });
     ws.onmessage = (ev) => {
-      const state = JSON.parse(String(ev.data)) as RoomState;
+      let state: RoomState | null;
+      try {
+        state = JSON.parse(String(ev.data)) as RoomState;
+      } catch {
+        return;
+      }
       if (state?.trackId != null) onSync?.(state);
     };
     ws.onclose = () => onStatus?.('peer-left');
@@ -107,17 +112,24 @@ export async function joinRoom(code: string): Promise<boolean> {
     onStatus?.('joined');
     return true;
   } catch {
+    // gniazdo po timeoucie mogłoby się jeszcze otworzyć i wisieć bez właściciela
+    dropGuestSocket();
     setRole('', '');
     onStatus?.('error');
     return false;
   }
 }
 
+function dropGuestSocket() {
+  if (!guestSocket) return;
+  // własne wyjście to nie „druga strona wyszła”
+  guestSocket.onclose = null;
+  guestSocket.close();
+  guestSocket = null;
+}
+
 export async function leaveRoom() {
-  if (guestSocket) {
-    guestSocket.close();
-    guestSocket = null;
-  }
+  dropGuestSocket();
   if (isRoomHost()) await invoke('room_leave');
   setRole('', '');
   onStatus?.('left');

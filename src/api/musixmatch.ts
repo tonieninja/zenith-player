@@ -80,7 +80,7 @@ export class MxmMiss extends Error {}
 function readJson<T>(key: string, fallback: T): T {
   try {
     const raw = localStorage.getItem(key);
-    return raw ? (JSON.parse(raw) as T) : fallback;
+    return raw ? ((JSON.parse(raw) as T | null) ?? fallback) : fallback;
   } catch {
     return fallback;
   }

@@ -99,6 +99,13 @@ describe('plugin manager', () => {
     const raw = JSON.parse(localStorage.getItem('zenith_plugins_enabled') || '{}');
     expect(Object.keys(raw).length).toBeGreaterThan(10);
   });
+
+  it('starts with defaults when the saved plugin map is null', () => {
+    localStorage.setItem('zenith_plugins_enabled', 'null');
+    expect(() => pluginManager.reloadFromStorage()).not.toThrow();
+    const p = ALL_PLUGINS[0];
+    expect(pluginManager.isEnabled(p.id)).toBe(p.defaultEnabled);
+  });
 });
 
 describe('keyboard shortcuts', () => {
