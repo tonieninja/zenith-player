@@ -118,6 +118,7 @@ import {
 import { SyncedLyricsRail } from './components/SyncedLyricsRail';
 import { LyricsSourceBar } from './components/LyricsSourceBar';
 import { LyricsSourcesSettings } from './components/LyricsSourcesSettings';
+import { AudioOutputSettings } from './components/AudioOutputSettings';
 import { PlainLyrics } from './components/PlainLyrics';
 import { LIB_EMPTY_KEYS, LIBRARY_CATEGORIES, nextLibraryViewState } from './constants/library';
 import {
@@ -6145,6 +6146,7 @@ export default function App() {
                   {ageBypass ? t.toggleOn : t.toggleOff}
                 </button>
               </div>
+              {isNativeAudio() && <AudioOutputSettings lang={lang} />}
               <div className="settings-row-item settings-toggle-row">
                 <div className="settings-account-info">
                   <span className="setting-label" id="set-light-lyrics-label">

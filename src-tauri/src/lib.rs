@@ -896,6 +896,8 @@ pub fn run() {
             native_audio::zaudio_crossfade,
             native_audio::zaudio_preroll,
             native_audio::zaudio_tail,
+            native_audio::zaudio_output_devices,
+            native_audio::zaudio_set_output_device,
             native_audio::zaudio_plan,
             native_audio::zaudio_attach,
             native_audio::zaudio_snapshot,

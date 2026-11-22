@@ -33,11 +33,16 @@ export interface AudioRestore {
 let native = false;
 let restore: AudioRestore | null = null;
 
+export const OUTPUT_DEVICE_KEY = 'zenith_audio_output';
+
 export async function initAudioBackend(): Promise<void> {
   if (!('__TAURI_INTERNALS__' in window)) return;
   try {
     native = await NativeAudio.available();
     if (native) restore = await invoke<AudioRestore>('zaudio_attach');
+    // urządzenie otwiera się dopiero przy graniu, więc ustawienie zdąży przed pierwszym dźwiękiem
+    const device = localStorage.getItem(OUTPUT_DEVICE_KEY);
+    if (native && device) void invoke('zaudio_set_output_device', { name: device });
   } catch {
     native = false;
   }

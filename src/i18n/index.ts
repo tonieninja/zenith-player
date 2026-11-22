@@ -555,6 +555,11 @@ const en = {
   lyricsTranslate: 'Translated lyrics',
   lyricsTranslateDesc:
     'Adds a translation into the app language under each line in another language. Lines go to Google Translate.',
+  audioOutput: 'Audio output',
+  audioOutputDesc:
+    'Where Zenith plays. If the chosen device is unplugged, sound moves to the system default and comes back when it is connected again.',
+  audioOutputSystem: 'System default',
+  audioOutputMissing: 'not connected',
   lyricsSources: 'Lyrics sources',
   lyricsSourcesDesc:
     'Auto asks them in this order. The starred one wins whenever it agrees with the others; switched-off sources are never asked.',
@@ -1205,6 +1210,11 @@ const pl: Record<keyof typeof en, string> = {
   lyricsTranslate: 'Tłumaczenie tekstu',
   lyricsTranslateDesc:
     'Dodaje tłumaczenie na język aplikacji pod każdą linią w innym języku. Linie trafiają do Google Translate.',
+  audioOutput: 'Wyjście audio',
+  audioOutputDesc:
+    'Gdzie gra Zenith. Gdy wybrane urządzenie zostanie odłączone, dźwięk przechodzi na domyślne systemu i wraca po ponownym podłączeniu.',
+  audioOutputSystem: 'Domyślne systemu',
+  audioOutputMissing: 'niepodłączone',
   lyricsSources: 'Źródła tekstów',
   lyricsSourcesDesc:
     'Auto pyta je w tej kolejności. Źródło z gwiazdką wygrywa, gdy zgadza się z innymi; wyłączonych nie pyta wcale.',

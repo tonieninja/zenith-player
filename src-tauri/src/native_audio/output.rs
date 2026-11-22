@@ -241,6 +241,33 @@ pub fn sample_rate() -> u32 {
         .unwrap_or(48000)
 }
 
+static PREFERRED: Mutex<Option<String>> = Mutex::new(None);
+
+pub fn set_preferred(name: Option<String>) {
+    *PREFERRED.lock().unwrap_or_else(|p| p.into_inner()) = name.filter(|n| !n.is_empty());
+    wake();
+}
+
+pub fn device_names() -> Vec<String> {
+    use cpal::traits::{DeviceTrait, HostTrait};
+    cpal::default_host()
+        .output_devices()
+        .map(|it| it.filter_map(|d| d.name().ok()).collect())
+        .unwrap_or_default()
+}
+
+// wybrane w ustawieniach, a gdy go nie ma (odłączone słuchawki), domyślne systemu; po podłączeniu wraca samo
+fn pick_output(host: &cpal::Host) -> Option<cpal::Device> {
+    use cpal::traits::{DeviceTrait, HostTrait};
+    let want = PREFERRED.lock().unwrap_or_else(|p| p.into_inner()).clone();
+    want.and_then(|w| {
+        host.output_devices()
+            .ok()?
+            .find(|d| d.name().is_ok_and(|n| n == w))
+    })
+    .or_else(|| host.default_output_device())
+}
+
 pub fn wake() {
     if let Some(o) = OUT.get() {
         let _ =
@@ -318,9 +345,8 @@ pub fn start() -> bool {
 }
 
 fn probe_device() -> Option<u32> {
-    use cpal::traits::{DeviceTrait, HostTrait};
-    let host = cpal::default_host();
-    let dev = host.default_output_device()?;
+    use cpal::traits::DeviceTrait;
+    let dev = pick_output(&cpal::default_host())?;
     let cfg = dev.default_output_config().ok()?;
     Some(cfg.sample_rate().0)
 }
@@ -352,10 +378,9 @@ struct Opened {
 impl Opened {
     // strumień cpal zostaje przy urządzeniu, na którym go otwarto; słuchawki BT inaczej grałyby dopiero po pauzie
     fn moved(&self) -> bool {
-        use cpal::traits::{DeviceTrait, HostTrait};
+        use cpal::traits::DeviceTrait;
         self.name.is_some()
-            && cpal::default_host()
-                .default_output_device()
+            && pick_output(&cpal::default_host())
                 .and_then(|d| d.name().ok())
                 .is_some_and(|n| Some(n) != self.name)
     }
@@ -408,9 +433,8 @@ impl Device {
 }
 
 fn open_cpal(decks: &[Arc<DeckOut>; 2]) -> Option<Opened> {
-    use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-    let host = cpal::default_host();
-    let dev = host.default_output_device()?;
+    use cpal::traits::{DeviceTrait, StreamTrait};
+    let dev = pick_output(&cpal::default_host())?;
     let name = dev.name().ok();
     let sup = dev.default_output_config().ok()?;
     let sr = sup.sample_rate().0;

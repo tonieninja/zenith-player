@@ -1004,6 +1004,16 @@ pub async fn zaudio_crossfade(url: String, seconds: f64) -> Result<Snapshot, Str
 }
 
 #[tauri::command]
+pub fn zaudio_output_devices() -> Vec<String> {
+    output::device_names()
+}
+
+#[tauri::command]
+pub fn zaudio_set_output_device(name: Option<String>) {
+    output::set_preferred(name);
+}
+
+#[tauri::command]
 pub fn zaudio_plan(plan: Value) {
     headless::set_plan(plan);
 }
