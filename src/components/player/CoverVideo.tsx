@@ -17,7 +17,7 @@ let avcOk: boolean | null = null;
 const canAvc = () =>
   (avcOk ??= document.createElement('video').canPlayType('video/mp4; codecs="avc1.4d401f"') !== '');
 
-// wyciszony obraz teledysku nad okładką; dźwięk zostaje w silniku audio, a obraz tylko goni jego zegar
+// dźwięk zostaje w silniku audio (crossfade, EQ, gapless), więc wideo jest nieme i tylko goni jego zegar
 export function CoverVideo({ audio, trackId, buffering, onShown }: Props) {
   const ref = useRef<HTMLVideoElement>(null);
   const [hidden, setHidden] = useState(() => document.hidden);
@@ -38,9 +38,11 @@ export function CoverVideo({ audio, trackId, buffering, onShown }: Props) {
     if (!audio || off || url || hidden) return;
     let dead = false;
     let asked = false;
-    // tuż po zmianie utworu src wskazuje jeszcze poprzedni, więc inne id tu tylko wstrzymuje, a nie wyłącza
+    // tuż po zmianie utworu src wskazuje jeszcze poprzedni, więc inne id tu tylko wstrzymuje, a nie wyłącza;
+    // próg 4 s sprawia, że przeskoczony utwór nie kosztuje żadnego wywołania /player
     const check = () => {
-      if (asked || proxiedId(audio.src) !== trackId || audio.paused) return;
+      if (asked || proxiedId(audio.src) !== trackId || audio.paused || audio.currentTime < 4)
+        return;
       asked = true;
       invoke<string | null>('zvideo_stream', { videoId: trackId, maxHeight: 720, avc: canAvc() })
         .then((u) => !dead && (u ? setUrl(u) : setOff(true)))
@@ -68,7 +70,8 @@ export function CoverVideo({ audio, trackId, buffering, onShown }: Props) {
       const s = videoStep(clock, v.currentTime);
       if (v.playbackRate !== s.rate) v.playbackRate = s.rate;
       if (s.seekTo !== null && !v.seeking) v.currentTime = s.seekTo;
-      if (s.play && v.paused) v.play().catch(() => {});
+      // obraz bywa o ułamek sekundy krótszy niż dźwięk; play() po końcu zacząłby teledysk od nowa
+      if (s.play && v.paused && !v.ended) v.play().catch(() => {});
       else if (!s.play && !v.paused) v.pause();
     };
     const onPlaying = () => setShown(true);
@@ -78,7 +81,10 @@ export function CoverVideo({ audio, trackId, buffering, onShown }: Props) {
     v.muted = true;
     v.src = url;
     AUDIO_EVENTS.forEach((e) => audio.addEventListener(e, tick));
-    const timer = window.setInterval(tick, 250);
+    // w pauzie przewinięcie i wznowienie przychodzą zdarzeniami audio, więc interwał nie musi wtedy nic czytać
+    const timer = window.setInterval(() => {
+      if (!audio.paused || !v.paused) tick();
+    }, 250);
     tick();
     return () => {
       window.clearInterval(timer);

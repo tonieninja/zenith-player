@@ -215,11 +215,15 @@ fn mark_bot_blocked() {
     fresh_start();
 }
 
-fn mark_rate_limited(video_id: &str) {
+fn start_rate_cooldown(video_id: &str) {
     crate::diag::log(format!("[Zenith] rate limited by youtube at {video_id}"));
     if let Ok(mut g) = RATE_LIMITED_AT.lock() {
         *g = Some(Instant::now());
     }
+}
+
+fn mark_rate_limited(video_id: &str) {
+    start_rate_cooldown(video_id);
     note_kind(video_id, "ratelimit");
 }
 
@@ -1037,7 +1041,8 @@ async fn probe(url: &str, user_agent: &str, range: &str) -> Option<bool> {
 }
 
 // teledysk ma własny, mały budżet, żeby nigdy nie zjadał wywołań, których potrzebuje dźwięk tego samego utworu
-const VIDEO_CALLS_PER_VIDEO: u32 = 3;
+// trzy klienty i jeszcze jedno wywołanie na odnowienie adresu po 403
+const VIDEO_CALLS_PER_VIDEO: u32 = 4;
 const VIDEO_CLIENTS: [Client; 3] = [Client::Visionos, Client::TvSamsung, Client::WebEmbedded];
 
 fn video_calls() -> &'static Calls {
@@ -1045,7 +1050,7 @@ fn video_calls() -> &'static Calls {
     C.get_or_init(Default::default)
 }
 
-// Err(true): film to nieruchoma okładka albo budżet się skończył, więc kolejny klient nic nie zmieni
+// Err(true): nieruchoma okładka, pusty budżet albo przerwa dla gości, więc kolejny klient nic nie zmieni
 async fn video_once(
     video_id: &str,
     client: Client,
@@ -1077,8 +1082,9 @@ async fn video_once(
     if is_bot_check(&data) {
         mark_bot_blocked();
     }
+    // przerwa obowiązuje też audio, ale wpis „ratelimit” w mapie błędów audio pokazałby zły powód przy utworze
     if failure_kind(&data) == "ratelimit" {
-        mark_rate_limited(video_id);
+        start_rate_cooldown(video_id);
     }
     if !playable(&data) {
         return Err(false);

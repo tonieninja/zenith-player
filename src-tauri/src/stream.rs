@@ -604,7 +604,19 @@ async fn escalate(video_id: &str, signed: Option<Auth>) -> Option<DirectAudio> {
 // ustawienia ostatniego żądania, żeby odświeżenie po 403 w proxy wybrało ten sam rodzaj obrazu
 static VIDEO_WANT: Mutex<(u32, bool)> = Mutex::new((720, true));
 
-/// Adres w lokalnym proxy do samego obrazu teledysku albo None, gdy go nie ma (okładka zostaje).
+// CoverVideo pyta od nowa przy każdym zamontowaniu, a każde pytanie o utwór bez obrazu to wywołania /player
+const NO_VIDEO_TTL: u64 = 30 * 60;
+
+fn no_video() -> &'static Mutex<HashMap<String, u64>> {
+    static M: OnceLock<Mutex<HashMap<String, u64>>> = OnceLock::new();
+    M.get_or_init(Default::default)
+}
+
+fn no_video_known(map: &mut HashMap<String, u64>, video_id: &str, now: u64) -> bool {
+    map.retain(|_, at| now.saturating_sub(*at) < NO_VIDEO_TTL);
+    map.contains_key(video_id)
+}
+
 #[command]
 pub async fn zvideo_stream(
     video_id: String,
@@ -623,7 +635,21 @@ pub async fn zvideo_stream(
     let hit =
         stream_proxy::video_upstream(&video_id).filter(|(u, at)| cache_fresh(&u.url, *at, now));
     if hit.is_none() {
+        let skip = {
+            let mut known = no_video().lock().unwrap_or_else(|e| e.into_inner());
+            no_video_known(&mut known, &video_id, now)
+        };
+        if skip {
+            return Ok(None);
+        }
         let Some(got) = player::fetch_video(&video_id, max_h, avc).await else {
+            // blokada gościa mówi tylko „nie teraz”, a nie „ten utwór nie ma obrazu”
+            if !player::bot_blocked() {
+                no_video()
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .insert(video_id, now);
+            }
             return Ok(None);
         };
         let up = stream_proxy::Upstream {
@@ -940,6 +966,20 @@ mod tests {
             p,
             vec!["bbbbbbbbbbb".to_string(), "aaaaaaaaaaa".to_string()]
         );
+    }
+
+    #[test]
+    fn no_video_expires_after_ttl() {
+        let mut m = std::collections::HashMap::new();
+        m.insert("aaaaaaaaaaa".to_string(), 1000);
+        assert!(super::no_video_known(&mut m, "aaaaaaaaaaa", 1000 + 60));
+        assert!(!super::no_video_known(&mut m, "bbbbbbbbbbb", 1000 + 60));
+        assert!(!super::no_video_known(
+            &mut m,
+            "aaaaaaaaaaa",
+            1000 + super::NO_VIDEO_TTL
+        ));
+        assert!(m.is_empty());
     }
 
     #[test]
