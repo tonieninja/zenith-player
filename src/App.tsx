@@ -2840,8 +2840,9 @@ export default function App() {
   }, [setVolumeToRef, volumeNowRef]);
 
   const coverWheelHandler = useLatest((e: WheelEvent) => {
-    const delta = e.deltaY > 0 ? -0.03 : 0.03;
-    const next = Math.max(0, Math.min(1, volumeRef.current + delta));
+    // wspólny przelicznik: poziomy gest touchpada podgłaśniał, a każdy drobny krok liczył się jak pełne 3%
+    const next = applyWheelVolume(volumeRef.current, e);
+    if (next === volumeRef.current) return;
     setVolume(next);
     volumeRef.current = next;
     if (!audio.isCrossfading) {
@@ -3345,6 +3346,7 @@ export default function App() {
       Math.abs(r.volume - volumeRef.current) > 0.001
     ) {
       setVolume(r.volume);
+      audio.volume = r.volume;
       if (pluginManager.isEnabled('remember-volume')) saveRememberedVolume(r.volume);
     }
     if (snap?.hasSource && plan?.queue?.length) {
@@ -3698,9 +3700,10 @@ export default function App() {
     }
   }, [prefetchStream, queue, queueIndex, preloadNextOn]);
 
+  // pozostałe ścieżki same piszą głośność do silnika; zapis tutaj przerywał rampę wtyczki płynnej głośności
   useEffect(() => {
-    audio.volume = volume;
-  }, [audio, volume]);
+    audio.volume = volumeRef.current;
+  }, [audio, volumeRef]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -3888,16 +3891,22 @@ export default function App() {
   }, [pluginStates]);
 
   // pozycja idzie świeża, bo plugin pamięta ją tylko z ostatniej zmiany utworu albo pauzy
+  // przeciąganie głośności to ~60 zmian na sekundę, a każda szła IPC do SMTC albo nowym wątkiem D-Bus
   useEffect(() => {
-    setMprisExtras(
-      {
-        volume,
-        rate: getPlaybackSpeed(pluginManager.isEnabled('playback-speed')),
-        loopMode,
-        shuffle: shuffleOn,
-      },
-      audio.currentTime || 0
+    const id = window.setTimeout(
+      () =>
+        setMprisExtras(
+          {
+            volume,
+            rate: getPlaybackSpeed(pluginManager.isEnabled('playback-speed')),
+            loopMode,
+            shuffle: shuffleOn,
+          },
+          audio.currentTime || 0
+        ),
+      150
     );
+    return () => window.clearTimeout(id);
   }, [audio, volume, loopMode, shuffleOn, pluginStates]);
   const overlayStackRef = useLatest({
     np: npOpen,
