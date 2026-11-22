@@ -1536,6 +1536,9 @@ export async function extendLibrarySections(
   const epoch = libraryEpoch;
   await appendLibraryPages(id, lang, cloned, maxPages);
   if (epoch !== libraryEpoch) return cloned;
+  // bez nowych stron ta sama referencja, żeby Biblioteka nie renderowała się drugi raz po nic
+  const count = (list: Section[]) => list.reduce((n, s) => n + s.items.length, 0);
+  if (count(cloned) === count(sections)) return sections;
   const cacheKey = libraryCacheKey(category, lang);
   // doczytanie stron nie odświeża danych, więc nie może przesuwać ich wygaśnięcia
   const at = librarySectionCache.get(cacheKey)?.at ?? Date.now();
@@ -1568,6 +1571,9 @@ export function prefetchLibrary(lang: Language, except?: LibraryCategory) {
   })();
 }
 
+// prefetch, Biblioteka i listy konta pytały o tę samą kategorię naraz i ścigały się o jeden token kontynuacji
+const libraryInflight = new Map<string, Promise<Section[]>>();
+
 export async function getLibrary(
   category: LibraryCategory,
   lang: Language,
@@ -1581,6 +1587,21 @@ export async function getLibrary(
       return hit.sections.map((sec) => ({ ...sec, items: applyPlaylistOverrides(sec.items) }));
     }
   }
+  const flightKey = `${cacheKey}:${opts.maxPages ?? LIBRARY_INITIAL_PAGE_LIMIT}:${!!opts.strict}`;
+  const pending = !opts.bypassCache && libraryInflight.get(flightKey);
+  if (pending) return pending;
+  const run = getLibraryUncached(category, lang, cacheKey, opts);
+  libraryInflight.set(flightKey, run);
+  void run.finally(() => libraryInflight.delete(flightKey)).catch(() => undefined);
+  return run;
+}
+
+async function getLibraryUncached(
+  category: LibraryCategory,
+  lang: Language,
+  cacheKey: string,
+  opts: { maxPages?: number; strict?: boolean }
+): Promise<Section[]> {
   try {
     const id = LIBRARY_BROWSE_IDS[category];
     const maxPages = opts.maxPages ?? LIBRARY_INITIAL_PAGE_LIMIT;

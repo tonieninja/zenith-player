@@ -1311,7 +1311,9 @@ export default function App() {
           clearAuthCache();
           sections = await getLibrary(category, lang, { bypassCache: true, strict: true });
         }
-        void loadUserPlaylists();
+        // te kategorie zapisują w cache playlisty z jedną stroną; listy konta czytamy dopiero po doczytaniu reszty
+        const sharesPlaylists = category === 'playlists' || category === 'landing';
+        if (!sharesPlaylists) void loadUserPlaylists();
         void refreshAccountProfile();
         if (reqId !== libReqIdRef.current) return;
         setLibSections(sections);
@@ -1319,6 +1321,7 @@ export default function App() {
         window.clearTimeout(safety);
         prefetchLibrary(lang, category);
         void extendLibrarySections(category, lang, sections).then((more) => {
+          if (sharesPlaylists) void loadUserPlaylists();
           if (reqId !== libReqIdRef.current) return;
           if (more !== sections) setLibSections(more);
         });
