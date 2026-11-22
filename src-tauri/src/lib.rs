@@ -832,11 +832,7 @@ pub fn run() {
             if let Some(id) = deeplink::from_args(&std::env::args().collect::<Vec<_>>()) {
                 deeplink::deliver(app.handle(), &id);
             }
-            // okno uruchomione w tle nie zgłosi utraty fokusu, a is_focused przy starcie bywa prawdą;
-            // odliczanie rusza zawsze, fokus sprawdza się dopiero po 30 s
-            if let Some(w) = app.get_webview_window("main") {
-                wv2_mem::on_focus(&w, false);
-            }
+            wv2_mem::start_watch(app.handle());
             Ok(())
         })
         .on_window_event(|window, event| match event {
@@ -872,7 +868,6 @@ pub fn run() {
                     if *focused && !wv.is_minimized().unwrap_or(false) {
                         wv2_mem::set_low(&wv, false);
                     }
-                    wv2_mem::on_focus(&wv, *focused);
                 }
             }
             // na natywnym Waylandzie tao zgłasza przy każdej zmianie (0,0) i nadpisałby zapisane pozycje

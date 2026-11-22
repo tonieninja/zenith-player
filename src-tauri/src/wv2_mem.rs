@@ -78,30 +78,43 @@ const BACKGROUND_AFTER_S: u64 = 30;
 #[cfg(not(windows))]
 pub fn set_low(_win: &tauri::WebviewWindow, _low: bool) {}
 
-// widoczne okno w tle dostaje niski cel po 30 s; zdarzenie fokusu zamiast odpytywania okna co sekundę
+// Focused przychodzi tylko z WebView2, więc okno bez fokusu w webview nie zgłosi przejścia w tło;
+// odpytywanie co 10 s zamiast co sekundę łapie każdy przypadek
 #[cfg(windows)]
-pub fn on_focus(win: &tauri::WebviewWindow, focused: bool) {
-    use std::sync::atomic::{AtomicU64, Ordering};
-    static BLUR_GEN: AtomicU64 = AtomicU64::new(0);
-    let gen = BLUR_GEN.fetch_add(1, Ordering::SeqCst) + 1;
-    if focused {
-        return;
-    }
-    let w = win.clone();
-    std::thread::spawn(move || {
-        std::thread::sleep(std::time::Duration::from_secs(BACKGROUND_AFTER_S));
-        if BLUR_GEN.load(Ordering::SeqCst) != gen || crate::windows::is_shutting_down() {
-            return;
-        }
-        // zminimalizowane ma już poziom 2; 3 przywróciłoby SetIsVisible(true)
-        if !w.is_minimized().unwrap_or(false)
-            && w.is_visible().unwrap_or(false)
-            && !w.is_focused().unwrap_or(true)
-        {
-            apply(&w, 3);
-        }
-    });
+pub fn start_watch(app: &tauri::AppHandle) {
+    use std::sync::atomic::Ordering;
+    use tauri::Manager;
+    const TICK_S: u64 = 10;
+    let app = app.clone();
+    let _ = std::thread::Builder::new()
+        .name("zenith-wv2-mem".into())
+        .spawn(move || {
+            let mut background = 0;
+            loop {
+                std::thread::sleep(std::time::Duration::from_secs(TICK_S));
+                if crate::windows::is_shutting_down() {
+                    return;
+                }
+                let Some(w) = app.get_webview_window("main") else {
+                    continue;
+                };
+                // zminimalizowanym i ukrytym zajmują się zdarzenia okna (poziom 2)
+                if w.is_minimized().unwrap_or(false) || !w.is_visible().unwrap_or(true) {
+                    background = 0;
+                } else if w.is_focused().unwrap_or(true) {
+                    background = 0;
+                    if STATE.load(Ordering::SeqCst) == 3 {
+                        apply(&w, 1);
+                    }
+                } else {
+                    background += TICK_S;
+                    if background >= BACKGROUND_AFTER_S {
+                        apply(&w, 3);
+                    }
+                }
+            }
+        });
 }
 
 #[cfg(not(windows))]
-pub fn on_focus(_win: &tauri::WebviewWindow, _focused: bool) {}
+pub fn start_watch(_app: &tauri::AppHandle) {}
