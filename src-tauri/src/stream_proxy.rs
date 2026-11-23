@@ -44,6 +44,9 @@ fn http_client() -> Option<&'static Client> {
             .pool_max_idle_per_host(8)
             .connect_timeout(Duration::from_secs(15))
             .read_timeout(Duration::from_secs(30))
+            // bajty idą do WebView i silnika 1:1, z oryginalnym Content-Length i zakresami
+            .no_gzip()
+            .no_brotli()
             .build()
     })
 }
@@ -79,6 +82,8 @@ fn direct_client() -> Option<&'static Client> {
             .pool_max_idle_per_host(8)
             .connect_timeout(Duration::from_secs(15))
             .read_timeout(Duration::from_secs(30))
+            .no_gzip()
+            .no_brotli()
             .no_proxy()
             .build()
     })
@@ -98,7 +103,9 @@ fn hedge_client(direct: bool) -> Option<&'static Client> {
         let mut b = Client::builder()
             .pool_max_idle_per_host(2)
             .connect_timeout(Duration::from_secs(15))
-            .read_timeout(Duration::from_secs(30));
+            .read_timeout(Duration::from_secs(30))
+            .no_gzip()
+            .no_brotli();
         if direct {
             b = b.no_proxy();
         }

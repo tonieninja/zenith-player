@@ -341,6 +341,8 @@ pub(crate) async fn fetch_part(
             .no_proxy()
             .connect_timeout(std::time::Duration::from_secs(10))
             .read_timeout(std::time::Duration::from_secs(90))
+            .no_gzip()
+            .no_brotli()
             .build()
     })
     .ok_or("no http client")?;

@@ -30,7 +30,7 @@ url = "2"
 tauri-plugin-http = { version = "2.9", features = ["unsafe-headers"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync", "time"] }
 axum = { version = "0.8", features = ["ws"] }
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "rustls-tls-native-roots", "system-proxy", "http2", "charset", "stream", "blocking", "json"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "rustls-tls-native-roots", "system-proxy", "http2", "charset", "stream", "blocking", "json", "gzip", "brotli"] }
 getrandom = "0.2"
 sha1 = "0.10"
 futures-util = "0.3"
@@ -75,6 +75,7 @@ strip = true
 
 [patch.crates-io]
 wry = { path = "vendor/wry" }
+tauri-plugin-http = { path = "vendor/tauri-plugin-http" }
 
 [profile.dev.package.rquickjs-sys]
 opt-level = 3
