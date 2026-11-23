@@ -347,8 +347,8 @@ pub fn start() -> bool {
     } else {
         match probe_device() {
             Some(sr) => sr,
-            // słuchawki podłączone po starcie: wątek wyjścia otworzy je sam; bez silnika okno w zasobniku nie zwalnia pamięci.
-            // Tylko Windows, bo na Linuksie cpal bywa ślepy na urządzenie, które gra przez GStreamer w WebView.
+            // słuchawki podłączone po starcie otworzy wątek wyjścia; bez silnika okno w zasobniku nie zwalnia pamięci.
+            // Tylko Windows: na Linuksie cpal bywa ślepy na urządzenie, które gra przez GStreamer w WebView.
             None if cfg!(windows) => 48000,
             None => return false,
         }
@@ -518,7 +518,8 @@ fn open_cpal(decks: &[Arc<DeckOut>; 2]) -> Option<Opened> {
     };
     #[cfg_attr(windows, allow(unused_mut))]
     let mut fixed = None;
-    // ALSA/CoreAudio domyślnie budzą wątek co kilka ms; ~43 ms bufora to kilka razy mniej wybudzeń. WASAPI ma własny okres
+    // ALSA/CoreAudio domyślnie budzą wątek co kilka ms; ~43 ms bufora to kilka razy mniej wybudzeń.
+    // WASAPI ma własny okres
     #[cfg(not(windows))]
     if let cpal::SupportedBufferSize::Range { min, max } = *sup.buffer_size() {
         if min <= max {

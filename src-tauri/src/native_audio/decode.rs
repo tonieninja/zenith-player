@@ -116,7 +116,7 @@ pub struct Session {
     stereo: Vec<f32>,
     pcm: Vec<f32>,
     staged: Vec<f32>,
-    // bufory wielokrotnego użytku: wcześniej dwie alokacje na każdy pakiet (~50 na sekundę)
+    // bufory wielokrotnego użytku: bez nich dwie alokacje na każdy pakiet (~50 na sekundę)
     sb: Option<SampleBuffer<f32>>,
     rs_out: Vec<f32>,
 }

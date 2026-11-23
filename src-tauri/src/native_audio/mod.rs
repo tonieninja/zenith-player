@@ -701,7 +701,7 @@ pub fn run_cmd(cmd: Cmd) -> Snapshot {
             }
             Cmd::Load => {
                 let d = &mut st.decks[a];
-                // ponowny load po timeoucie play() nie wyrzuca tego, co już się pobrało; zepsute pobieranie startuje od nowa
+                // ponowny load po timeoucie play() zostawia to, co już się pobrało; zepsute pobieranie idzie od nowa
                 let alive = !d.errored && d.buf.as_ref().is_some_and(|b| b.healthy());
                 if !d.src.is_empty() && !alive {
                     let url = d.src.clone();
