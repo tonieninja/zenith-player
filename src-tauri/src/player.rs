@@ -894,7 +894,6 @@ pub async fn client_once(
             Some(a) => a.data_sync_id.clone().or_else(|| visitor.map(String::from)),
             None => visitor.map(String::from),
         }?;
-        crate::potoken::want();
         Some(crate::potoken::mint(&binding).await?)
     } else {
         None

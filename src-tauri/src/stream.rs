@@ -235,10 +235,6 @@ pub async fn recover_upstream(
             return Some(cur);
         }
     }
-    // ukryte okno youtube.com to setki MB; otwiera je dopiero klient, który naprawdę potrzebuje tokenu
-    if clients.iter().any(|c| crate::player::spec(*c).needs_pot) {
-        crate::potoken::want();
-    }
     let signed = attempt + 1 == resolve_plan::RECOVERY.len();
     let a = if signed { auth() } else { None };
     if signed && a.is_none() {

@@ -134,10 +134,6 @@ pub fn want() {
     open();
 }
 
-pub fn wanted() -> bool {
-    WANTED.load(Ordering::SeqCst)
-}
-
 fn broken() -> bool {
     BROKEN_AT
         .lock()
@@ -332,14 +328,10 @@ pub async fn mint(binding: &str) -> Option<String> {
         return Some(t);
     }
     LAST_USE.store(now_secs(), Ordering::SeqCst);
-    if !ready() {
-        if !wanted() {
-            return None;
-        }
-        open();
-        if !wait_ready(Duration::from_secs(20)).await {
-            return None;
-        }
+    // ukryte okno youtube.com kosztuje setki MB, więc otwiera się dopiero, gdy tokenu nie ma w pamięci
+    want();
+    if !ready() && !wait_ready(Duration::from_secs(20)).await {
+        return None;
     }
     let app = APP.get()?.clone();
     // okno zniszczone poza close() zostawiało LOADED=true i PoToken nie wracał do restartu
