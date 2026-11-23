@@ -946,8 +946,7 @@ pub async fn client_once(
             continue;
         };
         tokio::time::sleep_until(ready_at).await;
-        if url_reachable(&url, spec.user_agent).await && tail_reachable(&url, spec.user_agent).await
-        {
+        if stream_reachable(&url, spec.user_agent).await {
             crate::diag::log(format!(
                 "[Zenith] innertube {} ok for {}",
                 spec.name, video_id
@@ -992,6 +991,15 @@ pub async fn url_reachable(url: &str, user_agent: &str) -> bool {
         }
     }
     false
+}
+
+// oba zakresy naraz oszczędzają jedną podróż; ogon jeszcze raz, bo adres mógł ożyć dopiero w trakcie ponowień początku
+async fn stream_reachable(url: &str, user_agent: &str) -> bool {
+    let (head, tail) = tokio::join!(
+        url_reachable(url, user_agent),
+        tail_reachable(url, user_agent)
+    );
+    head && (tail || tail_reachable(url, user_agent).await)
 }
 
 // googlevideo oddaje pierwszy zakres nawet przy złym tokenie PO, a 403 przychodzi dopiero w środku utworu
@@ -1097,8 +1105,7 @@ async fn video_once(
             continue;
         };
         tokio::time::sleep_until(ready_at).await;
-        if url_reachable(&url, spec.user_agent).await && tail_reachable(&url, spec.user_agent).await
-        {
+        if stream_reachable(&url, spec.user_agent).await {
             crate::diag::log(format!("[Zenith] video {} ok for {video_id}", spec.name));
             return Ok(DirectAudio {
                 url,
