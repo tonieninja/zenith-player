@@ -59,7 +59,12 @@ pub(crate) fn cached_client(
     match build() {
         Ok(c) => Some(cell.get_or_init(|| c)),
         Err(e) => {
-            crate::diag::log(format!("[Zenith] http client build failed: {e}"));
+            // przy zepsutym magazynie certyfikatów nie uda się żaden build, a próbuje każde żądanie
+            static LOGGED: std::sync::atomic::AtomicBool =
+                std::sync::atomic::AtomicBool::new(false);
+            if !LOGGED.swap(true, std::sync::atomic::Ordering::Relaxed) {
+                crate::diag::log(format!("[Zenith] http client build failed: {e}"));
+            }
             None
         }
     }
