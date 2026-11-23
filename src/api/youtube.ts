@@ -887,7 +887,7 @@ function dedupeSections(sections: Section[]): Section[] {
       return true;
     })
     .map((s) => {
-      // YouTube potrafi dać ten sam utwór dwa razy w półce; zdublowany klucz React gubił kafelki
+      // YouTube potrafi dać ten sam utwór dwa razy w półce; zdublowany klucz React gubi kafelki
       const ids = new Set<string>();
       const items = s.items.filter((i) => {
         if (ids.has(i.id)) return false;
@@ -1335,7 +1335,7 @@ export async function getRadioTracks(
 
 const refsCache = new Map<string, Pick<Track, 'artistId' | 'albumId' | 'album'>>();
 
-/** Wykonawca i album utworu zapisanego przed tym, jak parsery zaczęły je zachowywać. */
+// wykonawca i album dla utworu z pamięci, kolejki albo historii, które nie mają ich id
 export async function getTrackRefs(
   videoId: string,
   lang: Language
@@ -1571,7 +1571,7 @@ export function prefetchLibrary(lang: Language, except?: LibraryCategory) {
   })();
 }
 
-// prefetch, Biblioteka i listy konta pytały o tę samą kategorię naraz i ścigały się o jeden token kontynuacji
+// prefetch, Biblioteka i listy konta pytają o tę samą kategorię naraz, a token kontynuacji jest jeden
 const libraryInflight = new Map<string, Promise<Section[]>>();
 
 export async function getLibrary(
@@ -2251,7 +2251,7 @@ async function getLyricsUncached(
   };
   const synced = (x: Attempt) => Boolean(x.res?.synced?.length);
 
-  // YouTube Music od razu, bo zwykły tekst daje w sekundę; Genius po pudle, przy przewijaniu kończył się na 429
+  // YouTube Music od razu, bo zwykły tekst daje w sekundę; Genius po pudle, bo przy przewijaniu kończy się na 429
   const fallbacks = on.includes('YouTube Music') ? [attempt('YouTube Music')] : [];
   const first = racing.slice(0, 4).map((p) => collect(attempt(p)));
   await settleWithGrace(first, synced, 1500);
@@ -2826,7 +2826,7 @@ function cleanQueryTitle(title: string, artist?: string): string {
     t = t.replace(new RegExp(`^${escaped}\\s*[-–\u2014|:]+\\s+`, 'iu'), '');
   }
   t = t
-    // tylko w nawiasie albo po myślniku na końcu, inaczej „Birthday” traciło „hday”
+    // tylko w nawiasie albo po myślniku na końcu, inaczej „Birthday” straciłoby „hday”
     .replace(/\s*\(\s*(official|lyrics?|video|audio|hd|4k|mv|m\/v|visuali[sz]er)\b[^)]*\)/gi, '')
     .replace(/\s+[-–—|]\s*(official|lyrics?|music video|audio|visuali[sz]er)\b.*$/i, '')
     .replace(/\[[^\]]*\]/g, '')

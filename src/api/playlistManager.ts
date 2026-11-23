@@ -21,7 +21,7 @@ export interface PlaylistSummary {
   title: string;
   subtitle: string;
   cover: string;
-  // kafelek listy ma 44 px, a okładka 544 px dekodowała się ~20 razy większa
+  // kafelek listy ma 44 px, a okładka 544 px dekoduje się ~20 razy większa
   thumb?: string;
   count: number | null;
   kind: PlaylistKind;
@@ -271,7 +271,7 @@ export async function addMissingTracks(id: string, videoIds: string[], lang: Lan
   return missing.length;
 }
 
-// zwraca tylko faktycznie usunięte: wpis bez setVideoId YouTube pomija, a komunikat liczył i jego
+// zwraca tylko faktycznie usunięte: wpis bez setVideoId YouTube pomija, a komunikat liczyłby i jego
 export async function removeEntries(
   id: string,
   entries: PlaylistEntry[],

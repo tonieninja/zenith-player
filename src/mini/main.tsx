@@ -390,7 +390,7 @@ function MiniApp() {
           : { trackId: p.trackId, synced: p.synced, text: p.text, syncOffsetMs: p.syncOffsetMs }
       );
     });
-    // pełny tekst przychodzi raz po „ready”; wysłany przed podpięciem nasłuchu tekstu ginął
+    // pełny tekst przychodzi raz po „ready”; wysłany przed podpięciem nasłuchu tekstu ginie
     void Promise.all([stateReady, lyricsReady]).then(() => emit('zenith-mini-ready'));
     const headReady = listenHeadless((now) => {
       const tr = now.track;
@@ -410,7 +410,7 @@ function MiniApp() {
       setHeadNow((prev) => (prev?.track.id === tr.id ? prev : now));
     });
     return () => {
-      // odpinamy po podpięciu: sprzątanie przed rozwiązaniem listen (StrictMode) zostawiało podwójny nasłuch
+      // odpinamy po podpięciu: sprzątanie przed rozwiązaniem listen (StrictMode) zostawiłoby podwójny nasłuch
       for (const ready of [stateReady, lyricsReady, headReady]) void ready.then((off) => off());
     };
   }, []);

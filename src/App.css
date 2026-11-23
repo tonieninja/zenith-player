@@ -69,7 +69,7 @@
   font-family: inherit;
 }
 
-/* gradienty pod .global-glass-bg przebijały się poniżej 1/255, a trzymały teksturę wielkości okna w GPU */
+/* gradienty pod .global-glass-bg przebijają się poniżej 1/255, a trzymają teksturę wielkości okna w GPU */
 body {
   color: var(--text-primary);
   font-family:
@@ -960,7 +960,7 @@ button.nav-item {
   }
 }
 
-/* backwards: zakończona animacja z both trzymała każdą kartę na osobnej warstwie GPU, a koniec = styl bazowy */
+/* backwards: zakończona animacja z both trzymałaby każdą kartę na osobnej warstwie GPU, a koniec = styl bazowy */
 .yt-anim.yt-slide-left > * {
   animation: enterFromRight 0.34s cubic-bezier(0.16, 1, 0.3, 1) backwards;
 }
@@ -3812,7 +3812,7 @@ button.modal-close-icon {
   mask-image: linear-gradient(to bottom, #000 35%, transparent);
 }
 
-/* gotowe rozmycie z canvasu: blur 56px na żywo przycinał przewijanie strony na WebKitGTK */
+/* gotowe rozmycie z canvasu: blur 56px na żywo przycina przewijanie strony na WebKitGTK */
 .collection-backdrop.pre-blurred {
   filter: saturate(1.4);
 }
@@ -5372,7 +5372,7 @@ html.has-cover-theme .main-play-pause-circle {
   white-space: nowrap;
 }
 
-/* ukryty przycisk menu zabierał 26 px każdemu tytułowi, więc leży nad wierszem i odsłania się dopiero przy najechaniu */
+/* ukryty przycisk menu zabierałby 26 px każdemu tytułowi, więc leży nad wierszem i odsłania się dopiero przy najechaniu */
 .user-playlist-link .zen-popover {
   position: absolute;
   right: 6px;

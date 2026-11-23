@@ -827,7 +827,7 @@ export default function App() {
   const navigateTo = useCallback((tab: ViewTab) => {
     if (tab !== 'player') {
       setPrevTab(tab);
-      // zakładki feedu dzielą jeden przewijany kontener, więc nowa otwierała się na pozycji poprzedniej
+      // zakładki feedu dzielą jeden przewijany kontener, więc nowa otworzyłaby się na pozycji poprzedniej
       document
         .querySelector<HTMLElement>('.content-area .content-scrollable')
         ?.scrollTo({ top: 0, behavior: 'instant' });
@@ -963,7 +963,7 @@ export default function App() {
   const showSplashRef = useLatest(showSplash);
   const startBackgroundPrefetch = useCallback(
     (tracks: Track[]) => {
-      // ten stan rysuje tylko pasek ekranu startowego; później każde wejście na Główną dokładało 3 rendery
+      // ten stan rysuje tylko pasek ekranu startowego; później każde wejście na Główną dokładałoby 3 rendery
       if (!showSplashRef.current) return;
       if (!tracks || tracks.length === 0) {
         setPrefetchComplete(true);
@@ -1198,7 +1198,7 @@ export default function App() {
     setActiveMood(FAVORITES_ID);
     if (savedTracks.length === 0) setFeedTabLoading('mood', true);
     else setFeedTabLoading('mood', false);
-    // pełna lista polubionych to do 51 stron; przy każdym wejściu w zakładkę zapraszało to limit zapytań
+    // pełna lista polubionych to do 51 stron; przy każdym wejściu w zakładkę to proszenie się o limit zapytań
     if (accountLikes.length && Date.now() - likesAtRef.current < 3 * 60_000) {
       setFeedTabLoading('mood', false);
       return;
@@ -1414,7 +1414,7 @@ export default function App() {
   }, [lang, loadUserPlaylists, persistSessionIfWanted, refreshAccountProfile]);
 
   const homeEmptyRef = useLatest(homeSections.length === 0);
-  // start bez sieci zostawiał wylogowaną bibliotekę i pusty Home aż do ręcznego kliknięcia
+  // bez tego start bez sieci zostawia wylogowaną bibliotekę i pusty Home aż do ręcznego kliknięcia
   useEffect(() => {
     const onOnline = () => {
       if (homeEmptyRef.current) loadHome(lang, false);
@@ -2213,7 +2213,7 @@ export default function App() {
         openPlayer();
         return loadTrack(list[0]);
       };
-      // bez losowania gramy już z pierwszej strony; długa lista doczytywała się kilkanaście sekund w ciszy
+      // bez losowania gramy już z pierwszej strony; długa lista doczytuje się kilkanaście sekund
       let started: Track[] | null = null;
       const onPage = opts?.shuffle
         ? undefined
@@ -2262,7 +2262,7 @@ export default function App() {
     async (track: Track, sectionTitle?: string, sectionItems?: Track[]) => {
       const plan = itemClickPlan(track);
       if (plan.kind === 'browse-page') {
-        // rustowy parser karuzel nie zna strony albumu i robił z niej sekcję z jednym utworem
+        // rustowy parser karuzel nie zna strony albumu i zrobiłby z niej sekcję z jednym utworem
         if (track.type === 'album') void openCollectionPage(track);
         else openBrowsePage(track);
         return;
@@ -2581,7 +2581,7 @@ export default function App() {
       }
       likesAtRef.current = 0;
       if (libAuthed && /^[\w-]{11}$/.test(track.id)) {
-        // szybkie podwójne kliknięcie wysyłało like i removelike naraz; serwer mógł skończyć na złym
+        // szybkie podwójne kliknięcie wysłałoby like i removelike naraz; serwer mógłby skończyć na złym
         const want = ratingWantRef.current;
         want.set(track.id, next);
         const prev = ratingChainRef.current.get(track.id) ?? Promise.resolve();
@@ -2814,7 +2814,7 @@ export default function App() {
   }, [setVolumeToRef, volumeNowRef]);
 
   const coverWheelHandler = useLatest((e: WheelEvent) => {
-    // wspólny przelicznik: poziomy gest touchpada podgłaśniał, a każdy drobny krok liczył się jak pełne 3%
+    // wspólny przelicznik: poziomy gest touchpada nie może podgłaśniać, a drobny krok to nie pełny skok
     const next = applyWheelVolume(volumeRef.current, e);
     if (next === volumeRef.current) return;
     setVolume(next);
@@ -3104,7 +3104,7 @@ export default function App() {
       syncDurationFromAudio();
     };
     const onError = () => {
-      // błąd startu obsługuje catch w loadTrack; dwie ścieżki naraz ścigały się o audio.src
+      // błąd startu obsługuje catch w loadTrack; dwie ścieżki naraz ścigałyby się o audio.src
       if (!audio.hasSource || trackSwitchingRef.current) return;
       const id = currentTrackIdRef.current;
       const resumeAt = progressRef.current;
@@ -3674,7 +3674,7 @@ export default function App() {
     }
   }, [prefetchStream, queue, queueIndex, preloadNextOn]);
 
-  // pozostałe ścieżki same piszą głośność do silnika; zapis tutaj przerywał rampę wtyczki płynnej głośności
+  // pozostałe ścieżki same piszą głośność do silnika; zapis tutaj przerwałby rampę wtyczki płynnej głośności
   useEffect(() => {
     audio.volume = volumeRef.current;
   }, [audio, volumeRef]);
@@ -3865,7 +3865,7 @@ export default function App() {
   }, [pluginStates]);
 
   // pozycja idzie świeża, bo plugin pamięta ją tylko z ostatniej zmiany utworu albo pauzy
-  // przeciąganie głośności to ~60 zmian na sekundę, a każda szła IPC do SMTC albo nowym wątkiem D-Bus
+  // przeciąganie głośności to ~60 zmian na sekundę, a każda to IPC do SMTC albo nowy wątek D-Bus
   useEffect(() => {
     const id = window.setTimeout(
       () =>
@@ -4038,7 +4038,7 @@ export default function App() {
   });
 
   useEffect(() => {
-    // jedna subskrypcja na życie okna: ponowne listen przy zmianie głośności dublowało akcje
+    // jedna subskrypcja na życie okna: ponowne listen przy zmianie głośności zdublowałoby akcje
     let disposed = false;
     const offs: (() => void)[] = [];
     const keep = (p: Promise<() => void>) =>
@@ -4594,7 +4594,7 @@ export default function App() {
     meta.title = currentTrack.title;
     meta.artist = currentTrack.artist;
     meta.coverUrl = currentTrack.coverLarge || currentTrack.cover;
-    // okładka mini ma 56 px; inny adres w kolejnych wysyłkach ładował i dekodował drugi obraz przy każdym utworze
+    // okładka mini ma 56 px; inny adres w kolejnych wysyłkach to drugi obraz do pobrania i dekodowania na utwór
     meta.miniCover = currentTrack.coverSmall || currentTrack.cover;
     meta.syncedLen = syncedLen;
     meta.textLen = textLen;

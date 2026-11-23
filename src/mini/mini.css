@@ -31,7 +31,7 @@ html.opaque-window .mini-root {
   justify-content: center;
   padding: 11px 14px;
   box-sizing: border-box;
-  /* prawie kryjące tło, bo przy 0.92 przez okno prześwitywały linie z pulpitu; poświata bierze kolor okładki */
+  /* prawie kryjące tło, bo przy 0.92 przez okno prześwitują linie z pulpitu; poświata bierze kolor okładki */
   background:
     radial-gradient(
       120% 150% at 0% 0%,
@@ -73,7 +73,7 @@ html.opaque-window .mini-root {
   z-index: 3;
 }
 
-/* tylko pod kursorem albo z klawiatury; zwykły fokus po kliknięciu zostawiał je na stałe */
+/* tylko pod kursorem albo z klawiatury; zwykły fokus po kliknięciu zostawiłby je na stałe */
 .mini-root:hover .mini-chips,
 .mini-chips:has(:focus-visible) {
   opacity: 1;
@@ -379,7 +379,7 @@ html.opaque-window .mini-root {
   max-height: 1.25em;
 }
 
-/* kolor dla tekstu bez karaoke; bez niego dziedziczył czarny z dokumentu */
+/* kolor dla tekstu bez karaoke; bez niego dziedziczy czarny z dokumentu */
 .mini-lyric.is-sub {
   max-height: 1.3em;
   overflow: hidden;

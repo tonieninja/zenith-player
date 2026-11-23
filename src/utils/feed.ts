@@ -31,7 +31,7 @@ export function resolveFeedItem(input: ResolveFeedItemInput): FeedItemIdentity |
     return { id: browseId, type: profile ? 'profile' : 'artist' };
   }
 
-  // MPED to strona odcinka z id filmu w środku; jako „album” otwierała pustą stronę zamiast grać
+  // MPED to strona odcinka z id filmu w środku; jako „album” otworzyłaby pustą stronę zamiast grać
   if (browseId?.startsWith('MPED')) return { id: videoId || browseId.slice(4), type: 'track' };
 
   if (pageType === 'MUSIC_PAGE_TYPE_ALBUM' && browseId) {
@@ -102,7 +102,7 @@ export function bylineFromRuns(runs: { text?: unknown }[]): string {
   );
 }
 
-// licznik odsłuchań i czas z kafelka to nie wykonawca, a szły dalej do MediaSession, Discorda i scrobbli
+// licznik odsłuchań i czas z kafelka to nie wykonawca, a trafiłyby do MediaSession, Discorda i scrobbli
 const STAT_PART =
   /^(?:\d[\d.,\s]*\s*(?:[KMB]|tys\.|mln|mld)?\s*(?:plays?|views?|odtworze\p{L}*|wyświetle\p{L}*)|no views|\d{1,2}(?::\d{2}){1,2}|\d+\s*min(?:\s*\d+\s*s(?:ec)?)?|\d+\s*s(?:ec)?)$/iu;
 
@@ -121,7 +121,7 @@ type BylineRun = {
   navigationEndpoint?: { browseEndpoint?: { browseId?: unknown } };
 };
 
-/** Pierwszy wykonawca (UC…) i album (MPRE…) z runów bylinu, z których dotąd zostawał tylko tekst. */
+// pierwszy wykonawca (UC…) i album (MPRE…) z runów bylinu, żeby dało się otworzyć ich strony
 export function refsFromRuns(runs: BylineRun[]): Pick<Track, 'artistId' | 'albumId' | 'album'> {
   const out: Pick<Track, 'artistId' | 'albumId' | 'album'> = {};
   for (const run of runs || []) {

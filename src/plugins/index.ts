@@ -166,7 +166,7 @@ class PluginManager {
     } catch {
       stored = {};
     }
-    // zapisane „null” albo liczba dawały biały ekran przy starcie
+    // zapisane „null” albo liczba dałyby biały ekran przy starcie
     if (!stored || typeof stored !== 'object') stored = {};
     for (const plugin of this.plugins) {
       this.enabled[plugin.id] = stored[plugin.id] ?? plugin.defaultEnabled;
@@ -264,7 +264,7 @@ class PluginManager {
     const plugin = this.plugins.find((p) => p.id === id);
     if (!plugin) return;
     if (on && AUX_WINDOW_PLUGINS[id]) {
-      // wyłączenie w trakcie budowania okna nie miało czego zamknąć, więc zamykamy po otwarciu
+      // wyłączenie w trakcie budowania okna nie ma czego zamknąć, więc zamykamy po otwarciu
       void Promise.allSettled([(async () => plugin.onEnable?.())()]).then(() => {
         if (!this.enabled[id]) catchAsync(() => plugin.onDisable?.());
       });
