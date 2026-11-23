@@ -734,11 +734,16 @@ impl InnerWebView {
       .user_content_manager()
       .expect("WebView does not have UserContentManager");
 
+    // a strong view here would keep both alive forever, and the web process with them
+    let weak = webview.downgrade();
     // Connect before registering as recommended by the docs
     manager.connect_script_message_received(None, move |_m, msg| {
       #[cfg(feature = "tracing")]
       let _span = tracing::info_span!(parent: None, "wry::ipc::handle").entered();
 
+      let Some(webview) = weak.upgrade() else {
+        return;
+      };
       if let Some(js) = msg.js_value() {
         let uri = webview.uri().map(|u| u.to_string()).unwrap_or_default();
         match Request::builder().uri(uri).body(js.to_string()) {
