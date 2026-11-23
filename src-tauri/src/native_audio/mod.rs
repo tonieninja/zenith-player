@@ -401,7 +401,9 @@ fn watch_decks(e: &Engine) {
         if i != active || d.ready < 4 || !d.want_play {
             continue;
         }
-        let starved = d.out.starved.load(Ordering::SeqCst);
+        // bez urządzenia kolejka i tak jest pełna; samo „enough” przełączałoby waiting i canplay co tyknięcie
+        let no_dev = output::NO_DEVICE.load(Ordering::SeqCst);
+        let starved = d.out.starved.load(Ordering::SeqCst) || no_dev;
         if starved && !d.buffering {
             d.buffering = true;
             out.push("waiting");
@@ -409,7 +411,7 @@ fn watch_decks(e: &Engine) {
             let q = d.out.queue();
             let enough = q.eof || q.frames as f64 >= 0.3 * output::sample_rate() as f64;
             drop(q);
-            if enough {
+            if enough && !no_dev {
                 d.buffering = false;
                 d.out.starved.store(false, Ordering::SeqCst);
                 out.push("canplay");
@@ -1615,6 +1617,16 @@ mod engine_tests {
         tokio::time::sleep(Duration::from_millis(600)).await;
         let t = snapshot().t;
         assert!(t > 0.35 && t < 0.9, "position moves in real time: {t}");
+
+        output::NO_DEVICE.store(true, Ordering::SeqCst);
+        let s = until(1.0, |s| s.buffering).await;
+        assert!(s.buffering, "no output device shows waiting");
+        tokio::time::sleep(Duration::from_millis(400)).await;
+        assert!(snapshot().buffering, "waiting holds instead of flapping");
+        output::NO_DEVICE.store(false, Ordering::SeqCst);
+        let s = until(1.0, |s| !s.buffering).await;
+        assert!(!s.buffering && !s.paused, "device back resumes");
+        run_cmd(Cmd::Seek { t: 0.4 });
 
         run_cmd(Cmd::Pause);
         let a = snapshot().t;

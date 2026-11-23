@@ -284,6 +284,9 @@ struct Out {
 
 static OUT: OnceLock<Out> = OnceLock::new();
 
+// bez strumienia mikser nie rusza, więc nikt inny nie zgłosi, że deck gra w ciszy
+pub static NO_DEVICE: AtomicBool = AtomicBool::new(false);
+
 pub fn decks() -> Option<[Arc<DeckOut>; 2]> {
     OUT.get().map(|o| o.decks.clone())
 }
@@ -371,6 +374,7 @@ pub fn start() -> bool {
                     }
                     if dev.is_none() {
                         dev = Device::open(&decks, fake);
+                        NO_DEVICE.store(dev.is_none(), Ordering::SeqCst);
                         if let (Some(d), Some(o)) = (&dev, OUT.get()) {
                             o.sr.store(d.sr, Ordering::Relaxed);
                         }
