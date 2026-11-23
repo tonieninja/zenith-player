@@ -1388,7 +1388,7 @@ pub mod headless {
                 let m = with(|st| st.muted).unwrap_or(false);
                 run_cmd(Cmd::Muted { m: !m });
             }
-            // shortcut: toggle-shuffle z MPRIS bez okna nic nie robi, bo tasowanie kolejki żyje we frontendzie
+            // toggle-shuffle z MPRIS bez okna nic nie robi, bo tasowanie kolejki żyje we frontendzie
             _ => {
                 if let Some(t) = action
                     .strip_prefix("seek:")

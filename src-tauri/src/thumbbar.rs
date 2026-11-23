@@ -141,7 +141,7 @@ mod imp {
         unsafe { DefSubclassProc(hwnd, msg, wp, lp) }
     }
 
-    // uproszczenie: kolor ikon z motywu paska przy pierwszym użyciu; po zmianie motywu nowy dopiero po restarcie
+    // kolor ikon z motywu paska przy pierwszym użyciu; po zmianie motywu nowy dopiero po restarcie
     fn make_icons() -> [HICON; 4] {
         let px = unsafe { GetSystemMetrics(SM_CXSMICON) }.clamp(16, 64) as usize;
         let ink = if super::light_taskbar() { 0x20 } else { 0xFF };
