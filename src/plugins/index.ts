@@ -38,6 +38,7 @@ import { windowTitlePlugin } from './windowTitle';
 import { taskbarButtonsPlugin } from './taskbarButtons';
 import { zenithLinksPlugin } from './zenithLinks';
 import { blockArtistsPlugin } from './blockArtists';
+import { skipAiMusicPlugin } from './skipAiMusic';
 import { NowPlayingInfo, PluginCategory, PLUGIN_CATEGORY_ORDER, ZenithPlugin } from './types';
 
 const STORAGE_KEY = 'zenith_plugins_enabled';
@@ -53,6 +54,7 @@ export const PLUGIN_ORDER = [
   'ab-loop',
   'sponsorblock',
   'block-artists',
+  'skip-ai-music',
   'auto-pause-blur',
   'equalizer',
   'loudness-normalization',
@@ -102,6 +104,7 @@ type PluginListener = (states: Record<string, boolean>) => void;
 export const ALL_PLUGINS: ZenithPlugin[] = [
   abLoopPlugin,
   blockArtistsPlugin,
+  skipAiMusicPlugin,
   ambientGlowPlugin,
   musicVideoPlugin,
   autoPauseBlurPlugin,

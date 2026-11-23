@@ -3454,6 +3454,18 @@ button.modal-close-icon {
   gap: 14px;
 }
 
+.plugin-card-settings a {
+  color: var(--text-primary, #fff);
+  text-decoration: underline;
+  text-decoration-color: rgba(255, 255, 255, 0.35);
+  text-underline-offset: 2px;
+}
+
+.plugin-card-settings a:hover,
+.plugin-card-settings a:focus-visible {
+  text-decoration-color: currentColor;
+}
+
 .plugin-setting-row {
   display: flex;
   justify-content: space-between;

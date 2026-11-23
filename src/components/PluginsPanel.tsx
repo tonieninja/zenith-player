@@ -34,6 +34,7 @@ import { DownloadsSettings } from './plugins/DownloadsSettings';
 import { HotkeySettings } from './plugins/HotkeySettings';
 import { MiniPlayerSettings } from './plugins/MiniPlayerSettings';
 import { BlockArtistsSettings } from './plugins/BlockArtistsSettings';
+import { aiListSize } from '../plugins/skipAiMusic';
 import { DuckMeter } from './plugins/DuckMeter';
 import { DiscordStatus } from './plugins/DiscordStatus';
 import { DEFAULT_CLIENT_ID } from '../plugins/discordPresence';
@@ -393,6 +394,32 @@ export function PluginsPanel({
         return <MiniPlayerSettings t={t} />;
       case 'block-artists':
         return <BlockArtistsSettings t={t} currentTrack={currentTrack} />;
+      case 'skip-ai-music': {
+        const n = aiListSize();
+        const link = (href: string, label: string) => (
+          <a
+            href={href}
+            onClick={(e) => {
+              e.preventDefault();
+              void openUrl(href);
+            }}
+          >
+            {label}
+          </a>
+        );
+        return (
+          <div className="plugin-setting-label">
+            <span>{n ? t.aiListCount.replace('{n}', String(n)) : t.aiListPending}</span>
+            <span className="plugin-desc">{t.aiListNote}</span>
+            <span className="plugin-desc">
+              {t.aiListCredit} {link('https://souloverai.com', 'Soul Over AI')} (CC BY 4.0){' '}
+              {t.aiListAnd}{' '}
+              {link('https://github.com/CennoxX/spotify-ai-blocker', 'Spotify AI Blocker')}{' '}
+              (CennoxX, MIT), {t.aiListVia} {link('https://ailist.flow-tube.org', 'Flow AI list')}.
+            </span>
+          </div>
+        );
+      }
       case 'sleep-timer':
         return (
           <div className="plugin-setting-row">
@@ -1382,6 +1409,7 @@ export function PluginsPanel({
       'sleep-timer',
       'offline-downloads',
       'block-artists',
+      'skip-ai-music',
       'global-hotkeys',
       'playback-speed',
       'discord-rpc',

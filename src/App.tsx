@@ -186,6 +186,7 @@ import { lastfmPlugin } from './plugins/lastfm';
 import { listenbrainzPlugin } from './plugins/listenbrainz';
 import { applyListenDelta } from './plugins/statsTracker';
 import { getWebhookUrl, markWebhookSent } from './plugins/webhook';
+import { isAiArtist } from './plugins/skipAiMusic';
 import { isBlocked, readBlocked } from './plugins/blockArtists';
 import { listeningHistoryPlugin } from './plugins/listeningHistory';
 import { bindFx } from './plugins/equalizer';
@@ -3421,6 +3422,7 @@ export default function App() {
         : 0;
     const sent = full ? queue : queue.slice(start, start + LIMIT);
     const blockArtists = pluginManager.isEnabled('block-artists') ? readBlocked() : null;
+    const skipAi = pluginManager.isEnabled('skip-ai-music');
     return invoke('zaudio_plan', {
       plan: {
         queue: sent,
@@ -3442,7 +3444,11 @@ export default function App() {
             ? { mins: getSleepTimerMinutes(), endsAt: getSleepEndsAt() }
             : null,
           skip: sent
-            .filter((t) => blockArtists && isBlocked(t.artist, blockArtists))
+            .filter(
+              (t) =>
+                (blockArtists && isBlocked(t.artist, blockArtists)) ||
+                (skipAi && isAiArtist(t.artistId))
+            )
             .map((t) => t.id),
           handoff: (pluginManager.isEnabled('lastfm-scrobbler')
             ? lastfmPlugin
@@ -3773,6 +3779,7 @@ export default function App() {
       isPlaying,
       coverUrl: currentTrack.coverLarge || currentTrack.cover,
       context: playingFrom || undefined,
+      artistId: currentTrack.artistId,
     };
     pluginManager.notifyNowPlaying(info);
     pluginManager.notifyTrackChange(info);

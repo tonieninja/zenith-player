@@ -277,6 +277,16 @@ const CATALOG: Record<string, Record<Language, PluginText>> = {
       desc: 'Pomija utwory zablokowanych wykonawców, także w radiu i mixach.',
     },
   },
+  'skip-ai-music': {
+    en: {
+      name: 'Skip AI music',
+      desc: 'Skips tracks by artists that mainly publish AI-generated music. Uses a community list updated daily.',
+    },
+    pl: {
+      name: 'Pomijanie muzyki AI',
+      desc: 'Pomija utwory artystów, którzy wydają głównie muzykę z generatorów AI. Korzysta z listy społeczności, aktualizowanej codziennie.',
+    },
+  },
   'zenith-links': {
     en: {
       name: 'zenith:// links',

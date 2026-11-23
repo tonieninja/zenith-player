@@ -43,6 +43,7 @@
         { "url": "https://lrclib.net/*" },
         { "url": "https://translate.googleapis.com/*" },
         { "url": "https://sponsor.ajay.app/*" },
+        { "url": "https://ailist.flow-tube.org/v1/aimusic/*" },
         { "url": "https://api.lyrics.ovh/*" },
         { "url": "https://apic-appmobile.musixmatch.com/*" },
         { "url": "https://apic.musixmatch.com/*" },
