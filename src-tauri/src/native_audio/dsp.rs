@@ -686,16 +686,46 @@ mod tests {
             .collect()
     }
 
+    // wersja skanująca całe okno; porównanie w tym samym procesie, bo sin() z libm różni się między systemami
+    fn limiter_by_scan(sr: u32, stereo: &mut [f32]) {
+        let n = (sr as usize / 200).max(8);
+        let mut wants = vec![1.0f32; n];
+        let mut delay = vec![[0.0f32; 2]; n - 1];
+        let (mut held, mut sum, mut gain) = (vec![1.0f32; n], n as f64, 1.0f32);
+        let rel = 1.0 - (-1.0 / (0.15 * sr as f32)).exp();
+        for (k, fr) in stereo.as_chunks_mut::<2>().0.iter_mut().enumerate() {
+            let peak = fr[0].abs().max(fr[1].abs());
+            wants[k % n] = if peak > LIMIT_CEIL {
+                LIMIT_CEIL / peak
+            } else {
+                1.0
+            };
+            let h = wants.iter().copied().fold(f32::INFINITY, f32::min);
+            sum += h as f64 - held[k % n] as f64;
+            held[k % n] = h;
+            let smooth = (sum / n as f64) as f32;
+            gain = if smooth < gain {
+                smooth
+            } else {
+                gain + (smooth - gain) * rel
+            };
+            let out = std::mem::replace(&mut delay[k % (n - 1)], [fr[0], fr[1]]);
+            fr[0] = out[0] * gain;
+            fr[1] = out[1] * gain;
+        }
+    }
+
     #[test]
     fn limiter_output_is_unchanged_on_a_pumping_signal() {
-        let mut l = Limiter::new(48000);
-        let mut v = pumping(4);
-        l.process(&mut v);
-        // suma z wersji skanującej całe okno: kolejka monotoniczna ma dawać bit w bit to samo
-        let bits = v
-            .iter()
-            .fold(0u64, |h, x| h.rotate_left(5) ^ x.to_bits() as u64);
-        assert_eq!(bits, 4744317704041333788);
+        let input = pumping(4);
+        let (mut fast, mut slow) = (input.clone(), input);
+        Limiter::new(48000).process(&mut fast);
+        limiter_by_scan(48000, &mut slow);
+        let bits = |v: &[f32]| v.iter().map(|x| x.to_bits()).collect::<Vec<_>>();
+        assert!(
+            bits(&fast) == bits(&slow),
+            "kolejka monotoniczna ma dawać bit w bit to samo co skan"
+        );
     }
 
     #[test]
