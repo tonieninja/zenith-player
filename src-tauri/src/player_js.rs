@@ -30,7 +30,7 @@ pub struct Player {
     pub sts: Option<u64>,
 }
 
-fn http() -> Option<reqwest::Client> {
+fn http() -> Option<crate::player::Http> {
     crate::player::client(CHROME_UA, 15, true)
 }
 

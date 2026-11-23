@@ -74,6 +74,15 @@ pub(crate) fn cached_client(
 }
 
 static HTTP_DIRECT: OnceLock<Client> = OnceLock::new();
+// klient tej trasy, którą pójdzie pierwszy kawałek audio, żeby sonda zostawiła mu ciepłe połączenie
+pub(crate) fn preferred_client() -> Option<&'static Client> {
+    if PREFER_DIRECT.load(std::sync::atomic::Ordering::Relaxed) {
+        direct_client()
+    } else {
+        http_client()
+    }
+}
+
 static PREFER_DIRECT: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 fn direct_client() -> Option<&'static Client> {

@@ -2,29 +2,51 @@ use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
 
-// jeden klient na (UA, limit, przekierowania): każda budowa wczytuje certyfikaty i gubi otwarte połączenia
-pub fn client(ua: &str, secs: u64, follow: bool) -> Option<reqwest::Client> {
-    type Key = (String, u64, bool);
-    static CACHE: OnceLock<Mutex<HashMap<Key, reqwest::Client>>> = OnceLock::new();
-    let mut m = CACHE
-        .get_or_init(Default::default)
-        .lock()
-        .unwrap_or_else(|e| e.into_inner());
-    let key = (ua.to_string(), secs, follow);
-    if let Some(c) = m.get(&key) {
-        return Some(c.clone());
+// jedna pula połączeń na tryb przekierowań; osobny klient na każde UA otwierał osobne TLS do tego samego hosta
+pub fn client(ua: &str, secs: u64, follow: bool) -> Option<Http> {
+    static FOLLOW: OnceLock<reqwest::Client> = OnceLock::new();
+    static MANUAL: OnceLock<reqwest::Client> = OnceLock::new();
+    let cell = if follow { &FOLLOW } else { &MANUAL };
+    let c = crate::stream_proxy::cached_client(cell, || {
+        crate::win_proxy::wait();
+        let b = reqwest::Client::builder();
+        if follow {
+            b.build()
+        } else {
+            b.redirect(reqwest::redirect::Policy::none()).build()
+        }
+    })?;
+    Some(Http {
+        c: c.clone(),
+        ua: ua.to_string(),
+        timeout: Duration::from_secs(secs),
+    })
+}
+
+#[derive(Clone)]
+pub struct Http {
+    c: reqwest::Client,
+    ua: String,
+    timeout: Duration,
+}
+
+impl Http {
+    pub fn get<U: reqwest::IntoUrl>(&self, url: U) -> reqwest::RequestBuilder {
+        self.with(self.c.get(url))
     }
-    crate::win_proxy::wait();
-    let mut b = reqwest::Client::builder().timeout(Duration::from_secs(secs));
-    if !ua.is_empty() {
-        b = b.user_agent(ua);
+
+    pub fn post<U: reqwest::IntoUrl>(&self, url: U) -> reqwest::RequestBuilder {
+        self.with(self.c.post(url))
     }
-    if !follow {
-        b = b.redirect(reqwest::redirect::Policy::none());
+
+    fn with(&self, r: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
+        let r = r.timeout(self.timeout);
+        if self.ua.is_empty() {
+            r
+        } else {
+            r.header(reqwest::header::USER_AGENT, &self.ua)
+        }
     }
-    let c = b.build().ok()?;
-    m.insert(key, c.clone());
-    Some(c)
 }
 use std::time::{Duration, Instant};
 
@@ -1015,36 +1037,24 @@ async fn tail_reachable(url: &str, user_agent: &str) -> bool {
 }
 
 async fn probe(url: &str, user_agent: &str, range: &str) -> Option<bool> {
-    let http = client(user_agent, 8, false)?;
-    let mut at = url.to_string();
-    for _ in 0..4 {
-        let r = http
-            .get(&at)
-            .header("Range", range)
-            .header("Referer", "https://www.youtube.com/")
-            .header("Origin", "https://www.youtube.com")
-            .send()
-            .await
-            .ok()?;
-        let code = r.status().as_u16();
-        if code == 200 || code == 206 {
-            return Some(true);
-        }
-        let next = r
-            .headers()
-            .get("location")
-            .and_then(|l| l.to_str().ok())
-            .map(String::from);
-        match next {
-            Some(n) if r.status().is_redirection() => at = n,
-            _ if code == 403 => return Some(false),
-            _ => {
-                crate::diag::log(format!("[Zenith] stream probe http {code}"));
-                return None;
-            }
+    let r = crate::stream_proxy::preferred_client()?
+        .get(url)
+        .header(reqwest::header::USER_AGENT, user_agent)
+        .header("Range", range)
+        .header("Referer", "https://www.youtube.com/")
+        .header("Origin", "https://www.youtube.com")
+        .timeout(Duration::from_secs(8))
+        .send()
+        .await
+        .ok()?;
+    match r.status().as_u16() {
+        200 | 206 => Some(true),
+        403 => Some(false),
+        code => {
+            crate::diag::log(format!("[Zenith] stream probe http {code}"));
+            None
         }
     }
-    None
 }
 
 // teledysk ma własny, mały budżet, żeby nigdy nie zjadał wywołań, których potrzebuje dźwięk tego samego utworu

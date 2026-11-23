@@ -42,7 +42,7 @@ fn save(app: &AppHandle, c: &Creds) -> Result<(), String> {
     Ok(())
 }
 
-fn client() -> Result<reqwest::Client, String> {
+fn client() -> Result<crate::player::Http, String> {
     crate::player::client(concat!("Zenith/", env!("CARGO_PKG_VERSION")), 12, true)
         .ok_or_else(|| "http client".to_string())
 }
