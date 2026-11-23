@@ -115,6 +115,11 @@ function pollGamepad() {
 
 let hidGen = 0;
 
+/** Pad spoza HID czyta Gamepad API w oknie, więc tylko wtedy okno musi zostać. */
+export function padNeedsWindow(): boolean {
+  return gamepadRaf !== 0;
+}
+
 async function startHid() {
   const gen = ++hidGen;
   if (!unlistenStatus) {

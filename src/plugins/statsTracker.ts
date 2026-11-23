@@ -90,6 +90,22 @@ function markStarted() {
   startClock();
 }
 
+/** Czas słuchania naliczony przez Rusta, gdy okna nie było; bieżący utwór ma już policzoną sesję. */
+export function applyListenDelta(
+  d: { totalSeconds?: number; trackMinutes?: Record<string, number>; sessions?: number } | null,
+  currentId: string | null
+) {
+  if (currentId) countedId = currentId;
+  if (!d || !enabled) return;
+  const stats = getListenStats();
+  if (Number.isFinite(d.totalSeconds) && d.totalSeconds! > 0) stats.totalSeconds += d.totalSeconds!;
+  for (const [id, m] of Object.entries(d.trackMinutes ?? {})) {
+    if (Number.isFinite(m) && m > 0) stats.trackPlays[id] = (stats.trackPlays[id] || 0) + m;
+  }
+  if (Number.isFinite(d.sessions) && d.sessions! > 0) stats.sessions += Math.floor(d.sessions!);
+  saveStats(stats);
+}
+
 export function resetListenStats() {
   localStorage.removeItem(STORAGE_KEY);
 }

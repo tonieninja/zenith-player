@@ -43,6 +43,12 @@ async function postWebhook(info: NowPlayingInfo) {
   });
 }
 
+// utwór, który Rust już zgłosił, gdy okna nie było; odbudowane okno nie wysyła go drugi raz
+let sentById: string | null = null;
+export function markWebhookSent(id: string | null) {
+  sentById = id;
+}
+
 export const webhookPlugin: ZenithPlugin = {
   id: 'webhook',
   name: 'Webhook / Stream Deck',
@@ -51,6 +57,8 @@ export const webhookPlugin: ZenithPlugin = {
     'POST JSON to a URL on every track change - works with Stream Deck, Home Assistant, n8n.',
   defaultEnabled: false,
   async onTrackChange(info) {
-    if (info) await postWebhook(info);
+    const dup = info?.id === sentById;
+    sentById = null;
+    if (info && !dup) await postWebhook(info);
   },
 };

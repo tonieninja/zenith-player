@@ -72,6 +72,10 @@ pub(crate) fn now_secs() -> u64 {
 #[tauri::command]
 async fn post_webhook(webview: tauri::Webview, url: String, body: String) -> Result<u16, String> {
     auth_store::main_window_only(&webview)?;
+    send_webhook(&url, body).await
+}
+
+pub(crate) async fn send_webhook(url: &str, body: String) -> Result<u16, String> {
     let parsed = url::Url::parse(url.trim()).map_err(|_| "invalid url".to_string())?;
     let host = parsed.host_str().unwrap_or("").to_ascii_lowercase();
     let loopback = matches!(host.as_str(), "localhost" | "127.0.0.1" | "::1" | "[::1]");
@@ -380,6 +384,7 @@ pub(crate) fn show_main_window(app: &tauri::AppHandle) {
     }
     if let Some(win) = app.get_webview_window("main") {
         wv2_mem::set_low(&win, false);
+        windows::reveal_woken(&win);
         let _ = win.show();
         let _ = win.unminimize();
         let _ = win.set_focus();

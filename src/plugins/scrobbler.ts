@@ -17,11 +17,26 @@ export interface ScrobblerOptions {
   submit(p: Scrobble): Promise<unknown>;
 }
 
+/** Licznik bieżącego odsłuchu przekazywany między JS a Rustem, gdy okno znika i wraca. */
+export interface ListenHandoff {
+  id: string;
+  listened: number;
+  done: boolean;
+  start: number;
+  duration: number;
+}
+
+export type Scrobbler = ZenithPlugin & {
+  handoff(): ListenHandoff | null;
+  adopt(h: ListenHandoff | null): void;
+  enqueue(items: Scrobble[]): void;
+};
+
 export function scrobbleThreshold(duration: number): number {
   return Math.min(duration / 2, 240);
 }
 
-export function createScrobbler(o: ScrobblerOptions): ZenithPlugin {
+export function createScrobbler(o: ScrobblerOptions): Scrobbler {
   // czas słuchania liczy zegar, nie pozycja: aplikacja zgłasza pozycję tylko przy zmianach, nie co sekundę
   let cur: {
     info: NowPlayingInfo;
@@ -42,14 +57,18 @@ export function createScrobbler(o: ScrobblerOptions): ZenithPlugin {
     tally();
     cur.since = on ? (cur.since ?? Date.now()) : null;
   };
+  // stan od Rusta czeka na zdarzenie zmiany utworu, które przyjdzie po odbudowie okna
+  let adopted: ListenHandoff | null = null;
   const begin = (info: NowPlayingInfo | null) => {
+    const a = adopted && info && adopted.id === info.id ? adopted : null;
+    adopted = null;
     cur = info
       ? {
-          info,
-          start: Date.now(),
-          listened: 0,
+          info: a && !info.duration ? { ...info, duration: a.duration } : info,
+          start: a?.start ?? Date.now(),
+          listened: a?.listened ?? 0,
           since: info.isPlaying ? Date.now() : null,
-          done: false,
+          done: a?.done ?? false,
         }
       : null;
   };
@@ -111,6 +130,26 @@ export function createScrobbler(o: ScrobblerOptions): ZenithPlugin {
   };
 
   return {
+    handoff() {
+      if (!cur) return null;
+      tally();
+      return {
+        id: cur.info.id,
+        listened: cur.listened,
+        done: cur.done,
+        start: cur.start,
+        duration: cur.info.duration,
+      };
+    },
+    adopt(h) {
+      // zostaje też na zdarzenie zmiany utworu, które okno wyśle dla bieżącego utworu po starcie
+      adopted = h;
+      if (h && cur?.info.id === h.id)
+        Object.assign(cur, { listened: h.listened, done: h.done, start: h.start });
+    },
+    enqueue(items) {
+      if (items.length) writeQueue([...readQueue(), ...items]);
+    },
     id: o.id,
     name: o.name,
     category: 'integrations',

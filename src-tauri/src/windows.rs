@@ -246,6 +246,10 @@ struct MainGeo {
 static MAIN_GEO: Mutex<Option<MainGeo>> = Mutex::new(None);
 static KEEP_UI: AtomicBool = AtomicBool::new(false);
 static REBUILDING: AtomicBool = AtomicBool::new(false);
+// okno zbudowane w ukryciu dla akcji, której nie umie Rust; po ui_ready JS dostaje sygnał, że może zniknąć znowu
+static WAKING: AtomicBool = AtomicBool::new(false);
+// ukryte okno nie zostało zmaksymalizowane, bo maximize je pokazuje; robi to dopiero pierwsze pokazanie
+static WOKE_HIDDEN: AtomicBool = AtomicBool::new(false);
 const RESTORED_JS: &str = "window.__ZENITH_RESTORED__ = true; window.close = function () {};";
 // zanim JS okna głównego podepnie nasłuchy, akcje z zasobnika, skrótów i mini czekają tutaj zamiast przepaść
 static UI_READY: AtomicBool = AtomicBool::new(false);
@@ -289,6 +293,45 @@ pub fn ui_ready(app: AppHandle) {
     let q = std::mem::take(&mut *PENDING_UI.lock().unwrap_or_else(|p| p.into_inner()));
     for (event, payload) in q {
         let _ = app.emit_to("main", event, payload);
+    }
+    let hidden = app
+        .get_webview_window("main")
+        .is_some_and(|w| !w.is_visible().unwrap_or(true) || w.is_minimized().unwrap_or(false));
+    if WAKING.swap(false, Ordering::SeqCst) && hidden {
+        hold_ui();
+        let _ = app.emit_to("main", "zenith-hidden-to-tray", ());
+    }
+}
+
+/// Akcja, której Rust nie obsłuży bez okna (polubienie z kontem, tasowanie): ukryte okno wstaje i dostaje ją po starcie JS.
+pub fn wake_for(app: &AppHandle, event: &'static str, payload: &str) {
+    if app.get_webview_window("main").is_some() {
+        if !defer_ui_event(event, payload) {
+            let _ = app.emit_to("main", event, payload);
+        }
+        return;
+    }
+    WAKING.store(true, Ordering::SeqCst);
+    rebuild_main(app, false);
+    defer_ui_event(event, payload);
+}
+
+pub fn wake_hidden(app: &AppHandle) {
+    if app.get_webview_window("main").is_none() {
+        WAKING.store(true, Ordering::SeqCst);
+        rebuild_main(app, false);
+    }
+}
+
+/// Pierwsze pokazanie okna zbudowanego w ukryciu: maksymalizacja, której wtedy nie dało się zrobić.
+pub fn reveal_woken(w: &tauri::WebviewWindow) {
+    if WOKE_HIDDEN.swap(false, Ordering::SeqCst)
+        && MAIN_GEO
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .is_some_and(|g| g.maximized)
+    {
+        let _ = w.maximize();
     }
 }
 
@@ -378,7 +421,8 @@ pub fn main_hidden(app: &AppHandle) {
 
 pub fn drop_main(app: &AppHandle) {
     // okna wtyczek nie trzymają okna głównego: bez niego utwór i zegar podaje im headless::now_playing
-    if KEEP_UI.load(Ordering::SeqCst) {
+    // podłączony telefon pilota dostaje stan, tekst i wyszukiwarkę z JS
+    if KEEP_UI.load(Ordering::SeqCst) || crate::remote::has_clients() {
         return;
     }
     if let Some(w) = app.get_webview_window("main") {
@@ -387,7 +431,7 @@ pub fn drop_main(app: &AppHandle) {
         if w.is_visible().unwrap_or(true) && !minimized {
             return;
         }
-        let geo_now = (!minimized)
+        let geo_now = (!minimized && !WOKE_HIDDEN.load(Ordering::SeqCst))
             .then(|| w.outer_position().ok().zip(w.inner_size().ok()))
             .flatten();
         if let Some((pos, size)) = geo_now {
@@ -437,6 +481,10 @@ pub fn ensure_main(app: &AppHandle) -> bool {
     if app.get_webview_window("main").is_some() {
         return false;
     }
+    rebuild_main(app, true)
+}
+
+fn rebuild_main(app: &AppHandle, show: bool) -> bool {
     // budowa WebView2 pompuje komunikaty, więc zdarzenie okna w tym czasie zbudowałoby drugi
     if REBUILDING.swap(true, Ordering::SeqCst) {
         return true;
@@ -455,6 +503,7 @@ pub fn ensure_main(app: &AppHandle) -> bool {
                 .enable_clipboard_access()
                 .initialization_script(RESTORED_JS);
             match win.add_child(b, PhysicalPosition::new(0, 0), size) {
+                Ok(_) if !show => {}
                 Ok(_) => {
                     crate::wv2_mem::aux_low(&h, false);
                     // okno przywrócone z paska ma już fokus; zasobnik przywraca też schowane po zminimalizowaniu
@@ -480,18 +529,23 @@ pub fn ensure_main(app: &AppHandle) -> bool {
         match built.and_then(|b| b.build()) {
             Ok(w) => {
                 crate::webview_tuning::tune(&w);
-                crate::wv2_mem::aux_low(&h, false);
+                if show {
+                    crate::wv2_mem::aux_low(&h, false);
+                }
                 if let Some(g) = *MAIN_GEO.lock().unwrap_or_else(|p| p.into_inner()) {
                     let _ = w.set_size(g.size);
                     let _ = w.set_position(g.pos);
                     // monitor odłączony, gdy okno siedziało w zasobniku: bez tego wróciłoby poza ekran
                     keep_on_screen(&w);
-                    if g.maximized {
+                    if g.maximized && show {
                         let _ = w.maximize();
                     }
                 }
-                let _ = w.show();
-                let _ = w.set_focus();
+                WOKE_HIDDEN.store(!show, Ordering::SeqCst);
+                if show {
+                    let _ = w.show();
+                    let _ = w.set_focus();
+                }
             }
             Err(e) => eprintln!("[zenith] main window rebuild failed: {e}"),
         }

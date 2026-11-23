@@ -36,6 +36,19 @@ function armTimer() {
   );
 }
 
+/** Termin od Rusta po odbudowie okna: 0 znaczy, że licznik wygasł albo nie był uzbrojony. */
+export function adoptSleepEndsAt(at: number) {
+  if (timer) clearTimeout(timer);
+  timer = null;
+  const left = at - Date.now();
+  if (!(at > 0) || left <= 0) return;
+  endsAt = at;
+  timer = setTimeout(() => {
+    onExpire?.();
+    timer = null;
+  }, left);
+}
+
 export function rearmSleepTimer() {
   armTimer();
 }

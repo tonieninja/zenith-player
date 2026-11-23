@@ -15,6 +15,29 @@ describe('scrobbler', () => {
   afterEach(() => vi.useRealTimers());
   const listen = (s: number) => vi.setSystemTime(Date.now() + s * 1000);
 
+  it('continues the listen counted in Rust instead of scrobbling twice', () => {
+    const submit = vi.fn().mockResolvedValue(undefined);
+    const p = createScrobbler({
+      id: 'x',
+      name: 'x',
+      description: 'x',
+      queueKey: 'test.queue',
+      nowPlaying: vi.fn().mockResolvedValue(undefined),
+      submit,
+    });
+    p.adopt({ id: 'abcdefghijk', listened: 90, done: false, start: Date.now(), duration: 200 });
+    p.onTrackChange?.(info(90), null);
+    listen(11);
+    p.onPlayStateChange?.(false);
+    expect(submit).toHaveBeenCalledTimes(1);
+    p.adopt({ id: 'abcdefghijk', listened: 150, done: true, start: Date.now(), duration: 200 });
+    p.onTrackChange?.(info(150), null);
+    listen(40);
+    p.onPlayStateChange?.(false);
+    expect(submit).toHaveBeenCalledTimes(1);
+    expect(p.handoff()).toMatchObject({ id: 'abcdefghijk', done: true });
+  });
+
   it('submits once after half of the track was actually heard', async () => {
     const submit = vi.fn().mockResolvedValue(undefined);
     const nowPlaying = vi.fn().mockResolvedValue(undefined);

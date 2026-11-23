@@ -2,6 +2,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { DualAudio } from './dualAudio';
 import { NativeAudio, type EngineSnapshot } from './nativeAudio';
 import type { Track } from '../api/youtube';
+import type { ListenHandoff, Scrobble } from '../plugins/scrobbler';
 
 export type PlayerAudio = DualAudio | NativeAudio;
 
@@ -27,6 +28,13 @@ export interface AudioRestore {
     wasPlaying: boolean;
     moved: boolean;
     savedAt: number;
+  } | null;
+  // to, co wtyczki naliczyły w Ruście, gdy okna nie było
+  ext?: {
+    handoff: ListenHandoff | null;
+    stats: { totalSeconds: number; trackMinutes: Record<string, number>; sessions: number };
+    failed: { service: string; s: Scrobble }[];
+    sleepEndsAt: number;
   } | null;
 }
 

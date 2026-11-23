@@ -522,6 +522,9 @@ async fn client(socket: WebSocket, q: PinQuery) {
     if let Ok(mut c) = CLIENTS.lock() {
         *c += 1;
     }
+    if let Some(app) = APP.lock().ok().and_then(|g| g.clone()) {
+        crate::windows::wake_hidden(&app);
+    }
     let first = LAST_STATE.lock().map(|g| g.clone()).unwrap_or_default();
     let lyrics = LAST_LYRICS.lock().map(|g| g.clone()).unwrap_or_default();
     let mut ok = sink.send(Message::Text(first.into())).await.is_ok();
@@ -560,9 +563,29 @@ async fn client(socket: WebSocket, q: PinQuery) {
             }
         }
     }
-    if let Ok(mut c) = CLIENTS.lock() {
-        *c = c.saturating_sub(1);
+    let left = CLIENTS
+        .lock()
+        .map(|mut c| {
+            *c = c.saturating_sub(1);
+            *c
+        })
+        .unwrap_or(0);
+    // ostatni telefon odszedł: schowane okno może znowu zwolnić WebView
+    if left == 0 {
+        if let Some(app) = APP.lock().ok().and_then(|g| g.clone()) {
+            use tauri::Manager;
+            let hidden = app.get_webview_window("main").is_some_and(|w| {
+                !w.is_visible().unwrap_or(true) || w.is_minimized().unwrap_or(false)
+            });
+            if hidden {
+                crate::windows::main_hidden(&app);
+            }
+        }
     }
+}
+
+pub fn has_clients() -> bool {
+    CLIENTS.lock().map(|c| *c > 0).unwrap_or(false)
 }
 
 #[derive(serde::Serialize)]

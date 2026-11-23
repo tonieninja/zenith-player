@@ -2,6 +2,7 @@ mod decode;
 mod dsp;
 mod duck;
 mod output;
+mod plugins;
 mod source;
 
 pub use source::set_spool_dir;
@@ -1088,6 +1089,7 @@ pub mod headless {
     }
 
     pub fn set_plan(plan: Value) {
+        plugins::configure(&plan["plugins"]);
         h(|h| {
             h.plan = plan;
             h.fade_started_for = None;
@@ -1106,6 +1108,7 @@ pub mod headless {
         now_playing(true);
         let (resume, i) = h(|h| (h.plan["playing"].as_bool().unwrap_or(false), index(&h.plan)));
         let s = snapshot();
+        plugins::began(&h(|h| h.plan["queue"][i].clone()), !s.paused);
         // okno zginęło między końcem utworu a startem następnego; bez tego zasobnik milknie
         if resume && (s.ended || !s.has_source) {
             spawn_once(start_index(i, 0.0));
@@ -1217,6 +1220,7 @@ pub mod headless {
             h.fade_started_for = None;
             h.prefetched_for = None;
         });
+        plugins::track_started(&h(|h| h.plan["queue"][i].clone()));
         save_state();
         announce(true);
     }
@@ -1277,6 +1281,17 @@ pub mod headless {
 
     pub fn on_tick(s: &Snapshot) {
         now_playing(false);
+        match plugins::tick(s) {
+            Some(plugins::Act::Seek(t)) => return seek_to(t),
+            Some(plugins::Act::Next) => return action("next"),
+            Some(plugins::Act::Pause) => {
+                run_cmd(Cmd::Pause);
+                save_state();
+                announce(false);
+                return;
+            }
+            None => {}
+        }
         let Some(d) = s.d else { return };
         let remaining = d - s.t;
         let (cf, loop_one, next, fade_for, pre_for) = h(|h| {
@@ -1407,7 +1422,6 @@ pub mod headless {
                 let m = with(|st| st.muted).unwrap_or(false);
                 run_cmd(Cmd::Muted { m: !m });
             }
-            // toggle-shuffle z MPRIS bez okna nic nie robi, bo tasowanie kolejki żyje we frontendzie
             _ => {
                 if let Some(t) = action
                     .strip_prefix("seek:")
@@ -1432,6 +1446,9 @@ pub mod headless {
                         }
                     });
                     media_meta(!snapshot().paused);
+                } else if let Some(app) = engine().and_then(|e| e.app.clone()) {
+                    // polubienie potrzebuje konta z JS, a tasowanie kolejki żyje we frontendzie
+                    crate::windows::wake_for(&app, "zenith-tray-action", action);
                 }
             }
         }
@@ -1439,6 +1456,7 @@ pub mod headless {
 
     // pasek i tekst w mini liczą czas od ostatniego wpisu, więc po skoku muszą go dostać od razu
     fn seek_to(t: f64) {
+        plugins::on_seek(t);
         run_cmd(Cmd::Seek { t });
         save_state();
         announce(!snapshot().paused);
@@ -1448,6 +1466,7 @@ pub mod headless {
         if !is_headless() {
             return;
         }
+        plugins::play_state(playing);
         discord_presence(playing);
         media_meta(playing);
         now_playing(true);
@@ -1544,6 +1563,7 @@ pub mod headless {
                 "progress": s.t,
                 "wasPlaying": !s.paused,
                 "moved": h.moved,
+                "ext": plugins::persist(),
                 "savedAt": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0),
             })
         });
@@ -1557,10 +1577,17 @@ pub mod headless {
     }
 
     pub fn take_restore(s: Snapshot) -> Value {
-        let disk = state_path()
+        let mut disk = state_path()
             .and_then(|p| std::fs::read_to_string(p).ok())
             .and_then(|t| serde_json::from_str::<Value>(&t).ok())
             .unwrap_or(Value::Null);
+        // liczniki z pliku tylko po starcie aplikacji; potem wypadają z niego, żeby nie liczyć ich drugi raz
+        let ext = plugins::take().unwrap_or_else(|| disk["ext"].clone());
+        if let (Some(o), Some(p)) = (disk.as_object_mut(), state_path()) {
+            if o.remove("ext").is_some() {
+                let _ = std::fs::write(p, Value::Object(o.clone()).to_string());
+            }
+        }
 
         h(|h| {
             serde_json::json!({
@@ -1571,6 +1598,7 @@ pub mod headless {
                 "volume": with(|st| st.master),
                 "snap": s,
                 "disk": disk,
+                "ext": ext,
             })
         })
     }

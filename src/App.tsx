@@ -147,12 +147,7 @@ import {
 } from './i18n';
 import { AUX_WINDOW_PLUGINS, pluginManager } from './plugins';
 import { syncCloseToTray } from './plugins/systemTray';
-import {
-  getHotkeyBindings,
-  linuxHotkeysOptOut,
-  pushHotkeyBindings,
-  syncGlobalHotkeys,
-} from './plugins/globalHotkeys';
+import { linuxHotkeysOptOut, pushHotkeyBindings, syncGlobalHotkeys } from './plugins/globalHotkeys';
 import {
   abLoopPhase,
   cycleAbLoop,
@@ -186,7 +181,13 @@ import {
   isAlbumCollectionId,
   planAutoTransition,
 } from './plugins/crossfade';
-import { registerDualSenseHandler } from './plugins/dualSense';
+import { padNeedsWindow, registerDualSenseHandler } from './plugins/dualSense';
+import { lastfmPlugin } from './plugins/lastfm';
+import { listenbrainzPlugin } from './plugins/listenbrainz';
+import { applyListenDelta } from './plugins/statsTracker';
+import { getWebhookUrl, markWebhookSent } from './plugins/webhook';
+import { isBlocked, readBlocked } from './plugins/blockArtists';
+import { listeningHistoryPlugin } from './plugins/listeningHistory';
 import { bindFx } from './plugins/equalizer';
 import {
   allowThroughFirewall,
@@ -230,7 +231,9 @@ import { registerKeyboardHandler, setupKeyboardShortcuts } from './plugins/keybo
 import { copyShareCardToClipboard } from './plugins/shareCard';
 import { copyTrackLink } from './plugins/copyTrackLink';
 import {
+  adoptSleepEndsAt,
   getSleepEndsAt,
+  getSleepTimerMinutes,
   rearmSleepTimer,
   registerSleepTimerCallback,
   setSleepTimerMinutes,
@@ -351,17 +354,6 @@ const uiLang = () => (localStorage.getItem('zenith_lang') as Language) || 'en';
 
 const auxWindowExists = (label: string) =>
   WebviewWindow.getByLabel(label).then(Boolean, () => false);
-// wtyczki bez odpowiednika w trybie bez okna (Rust gra kolejkę, ale tych zdarzeń nie obsłuży)
-const KEEP_UI_PLUGINS = [
-  'lastfm-scrobbler',
-  'listenbrainz-scrobbler',
-  'webhook',
-  'remote-control',
-  'dualsense-pad',
-  'stats-tracker',
-  'sponsorblock',
-  'smooth-volume',
-];
 
 type FeedLoadTab = 'home' | 'explore' | 'mood' | 'search';
 const FEED_LOADING_INITIAL: Record<FeedLoadTab, boolean> = {
@@ -3323,6 +3315,17 @@ export default function App() {
     if (!r) return false;
     const plan = r.plan;
     const snap = r.snap;
+    if (r.ext) {
+      const failed = (svc: string) =>
+        r.ext!.failed.filter((f) => f.service === svc).map((f) => f.s);
+      lastfmPlugin.enqueue(failed('lastfm'));
+      listenbrainzPlugin.enqueue(failed('listenbrainz'));
+      lastfmPlugin.adopt(r.ext.handoff);
+      listenbrainzPlugin.adopt(r.ext.handoff);
+      applyListenDelta(r.ext.stats, r.ext.handoff?.id ?? null);
+      markWebhookSent(r.ext.handoff?.id ?? null);
+      if (pluginManager.isEnabled('sleep-timer')) adoptSleepEndsAt(r.ext.sleepEndsAt ?? 0);
+    }
     // głośność zmieniona skrótem w zasobniku; świeży silnik ma domyślne 0.8, które nadpisałoby zapamiętaną
     if (
       isRestoredUi() &&
@@ -3349,18 +3352,22 @@ export default function App() {
       playingFromRef.current = plan.playingFrom ?? null;
       playingFromIdRef.current = plan.playingFromId ?? null;
       playingAlbumRef.current = isAlbumCollectionId(playingFromIdRef.current);
-      for (const p of r.played.slice(0, -1)) {
+      // scrobble, statystyki i webhook zrobił już Rust, więc historia jest jedyną wtyczką do nadrobienia
+      for (const p of pluginManager.isEnabled('listening-history') ? r.played.slice(0, -1) : []) {
         const t = plan.queue[p.index];
         if (!t) continue;
-        pluginManager.notifyTrackChange({
-          id: t.id,
-          title: t.title,
-          artist: t.artist,
-          duration: 0,
-          position: 0,
-          isPlaying: true,
-          coverUrl: t.coverLarge || t.cover,
-        });
+        listeningHistoryPlugin.onTrackChange?.(
+          {
+            id: t.id,
+            title: t.title,
+            artist: t.artist,
+            duration: 0,
+            position: 0,
+            isPlaying: true,
+            coverUrl: t.coverLarge || t.cover,
+          },
+          null
+        );
       }
       currentTrackIdRef.current = track.id;
       setCurrentTrack(track);
@@ -3412,9 +3419,11 @@ export default function App() {
       !full && queue.length > LIMIT
         ? Math.max(0, Math.min(safeIndex - 20, queue.length - LIMIT))
         : 0;
+    const sent = full ? queue : queue.slice(start, start + LIMIT);
+    const blockArtists = pluginManager.isEnabled('block-artists') ? readBlocked() : null;
     return invoke('zaudio_plan', {
       plan: {
-        queue: full ? queue : queue.slice(start, start + LIMIT),
+        queue: sent,
         index: safeIndex - start,
         loopMode,
         shuffle: shuffleOn,
@@ -3423,6 +3432,23 @@ export default function App() {
         playingFromId: playingFromIdRef.current,
         discordClientId: pluginManager.isEnabled('discord-rpc') ? getDiscordClientId() : null,
         mediaSession: pluginManager.isEnabled('media-session'),
+        plugins: {
+          lastfm: pluginManager.isEnabled('lastfm-scrobbler'),
+          listenbrainz: pluginManager.isEnabled('listenbrainz-scrobbler'),
+          webhook: pluginManager.isEnabled('webhook') ? getWebhookUrl() || null : null,
+          stats: pluginManager.isEnabled('stats-tracker'),
+          sponsorblock: pluginManager.isEnabled('sponsorblock'),
+          sleep: pluginManager.isEnabled('sleep-timer')
+            ? { mins: getSleepTimerMinutes(), endsAt: getSleepEndsAt() }
+            : null,
+          skip: sent
+            .filter((t) => blockArtists && isBlocked(t.artist, blockArtists))
+            .map((t) => t.id),
+          handoff: (pluginManager.isEnabled('lastfm-scrobbler')
+            ? lastfmPlugin
+            : listenbrainzPlugin
+          ).handoff(),
+        },
         // okno usunięte w trakcie zmiany utworu: Rust musi wiedzieć, że ma grać dalej
         playing: isPlayingRef.current || trackSwitchingRef.current,
       },
@@ -3604,15 +3630,11 @@ export default function App() {
         scrollTop:
           document.querySelector<HTMLElement>('.content-area .content-scrollable')?.scrollTop ?? 0,
       });
-      // te wtyczki działają tylko w JS, więc z nimi okno nie może zniknąć po schowaniu do zasobnika
+      // resztę wtyczek bez okna robi Rust, a polubienie czy pilot z telefonem budzą ukryte okno na żądanie
       const keep =
-        KEEP_UI_PLUGINS.some((id) => pluginManager.isEnabled(id)) ||
+        (pluginManager.isEnabled('dualsense-pad') && padNeedsWindow()) ||
         // wyciszanie przy mówieniu robi Rust, więc samo okno trzyma tylko silnik z przeglądarki
         (pluginManager.isEnabled('duck-on-voice') && !isNativeAudio()) ||
-        // po wygaśnięciu licznik uzbraja się od nowa przy odtworzeniu, a to umie tylko JS
-        pluginManager.isEnabled('sleep-timer') ||
-        // polubienie potrzebuje sesji konta z JS, a skrót ma działać także z zasobnika
-        (pluginManager.isEnabled('global-hotkeys') && !!getHotkeyBindings().like) ||
         (pluginManager.isEnabled('listening-room') && !!getRoomCode());
       const q = queueRef.current;
       // bez okna nikt nie dociągnie radia, więc robimy to przed zwolnieniem, póki JS jeszcze żyje
