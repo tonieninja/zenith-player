@@ -91,7 +91,7 @@ pub fn fatal(err: &str) -> ! {
     std::process::exit(1)
 }
 
-// shortcut: sprawdza podpis Authenticode, nie wydawcę; wystarcza, bo plik idzie tylko z go.microsoft.com po https
+// sam podpis Authenticode bez sprawdzania wydawcy wystarcza, bo plik idzie tylko z go.microsoft.com po https
 fn signed(path: &std::path::Path) -> bool {
     use windows_sys::Win32::Security::WinTrust::{
         WinVerifyTrust, WINTRUST_ACTION_GENERIC_VERIFY_V2, WINTRUST_DATA, WINTRUST_FILE_INFO,

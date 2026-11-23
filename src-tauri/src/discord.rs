@@ -118,7 +118,7 @@ fn exchange(client: &mut DiscordIpcClient, mut cmd: Value) -> Result<Result<(), 
     let nonce = format!("{}-{}", now_millis(), NONCE.fetch_add(1, Ordering::Relaxed));
     cmd["nonce"] = json!(nonce);
     client.send(cmd, 1).map_err(|e| e.to_string())?;
-    // shortcut: odczyt blokuje bez limitu (synchroniczny pipe); przy zgłoszeniach zawieszeń wątek z recv_timeout
+    // uproszczenie: recv() blokuje bez limitu; wątek z recv_timeout, gdy pojawią się zgłoszenia zawieszonego Discorda
     loop {
         let (op, v) = client.recv().map_err(|e| e.to_string())?;
         match op {

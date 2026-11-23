@@ -114,7 +114,7 @@ mod imp {
     }
 }
 
-// shortcut: na macOS schemat wymaga wpisu w Info.plist przy budowaniu paczki, więc przełącznik tam nic nie robi
+// na macOS schemat rejestruje wpis w Info.plist przy budowaniu paczki, więc przełącznik nie ma tam czego zmieniać
 #[cfg(not(any(windows, target_os = "linux")))]
 mod imp {
     pub fn register(_on: bool, _exe: &std::path::Path) -> Result<(), String> {

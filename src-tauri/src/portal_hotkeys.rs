@@ -32,7 +32,7 @@ fn close_session(conn: &Connection, session: &str) {
 }
 
 // wyłączenie w ustawieniach ma oddać kombinacje systemowi; ponowne włączenie tworzy sesję z tymi samymi id bez pytania
-// shortcut: stary wątek run śpi dalej na iteratorze sygnałów (jeden na przełączenie), wystarczy przy rzadkim klikaniu
+// uproszczenie: stary wątek run śpi dalej na iteratorze sygnałów (jeden na przełączenie); starcza przy rzadkim klikaniu
 pub fn close() {
     let s = SESSION.lock().unwrap_or_else(|e| e.into_inner()).take();
     if let Some((conn, session)) = s {

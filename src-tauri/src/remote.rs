@@ -924,7 +924,7 @@ pub async fn remote_firewall_status() -> FirewallStatus {
 }
 
 // najpierw kasuje wszystkie reguły tego exe, bo blokada z okienka zapory wygrywa z regułą zezwalającą
-// shortcut: cmd rozwinie %ZMIENNA% w ścieżce exe, poprawić dopiero przy zgłoszeniu takiej ścieżki
+// uproszczenie: cmd rozwinie %ZMIENNA% w ścieżce exe; poprawić, gdy ktoś zgłosi taką ścieżkę
 #[cfg(windows)]
 fn firewall_args(exe: &str, name: &str, public_network: bool) -> String {
     // sieć publiczna (hotel, kawiarnia) tylko po kliknięciu pod ostrzeżeniem, które to opisuje
