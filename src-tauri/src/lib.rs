@@ -988,7 +988,7 @@ pub fn run() {
             deps::refresh_playback_deps,
             deps::get_innertube_config,
             ytm_api::ytm_browse,
-            discord::discord_update_presence,
+            discord::cmd::discord_update_presence,
             discord::discord_clear_presence,
             discord::discord_disconnect,
             discord::discord_status,

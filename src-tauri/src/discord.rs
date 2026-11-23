@@ -270,35 +270,72 @@ fn set_activity(conn: &mut Option<Conn>, activity: Value) -> Result<(), String> 
     }
 }
 
-#[command(async)]
+// odczyt z pipe'a zawieszonego Discorda blokuje bez limitu, więc nie może zajmować wątku tokio obsługującego IPC i proxy
+async fn off_runtime(
+    f: impl FnOnce() -> Result<(), String> + Send + 'static,
+) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(f)
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+fn update_presence(guard: &mut Option<Conn>, payload: &PresencePayload) -> Result<(), String> {
+    ensure_connected(guard, &payload.client_id)?;
+    set_activity(guard, build_activity(payload, now_millis()))
+}
+
+// wołane z własnego wątku silnika natywnego, który wysyła tylko najświeższy stan, więc może czekać na blokadę
 pub fn discord_update_presence(payload: PresencePayload) -> Result<(), String> {
     let mut guard = CLIENT
         .lock()
         .map_err(|e| format!("Discord lock error: {e}"))?;
-    ensure_connected(&mut guard, &payload.client_id)?;
-    set_activity(&mut guard, build_activity(&payload, now_millis()))
+    update_presence(&mut guard, &payload)
 }
 
-#[command(async)]
-pub fn discord_clear_presence() -> Result<(), String> {
-    let mut guard = CLIENT
-        .lock()
-        .map_err(|e| format!("Discord lock error: {e}"))?;
-    let _ = set_activity(&mut guard, Value::Null);
-    Ok(())
-}
+// osobny moduł, bo komenda musi nazywać się jak funkcja wyżej, z której korzysta silnik natywny
+pub mod cmd {
+    use super::*;
 
-#[command(async)]
-pub fn discord_disconnect() -> Result<(), String> {
-    let mut guard = CLIENT
-        .lock()
-        .map_err(|e| format!("Discord lock error: {e}"))?;
-    let _ = set_activity(&mut guard, Value::Null);
-    if let Some(mut c) = guard.take() {
-        let _ = c.client.close();
+    #[command]
+    pub async fn discord_update_presence(payload: PresencePayload) -> Result<(), String> {
+        off_runtime(move || {
+            // czekanie w kolejce mnożyłoby zawieszone wątki przy każdej zmianie utworu; JS ponawia odrzuconą aktualizację
+            let mut guard = CLIENT.try_lock().map_err(|e| match e {
+                std::sync::TryLockError::WouldBlock => "busy".to_string(),
+                std::sync::TryLockError::Poisoned(p) => format!("Discord lock error: {p}"),
+            })?;
+            update_presence(&mut guard, &payload)
+        })
+        .await
     }
-    set_status(String::new());
-    Ok(())
+}
+
+#[command]
+pub async fn discord_clear_presence() -> Result<(), String> {
+    off_runtime(|| {
+        let mut guard = CLIENT
+            .lock()
+            .map_err(|e| format!("Discord lock error: {e}"))?;
+        let _ = set_activity(&mut guard, Value::Null);
+        Ok(())
+    })
+    .await
+}
+
+#[command]
+pub async fn discord_disconnect() -> Result<(), String> {
+    off_runtime(|| {
+        let mut guard = CLIENT
+            .lock()
+            .map_err(|e| format!("Discord lock error: {e}"))?;
+        let _ = set_activity(&mut guard, Value::Null);
+        if let Some(mut c) = guard.take() {
+            let _ = c.client.close();
+        }
+        set_status(String::new());
+        Ok(())
+    })
+    .await
 }
 
 #[command]
@@ -328,9 +365,10 @@ mod tests {
     #[test]
     #[ignore]
     fn live() {
+        use tauri::async_runtime::block_on;
         let mut p = payload(true);
         p.client_id = "1514342633374486709".into();
-        let r = discord_update_presence(p);
+        let r = block_on(cmd::discord_update_presence(p));
         println!("play: {r:?} status={}", discord_status());
         std::thread::sleep(std::time::Duration::from_secs(3));
         let mut p = payload(false);
@@ -338,7 +376,7 @@ mod tests {
         let r = discord_update_presence(p);
         println!("pause: {r:?} status={}", discord_status());
         std::thread::sleep(std::time::Duration::from_secs(2));
-        println!("disconnect: {:?}", discord_disconnect());
+        println!("disconnect: {:?}", block_on(discord_disconnect()));
         let mut p = payload(true);
         p.client_id = "123".into();
         println!(
@@ -346,7 +384,7 @@ mod tests {
             discord_update_presence(p),
             discord_status()
         );
-        let _ = discord_disconnect();
+        let _ = block_on(discord_disconnect());
     }
 
     #[test]
