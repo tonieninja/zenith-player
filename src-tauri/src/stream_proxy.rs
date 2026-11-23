@@ -37,43 +37,58 @@ static PROXY_TOKEN: OnceLock<String> = OnceLock::new();
 static HTTP: OnceLock<Client> = OnceLock::new();
 
 // limit dotyczy przerwy w danych, nie całego kawałka: na wolnym łączu 10 MiB nie mieściło się w 45 s
-fn http_client() -> &'static Client {
-    HTTP.get_or_init(|| {
+fn http_client() -> Option<&'static Client> {
+    cached_client(&HTTP, || {
         crate::win_proxy::wait();
         Client::builder()
             .pool_max_idle_per_host(8)
             .connect_timeout(Duration::from_secs(15))
             .read_timeout(Duration::from_secs(30))
             .build()
-            .unwrap_or_else(|_| Client::new())
     })
+}
+
+// Client::new() pada z tego samego powodu co build() (np. pusty magazyn certyfikatów), więc zamiast paniki jest błąd
+pub(crate) fn cached_client(
+    cell: &'static OnceLock<Client>,
+    build: impl FnOnce() -> reqwest::Result<Client>,
+) -> Option<&'static Client> {
+    if let Some(c) = cell.get() {
+        return Some(c);
+    }
+    match build() {
+        Ok(c) => Some(cell.get_or_init(|| c)),
+        Err(e) => {
+            crate::diag::log(format!("[Zenith] http client build failed: {e}"));
+            None
+        }
+    }
 }
 
 static HTTP_DIRECT: OnceLock<Client> = OnceLock::new();
 static PREFER_DIRECT: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
-fn direct_client() -> &'static Client {
-    HTTP_DIRECT.get_or_init(|| {
+fn direct_client() -> Option<&'static Client> {
+    cached_client(&HTTP_DIRECT, || {
         Client::builder()
             .pool_max_idle_per_host(8)
             .connect_timeout(Duration::from_secs(15))
             .read_timeout(Duration::from_secs(30))
             .no_proxy()
             .build()
-            .unwrap_or_else(|_| Client::new())
     })
 }
 
 static HTTP_HEDGE: OnceLock<Client> = OnceLock::new();
 static HTTP_HEDGE_DIRECT: OnceLock<Client> = OnceLock::new();
 
-fn hedge_client(direct: bool) -> &'static Client {
+fn hedge_client(direct: bool) -> Option<&'static Client> {
     let cell = if direct {
         &HTTP_HEDGE_DIRECT
     } else {
         &HTTP_HEDGE
     };
-    cell.get_or_init(|| {
+    cached_client(cell, || {
         crate::win_proxy::wait();
         let mut b = Client::builder()
             .pool_max_idle_per_host(2)
@@ -82,7 +97,7 @@ fn hedge_client(direct: bool) -> &'static Client {
         if direct {
             b = b.no_proxy();
         }
-        b.build().unwrap_or_else(|_| Client::new())
+        b.build()
     })
 }
 
@@ -90,7 +105,7 @@ async fn send_upstream(
     url: &str,
     ua: &str,
     range: Option<&str>,
-) -> Result<reqwest::Response, reqwest::Error> {
+) -> Result<reqwest::Response, String> {
     use std::sync::atomic::Ordering;
     let build = |c: &Client| {
         let mut r = c
@@ -104,10 +119,13 @@ async fn send_upstream(
         r
     };
     let direct_first = PREFER_DIRECT.load(Ordering::Relaxed);
-    let (first, second) = if direct_first {
-        (direct_client(), http_client())
+    let pair = if direct_first {
+        direct_client().zip(http_client())
     } else {
-        (http_client(), direct_client())
+        http_client().zip(direct_client())
+    };
+    let Some((first, second)) = pair else {
+        return Err("no http client".to_string());
     };
     let first_try = async {
         let one = build(first).send();
@@ -115,8 +133,11 @@ async fn send_upstream(
         tokio::select! {
             r = &mut one => r,
             _ = tokio::time::sleep(Duration::from_millis(1200)) => {
+                let Some(hedge) = hedge_client(direct_first) else {
+                    return one.await;
+                };
                 crate::mark("proxy hedge: no headers after 1.2 s, second connection".to_string());
-                let two = build(hedge_client(direct_first)).send();
+                let two = build(hedge).send();
                 tokio::pin!(two);
                 tokio::select! {
                     r = &mut one => match r { Ok(x) => Ok(x), Err(_) => two.await },
@@ -145,7 +166,7 @@ async fn send_upstream(
                 }
                 Err(e2) => {
                     crate::stream::note_network_failure();
-                    Err(e2)
+                    Err(e2.to_string())
                 }
             }
         }

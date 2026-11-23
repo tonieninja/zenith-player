@@ -126,15 +126,14 @@ pub fn trim(dir: &Path, max: u64, to: u64) {
     }
 }
 
-fn http() -> &'static reqwest::Client {
+fn http() -> Option<&'static reqwest::Client> {
     static C: OnceLock<reqwest::Client> = OnceLock::new();
-    C.get_or_init(|| {
+    crate::stream_proxy::cached_client(&C, || {
         crate::win_proxy::wait();
         reqwest::Client::builder()
             .timeout(Duration::from_secs(12))
             .user_agent("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0 Safari/537.36")
             .build()
-            .expect("http client")
     })
 }
 
@@ -152,7 +151,7 @@ pub async fn get(px: u32, url: String) -> Result<Vec<u8>, u16> {
             return Ok(bytes);
         }
     }
-    let src = match http().get(&url).send().await {
+    let src = match http().ok_or(502u16)?.get(&url).send().await {
         Ok(r) if r.status().is_success() => r.bytes().await.ok(),
         _ => None,
     };
