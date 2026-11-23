@@ -127,7 +127,10 @@ mod imp {
             }
         }
         // Eksplorator po restarcie tworzy przycisk od nowa i przyciski trzeba dodać jeszcze raz
-        if msg == unsafe { RegisterWindowMessageW(w!("TaskbarButtonCreated")) } {
+        static TASKBAR_CREATED: std::sync::OnceLock<u32> = std::sync::OnceLock::new();
+        let created = *TASKBAR_CREATED
+            .get_or_init(|| unsafe { RegisterWindowMessageW(w!("TaskbarButtonCreated")) });
+        if msg == created {
             ST.with(|c| {
                 if let Ok(mut s) = c.try_borrow_mut() {
                     s.added = false;
