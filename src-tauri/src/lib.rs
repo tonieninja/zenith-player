@@ -851,9 +851,19 @@ pub fn run() {
             }
             WindowEvent::Resized(_) if window.label() == "main" => {
                 if let Some(wv) = window.app_handle().get_webview_window("main") {
-                    let hidden =
-                        wv.is_minimized().unwrap_or(false) || !wv.is_visible().unwrap_or(true);
+                    let minimized = wv.is_minimized().unwrap_or(false);
+                    let hidden = minimized || !wv.is_visible().unwrap_or(true);
                     wv2_mem::set_low(&wv, hidden);
+                    if minimized {
+                        windows::main_minimized(window.app_handle());
+                    } else if !hidden {
+                        windows::main_restored();
+                    }
+                } else if window.is_visible().unwrap_or(false)
+                    && !window.is_minimized().unwrap_or(true)
+                {
+                    // okno przywrócone z paska po zwolnieniu WebView
+                    windows::ensure_main(window.app_handle());
                 }
             }
             WindowEvent::Focused(focused) if window.label() == "main" => {
@@ -861,6 +871,8 @@ pub fn run() {
                     if *focused && !wv.is_minimized().unwrap_or(false) {
                         wv2_mem::set_low(&wv, false);
                     }
+                } else if *focused && !window.is_minimized().unwrap_or(true) {
+                    windows::ensure_main(window.app_handle());
                 }
             }
             // na natywnym Waylandzie tao zgłasza przy każdej zmianie (0,0) i nadpisałby zapisane pozycje

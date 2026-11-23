@@ -245,6 +245,8 @@ struct MainGeo {
 }
 static MAIN_GEO: Mutex<Option<MainGeo>> = Mutex::new(None);
 static KEEP_UI: AtomicBool = AtomicBool::new(false);
+static REBUILDING: AtomicBool = AtomicBool::new(false);
+const RESTORED_JS: &str = "window.__ZENITH_RESTORED__ = true; window.close = function () {};";
 // zanim JS okna głównego podepnie nasłuchy, akcje z zasobnika, skrótów i mini czekają tutaj zamiast przepaść
 static UI_READY: AtomicBool = AtomicBool::new(false);
 static NOT_READY_AT: AtomicU64 = AtomicU64::new(0);
@@ -296,7 +298,7 @@ pub fn ui_keep(app: AppHandle, keep: bool) {
     KEEP_UI.store(keep, Ordering::SeqCst);
     let hidden = app
         .get_webview_window("main")
-        .is_some_and(|w| !w.is_visible().unwrap_or(true));
+        .is_some_and(|w| !w.is_visible().unwrap_or(true) || w.is_minimized().unwrap_or(false));
     if !keep && hidden {
         main_hidden(&app);
     }
@@ -326,6 +328,38 @@ fn ui_drop_delay_ms() -> u64 {
         .unwrap_or(if cfg!(windows) { 30_000 } else { 3000 })
 }
 
+fn min_drop_delay_ms() -> u64 {
+    std::env::var("ZENITH_MIN_DROP_MS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(90_000)
+}
+
+// po dłuższej minimalizacji JS zapisuje widok i decyduje o zwolnieniu, tak samo jak przy zasobniku
+pub fn main_minimized(app: &AppHandle) {
+    let delay = min_drop_delay_ms();
+    if !cfg!(windows) || delay == 0 || !ui_drop_enabled() {
+        return;
+    }
+    let gen = HIDE_GEN.fetch_add(1, Ordering::SeqCst) + 1;
+    let app = app.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(delay));
+        let still = app
+            .get_webview_window("main")
+            .is_some_and(|w| w.is_minimized().unwrap_or(false));
+        if HIDE_GEN.load(Ordering::SeqCst) != gen || is_shutting_down() || !still {
+            return;
+        }
+        hold_ui();
+        let _ = app.emit_to("main", "zenith-hidden-to-tray", ());
+    });
+}
+
+pub fn main_restored() {
+    HIDE_GEN.fetch_add(1, Ordering::SeqCst);
+}
+
 pub fn main_hidden(app: &AppHandle) {
     if !ui_drop_enabled() {
         return;
@@ -348,10 +382,15 @@ pub fn drop_main(app: &AppHandle) {
         return;
     }
     if let Some(w) = app.get_webview_window("main") {
-        if w.is_visible().unwrap_or(true) {
+        // zminimalizowane okno zostaje z przyciskiem na pasku i miniaturą, odchodzi tylko WebView
+        let minimized = cfg!(windows) && w.is_minimized().unwrap_or(false);
+        if w.is_visible().unwrap_or(true) && !minimized {
             return;
         }
-        if let (Ok(pos), Ok(size)) = (w.outer_position(), w.inner_size()) {
+        let geo_now = (!minimized)
+            .then(|| w.outer_position().ok().zip(w.inner_size().ok()))
+            .flatten();
+        if let Some((pos, size)) = geo_now {
             let maximized = w.is_maximized().unwrap_or(false);
             let mut geo = MAIN_GEO.lock().unwrap_or_else(|p| p.into_inner());
             // rozmiar zmaksymalizowanego okna to obszar roboczy; po przywróceniu zostaje ostatni zwykły
@@ -373,7 +412,11 @@ pub fn drop_main(app: &AppHandle) {
             use webkit2gtk::WebViewExt;
             wv.inner().terminate_web_process();
         });
-        let _ = w.destroy();
+        let _ = if minimized {
+            w.as_ref().close()
+        } else {
+            w.destroy()
+        };
         let app = app.clone();
         std::thread::spawn(move || {
             std::thread::sleep(std::time::Duration::from_millis(1500));
@@ -394,19 +437,45 @@ pub fn ensure_main(app: &AppHandle) -> bool {
     if app.get_webview_window("main").is_some() {
         return false;
     }
+    // budowa WebView2 pompuje komunikaty, więc zdarzenie okna w tym czasie zbudowałoby drugi
+    if REBUILDING.swap(true, Ordering::SeqCst) {
+        return true;
+    }
     mark_not_ready();
     let Some(cfg) = app.config().app.windows.first().cloned() else {
+        REBUILDING.store(false, Ordering::SeqCst);
         return false;
     };
     let h = app.clone();
     let _ = app.run_on_main_thread(move || {
+        if let Some(win) = h.get_window("main") {
+            let size = win.inner_size().unwrap_or_default();
+            let b = tauri::webview::WebviewBuilder::from_config(&cfg)
+                .auto_resize()
+                .enable_clipboard_access()
+                .initialization_script(RESTORED_JS);
+            match win.add_child(b, PhysicalPosition::new(0, 0), size) {
+                Ok(_) => {
+                    crate::wv2_mem::aux_low(&h, false);
+                    // okno przywrócone z paska ma już fokus; zasobnik przywraca też schowane po zminimalizowaniu
+                    if win.is_minimized().unwrap_or(false) {
+                        let _ = win.unminimize();
+                    }
+                    if !win.is_visible().unwrap_or(true) {
+                        let _ = win.show();
+                        let _ = win.set_focus();
+                    }
+                }
+                Err(e) => eprintln!("[zenith] main webview rebuild failed: {e}"),
+            }
+            REBUILDING.store(false, Ordering::SeqCst);
+            return;
+        }
         // budowane niewidoczne: inaczej mignie w domyślnym miejscu, zanim trafi na zapamiętaną pozycję
         let built = WebviewWindowBuilder::from_config(&h, &cfg).map(|b| {
             b.visible(false)
                 .enable_clipboard_access()
-                .initialization_script(
-                    "window.__ZENITH_RESTORED__ = true; window.close = function () {};",
-                )
+                .initialization_script(RESTORED_JS)
         });
         match built.and_then(|b| b.build()) {
             Ok(w) => {
@@ -426,6 +495,7 @@ pub fn ensure_main(app: &AppHandle) -> bool {
             }
             Err(e) => eprintln!("[zenith] main window rebuild failed: {e}"),
         }
+        REBUILDING.store(false, Ordering::SeqCst);
     });
     true
 }
