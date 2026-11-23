@@ -60,10 +60,47 @@ impl DeckOut {
     }
 }
 
+// urwane dane (seek, flush, brak sieci) gasną od ostatniej próbki; skok fali do zera to trzask
+#[derive(Default, Clone, Copy)]
+struct Declick {
+    last: [f32; 2],
+    rest: [f32; 2],
+}
+
+impl Declick {
+    fn run(&mut self, out: &mut [f32], k: f32) -> bool {
+        ring(&mut self.rest, out, k)
+    }
+
+    // obie resztki gasną tym samym k, więc nową wystarczy dodać do starej na końcu bufora
+    fn cut(&mut self, out: &mut [f32], k: f32) -> bool {
+        let mut v = std::mem::take(&mut self.last);
+        let on = ring(&mut v, out, k);
+        self.rest[0] += v[0];
+        self.rest[1] += v[1];
+        on
+    }
+}
+
+fn ring(v: &mut [f32; 2], out: &mut [f32], k: f32) -> bool {
+    if v[0].abs().max(v[1].abs()) < 1e-4 {
+        *v = [0.0; 2];
+        return false;
+    }
+    for f in out.as_chunks_mut::<2>().0 {
+        v[0] -= v[0] * k;
+        v[1] -= v[1] * k;
+        f[0] += v[0];
+        f[1] += v[1];
+    }
+    true
+}
+
 pub struct Mixer {
     decks: [Arc<DeckOut>; 2],
     cur: [f32; 2],
     tail: [usize; 2],
+    dc: [Declick; 2],
     eq: Eq,
     eq_ver: u64,
     lim: Limiter,
@@ -87,6 +124,7 @@ impl Mixer {
             decks,
             cur: [0.0; 2],
             tail: [0; 2],
+            dc: [Declick::default(); 2],
             eq: Eq::new(&[], sr as f64),
             eq_ver: 0,
             lim: Limiter::new(sr),
@@ -113,6 +151,7 @@ impl Mixer {
         let mut any = false;
         let mut ends = [None; 2];
         for (i, d) in self.decks.iter().enumerate() {
+            any |= self.dc[i].run(out, k);
             if !d.playing.load(Ordering::Relaxed) {
                 // pauza wygasza kilkadziesiąt ms zamiast uciąć falę w pół (trzask); kolejki nie zjadamy,
                 // więc po wznowieniu te próbki zagrają jeszcze raz
@@ -127,8 +166,10 @@ impl Mixer {
                         skip -= off - c.off;
                         while off < len && n < frames {
                             g -= g * k;
-                            out[n * 2] += c.data[off * 2] * g;
-                            out[n * 2 + 1] += c.data[off * 2 + 1] * g;
+                            let v = [c.data[off * 2] * g, c.data[off * 2 + 1] * g];
+                            out[n * 2] += v[0];
+                            out[n * 2 + 1] += v[1];
+                            self.dc[i].last = v;
                             off += 1;
                             n += 1;
                         }
@@ -139,12 +180,15 @@ impl Mixer {
                 }
                 any |= n > 0;
                 self.tail[i] += n;
-                self.cur[i] = if n > 0 { g } else { 0.0 };
+                self.cur[i] = if n == frames { g } else { 0.0 };
+                if n < frames {
+                    any |= self.dc[i].cut(&mut out[n * 2..], k);
+                }
                 continue;
             }
             self.tail[i] = 0;
             any = true;
-            ends[i] = fill(d, &mut self.cur[i], out, k);
+            ends[i] = fill(d, &mut self.cur[i], &mut self.dc[i], out, k);
         }
         for i in 0..2 {
             let d = &self.decks[i];
@@ -162,7 +206,7 @@ impl Mixer {
                 self.cur[i] = d.gain();
                 self.tail[i] = 0;
                 any = true;
-                fill(d, &mut self.cur[i], &mut out[at * 2..], k);
+                fill(d, &mut self.cur[i], &mut self.dc[i], &mut out[at * 2..], k);
             }
         }
         if any {
@@ -180,7 +224,7 @@ impl Mixer {
 }
 
 // zwraca ramkę, na której deck doszedł do końca pliku w tym buforze
-fn fill(d: &DeckOut, cur: &mut f32, out: &mut [f32], k: f32) -> Option<usize> {
+fn fill(d: &DeckOut, cur: &mut f32, dc: &mut Declick, out: &mut [f32], k: f32) -> Option<usize> {
     let frames = out.len() / 2;
     let target = d.gain();
     let mut g = *cur;
@@ -195,6 +239,10 @@ fn fill(d: &DeckOut, cur: &mut f32, out: &mut [f32], k: f32) -> Option<usize> {
             let s = (c.off + f) * 2;
             out[(n + f) * 2] += c.data[s] * g;
             out[(n + f) * 2 + 1] += c.data[s + 1] * g;
+        }
+        if take > 0 {
+            let s = (c.off + take - 1) * 2;
+            dc.last = [c.data[s] * g, c.data[s + 1] * g];
         }
         c.off += take;
         n += take;
@@ -213,9 +261,14 @@ fn fill(d: &DeckOut, cur: &mut f32, out: &mut [f32], k: f32) -> Option<usize> {
     }
     if q.eof {
         d.drained.store(true, Ordering::Relaxed);
+        // naturalny koniec utworu; wygaszanie nałożyłoby się na następny utwór albumu bez przerw
+        dc.last = [0.0; 2];
         return Some(n);
     }
     d.starved.store(true, Ordering::Relaxed);
+    // nowe dane po przerwie wchodzą rampą od zera, nie skokiem do pełnej głośności
+    *cur = 0.0;
+    dc.cut(&mut out[n * 2..], k);
     None
 }
 
@@ -644,5 +697,74 @@ mod tests {
         assert!(*all.last().unwrap() < 0.01);
         assert!(m.tail[0] > 0);
         assert_eq!(a.queue().frames, left);
+    }
+
+    fn render_left(m: &mut Mixer, frames: usize, all: &mut Vec<f32>) -> bool {
+        let mut buf = vec![0f32; frames * 2];
+        let on = m.render(&mut buf);
+        all.extend(buf.iter().step_by(2).copied());
+        on
+    }
+
+    fn max_step(all: &[f32]) -> f32 {
+        all.windows(2)
+            .map(|w| (w[1] - w[0]).abs())
+            .fold(0.0, f32::max)
+    }
+
+    #[test]
+    fn seek_flush_fades_out_and_new_data_ramps_in() {
+        let a = deck_with(48000, 0.5);
+        a.set_gain(1.0);
+        a.playing.store(true, Ordering::Relaxed);
+        let mut m = Mixer::new([a.clone(), Arc::new(DeckOut::default())], 48000);
+        let mut all = Vec::new();
+        render_left(&mut m, 4800, &mut all);
+        a.queue().flush();
+        render_left(&mut m, 480, &mut all);
+        assert!(a.starved.load(Ordering::Relaxed));
+        let mut q = a.queue();
+        q.chunks.push_back(Chunk {
+            t0: 2.0,
+            step: 1.0 / 48000.0,
+            data: vec![-0.5; 4800 * 2],
+            off: 0,
+        });
+        q.frames = 4800;
+        drop(q);
+        render_left(&mut m, 4800, &mut all);
+        assert!(
+            max_step(&all[300..]) < 0.01,
+            "no click: {}",
+            max_step(&all[300..])
+        );
+        assert!((all.last().unwrap() + 0.5).abs() < 0.01);
+    }
+
+    #[test]
+    fn clear_while_playing_or_pausing_fades_out() {
+        for pause_first in [false, true] {
+            let a = deck_with(48000, 0.5);
+            a.set_gain(1.0);
+            a.playing.store(true, Ordering::Relaxed);
+            let mut m = Mixer::new([a.clone(), Arc::new(DeckOut::default())], 48000);
+            let mut all = Vec::new();
+            render_left(&mut m, 4800, &mut all);
+            if pause_first {
+                a.playing.store(false, Ordering::Relaxed);
+                render_left(&mut m, 128, &mut all);
+            }
+            a.playing.store(false, Ordering::Relaxed);
+            a.queue().flush();
+            while render_left(&mut m, 128, &mut all) {
+                assert!(all.len() < 48000, "tail ends");
+            }
+            assert!(
+                max_step(&all[300..]) < 0.01,
+                "no click: {}",
+                max_step(&all[300..])
+            );
+            assert!(all.last().unwrap().abs() < 1e-3);
+        }
     }
 }
