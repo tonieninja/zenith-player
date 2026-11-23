@@ -1293,11 +1293,17 @@ button.nav-item {
   backdrop-filter: blur(6px);
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.18s ease;
+  /* ukryty po wygaszeniu: niewidoczny backdrop-filter i tak trzymałby stałą warstwę nad okładką */
+  visibility: hidden;
+  transition:
+    opacity 0.18s ease,
+    visibility 0s linear 0.18s;
 }
 
 .cover-vol-badge.show {
   opacity: 1;
+  visibility: visible;
+  transition: opacity 0.18s ease;
 }
 
 .player-view-cover {
