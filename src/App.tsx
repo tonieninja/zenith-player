@@ -137,7 +137,6 @@ import { PopoverMenu } from './components/ui/PopoverMenu';
 import { ModalOverlay } from './components/ui/ModalOverlay';
 import { clickOnKey, sliderKeyValue } from './components/ui/keyboard';
 import { YtmRatingButtons } from './components/player/YtmRatingButtons';
-import { PlaylistManager } from './components/PlaylistManager';
 import {
   errorText,
   isDefiniteStreamFailure,
@@ -329,6 +328,9 @@ const Onboarding = lazy(() =>
 );
 const PluginsPanel = lazy(() =>
   import('./components/PluginsPanel').then((m) => ({ default: m.PluginsPanel }))
+);
+const PlaylistManager = lazy(() =>
+  import('./components/PlaylistManager').then((m) => ({ default: m.PlaylistManager }))
 );
 
 const appWindow = getCurrentWindow();
@@ -6589,33 +6591,35 @@ export default function App() {
       )}
 
       {pmOpen && (
-        <PlaylistManager
-          lang={lang}
-          ownerName={libAccount?.name ?? null}
-          onClose={() => setPmOpen(false)}
-          onSessionExpired={() => {
-            setLibAuthed(false);
-            setUserPlaylists([]);
-            setLibAccount(null);
-            setLibSections([]);
-            setSessionExpired(true);
-            setPmOpen(false);
-          }}
-          onPlay={(tracks, index, title) => {
-            if (tracks[index]) handleItemClick(tracks[index], title, tracks);
-          }}
-          onChanged={(change) => {
-            void loadUserPlaylists();
-            if (change?.deletedId && isViewingPlaylist(activeTab, activeMood, change.deletedId)) {
-              ++feedSeqRef.current.mood;
-              setSections([]);
-              setBrowseTitle(null);
-              setBrowseEmptyKind(null);
-              setActiveMood(null);
-              navigateTo('library');
-            }
-          }}
-        />
+        <Suspense fallback={null}>
+          <PlaylistManager
+            lang={lang}
+            ownerName={libAccount?.name ?? null}
+            onClose={() => setPmOpen(false)}
+            onSessionExpired={() => {
+              setLibAuthed(false);
+              setUserPlaylists([]);
+              setLibAccount(null);
+              setLibSections([]);
+              setSessionExpired(true);
+              setPmOpen(false);
+            }}
+            onPlay={(tracks, index, title) => {
+              if (tracks[index]) handleItemClick(tracks[index], title, tracks);
+            }}
+            onChanged={(change) => {
+              void loadUserPlaylists();
+              if (change?.deletedId && isViewingPlaylist(activeTab, activeMood, change.deletedId)) {
+                ++feedSeqRef.current.mood;
+                setSections([]);
+                setBrowseTitle(null);
+                setBrowseEmptyKind(null);
+                setActiveMood(null);
+                navigateTo('library');
+              }
+            }}
+          />
+        </Suspense>
       )}
       {ctxMenu &&
         createPortal(

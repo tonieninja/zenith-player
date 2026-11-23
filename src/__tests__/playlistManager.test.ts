@@ -280,7 +280,7 @@ describe('ownership', () => {
 
 describe('tracksLabel', () => {
   it('picks the right plural form', async () => {
-    const { tracksLabel } = await import('../components/PlaylistManager');
+    const { tracksLabel } = await import('../utils/playlists');
     const { translations } = await import('../i18n');
     expect(tracksLabel(1, translations.en)).toBe('1 track');
     expect(tracksLabel(3, translations.en)).toBe('3 tracks');
@@ -293,7 +293,7 @@ describe('tracksLabel', () => {
 
 describe('fmtTotal', () => {
   it('carries rounded minutes into the hour instead of showing 60 min', async () => {
-    const { fmtTotal } = await import('../components/PlaylistManager');
+    const { fmtTotal } = await import('../utils/playlists');
     expect(fmtTotal(7170)).toBe('2 h 0 min');
     expect(fmtTotal(3570)).toBe('1 h 0 min');
     expect(fmtTotal(3725)).toBe('1 h 2 min');

@@ -1,5 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLatest } from '../hooks/useLatest';
+import { fmtTotal, tracksLabel } from '../utils/playlists';
 import { invoke } from '@tauri-apps/api/core';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import {
@@ -74,24 +75,6 @@ import './PlaylistManager.css';
 
 const fill = (s: string, vars: Record<string, string | number>) =>
   s.replace(/\{(\w+)\}/g, (_, k) => String(vars[k] ?? ''));
-
-export function tracksLabel(
-  n: number,
-  L: { pmTracks: string; pmTracksOne: string; pmTracksFew: string }
-): string {
-  if (n === 1) return L.pmTracksOne;
-  const tens = n % 100;
-  const few = n % 10 >= 2 && n % 10 <= 4 && (tens < 12 || tens > 14);
-  return (few ? L.pmTracksFew : L.pmTracks).replace('{n}', String(n));
-}
-
-export const fmtTotal = (sec: number) => {
-  // zaokrąglenie całości, bo reszta z godziny zaokrąglona osobno dawała „1 h 60 min”
-  const all = Math.round(sec / 60);
-  const h = Math.floor(all / 60);
-  const m = all % 60;
-  return h ? `${h} h ${m} min` : `${m} min`;
-};
 
 const fmtDur = (s: number | null) =>
   s === null ? '' : `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;

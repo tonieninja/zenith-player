@@ -7,7 +7,7 @@ import { formatTime } from '../../utils/playback';
 import { ctxTrackAttr } from '../../utils/tracks';
 import { WindowedList } from '../ui/WindowedList';
 import { HeroBackdrop } from '../FeedUI';
-import { fmtTotal, tracksLabel } from '../PlaylistManager';
+import { fmtTotal, tracksLabel } from '../../utils/playlists';
 
 type T = (typeof translations)['en'];
 

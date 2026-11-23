@@ -96,3 +96,21 @@ export function isCommitKey(e: { key: string; isComposing?: boolean; keyCode?: n
   if (e.isComposing || e.keyCode === 229) return false;
   return true;
 }
+
+export function tracksLabel(
+  n: number,
+  L: { pmTracks: string; pmTracksOne: string; pmTracksFew: string }
+): string {
+  if (n === 1) return L.pmTracksOne;
+  const tens = n % 100;
+  const few = n % 10 >= 2 && n % 10 <= 4 && (tens < 12 || tens > 14);
+  return (few ? L.pmTracksFew : L.pmTracks).replace('{n}', String(n));
+}
+
+export const fmtTotal = (sec: number) => {
+  // zaokrąglenie całości, bo reszta z godziny zaokrąglona osobno dawała „1 h 60 min”
+  const all = Math.round(sec / 60);
+  const h = Math.floor(all / 60);
+  const m = all % 60;
+  return h ? `${h} h ${m} min` : `${m} min`;
+};
