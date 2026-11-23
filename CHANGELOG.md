@@ -1,5 +1,23 @@
 # Changelog
 
+## 4.7.0
+
+- a lot less memory: closed to the tray the window goes away after 30 s and only the small Rust engine keeps playing, about 15 MB. On Windows the same happens after 90 s minimized, the taskbar button stays and a click brings the window back where you left it
+- with the window open Zenith takes about 100 MB less, the WebView no longer runs a separate GPU process
+- scrobbling, Discord, the webhook, listening stats, SponsorBlock, the sleep timer and blocked artists keep working while the window is gone
+- the next song starts about 150 ms after the last one ends, also without crossfade, and its lyrics are already there
+- new plugins, all off by default: Skip AI music (a community list from Soul Over AI and Spotify AI Blocker), Block artists, Music video in place of the cover, Taskbar buttons under the preview (Windows) and zenith:// links
+- lyrics: put the 11 sources in your own order, star the one you like most and switch off the rest. Auto shows the first lyrics right away and moves up to a better source when it answers. All sources fit in the panel now and the button next to the arrows opens their settings
+- Settings: pick the audio output device. Unplug the headphones and it goes to the default, plug them back and it comes back
+- downloads can carry the title, artist and cover inside the file (switch in the downloads settings)
+- playlists, albums and Favorites open as a track list with Play and Shuffle. The sidebar keeps just navigation and playlists, Moods & genres sits at the end of the chips on Home
+- Now Playing: the artist and album of the current song open with a click
+- one song that fails no longer floods YouTube with requests until nothing plays at all. A rate limit stops the queue with a message instead of skipping through everything, and Settings has a playback log to paste into bug reports
+- Discord checks that the status actually went through and tries again, the card shows a bigger cover and a pause badge
+- phone remote: nobody gets in while the server is off, and phones drop when you change the PIN
+- smaller fixes: the seek bar no longer jumps back after a seek, playback that got stuck starts again, no more sign-out flicker, tiles missing on Home or lost scrobbles, a half-loaded playlist can't be saved short, episode cards play in Explore
+- less CPU while playing or paused, API answers come compressed and the first song starts sooner
+
 ## 4.6.1
 
 - Home: the play button on artist cards sits in the middle of the round photo, before the circle cut it off in the corner
