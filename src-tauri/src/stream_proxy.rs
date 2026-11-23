@@ -13,7 +13,8 @@ use axum::{
 use futures_util::StreamExt;
 use reqwest::Client;
 
-const MAX_DIRECT_URLS: usize = 24;
+// to też limit STREAM_CACHE, który usuwa najstarsze razem z tą mapą; usuwanie tutaj trafiało w losowy wpis
+pub(crate) const MAX_DIRECT_URLS: usize = 64;
 
 #[derive(Clone)]
 pub struct Upstream {
@@ -676,6 +677,23 @@ pub fn current_upstream(id: &str) -> Option<Upstream> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn direct_map_keeps_every_cached_track() {
+        let mut map = HashMap::new();
+        for i in 0..MAX_DIRECT_URLS {
+            map.insert(
+                format!("id{i}"),
+                Upstream {
+                    url: format!("https://a.googlevideo.com/{i}"),
+                    user_agent: "ua".into(),
+                },
+            );
+            evict_oldest(&mut map);
+        }
+        assert_eq!(map.len(), MAX_DIRECT_URLS);
+        assert!((0..MAX_DIRECT_URLS).all(|i| map.contains_key(&format!("id{i}"))));
+    }
 
     #[test]
     fn video_map_leaves_audio_alone() {

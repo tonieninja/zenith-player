@@ -322,7 +322,7 @@ fn remember_and_proxy(
         video_id.to_string(),
         (url.to_string(), user_agent.to_string(), now),
     );
-    while cache.len() > 64 {
+    while cache.len() > stream_proxy::MAX_DIRECT_URLS {
         let oldest = cache
             .iter()
             .min_by_key(|(_, (_, _, ts))| *ts)
