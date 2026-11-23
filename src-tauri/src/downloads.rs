@@ -80,13 +80,17 @@ pub fn init_dir(dir: PathBuf) {
             }
         }
     }
-    let map = load_index(&dir);
+    let raw = std::fs::read_to_string(dir.join("index.json")).unwrap_or_default();
+    let map = load_index(&dir, &raw);
+    let fresh = serde_json::to_string(&map.values().collect::<Vec<_>>()).ok();
     if let Ok(mut idx) = index().lock() {
         *idx = map;
     }
     let _ = DIR.set(dir);
-    // load_index mógł przemianować stare pliki; bez zapisu indeks dalej wskazywałby <id>.audio
-    save_index();
+    // zapis tylko po zmianie (przemianowany <id>.audio, sierota, zniknięty plik): co start opóźniał pierwsze okno
+    if fresh.as_deref() != Some(raw.as_str()) {
+        save_index();
+    }
 }
 
 const AUDIO_EXTS: [&str; 6] = ["webm", "m4a", "ogg", "opus", "mp3", "audio"];
@@ -151,9 +155,8 @@ fn settle_file(dir: &std::path::Path, meta: &mut DownloadMeta) -> bool {
     true
 }
 
-fn load_index(dir: &std::path::Path) -> BTreeMap<String, DownloadMeta> {
-    let raw = std::fs::read_to_string(dir.join("index.json")).unwrap_or_default();
-    let list: Vec<DownloadMeta> = serde_json::from_str(&raw).unwrap_or_default();
+fn load_index(dir: &std::path::Path, raw: &str) -> BTreeMap<String, DownloadMeta> {
+    let list: Vec<DownloadMeta> = serde_json::from_str(raw).unwrap_or_default();
     let mut map: BTreeMap<String, DownloadMeta> = list
         .into_iter()
         .filter_map(|mut m| (valid_id(&m.id) && settle_file(dir, &mut m)).then_some(m))
@@ -239,7 +242,7 @@ pub fn downloads_list() -> Vec<DownloadMeta> {
     v
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn downloads_delete(id: String) -> Result<(), String> {
     if !valid_id(&id) {
         return Err("bad id".into());
@@ -259,16 +262,23 @@ pub fn downloads_delete(id: String) -> Result<(), String> {
     Ok(())
 }
 
-#[tauri::command]
+// jeden zapis indeksu na końcu: zapis po każdym pliku przy tysiącu pobrań to setki MB i sekundy pracy
+#[tauri::command(async)]
 pub fn downloads_clear() -> Result<usize, String> {
     if let (Ok(a), Ok(mut d)) = (active().lock(), dropped().lock()) {
         d.extend(a.iter().cloned());
     }
     let ids: Vec<String> = downloads_list().into_iter().map(|m| m.id).collect();
+    let mut first_err = None;
     for id in &ids {
-        downloads_delete(id.clone())?;
+        if let Some(Err(e)) = file_for(id).map(std::fs::remove_file) {
+            first_err.get_or_insert(e.to_string());
+        } else if let Ok(mut m) = index().lock() {
+            m.remove(id);
+        }
     }
-    Ok(ids.len())
+    save_index();
+    first_err.map_or(Ok(ids.len()), Err)
 }
 
 #[tauri::command]
@@ -735,7 +745,8 @@ mod tests {
             serde_json::to_string(&vec![known.clone()]).unwrap(),
         )
         .unwrap();
-        let map = load_index(&dir);
+        let raw = std::fs::read_to_string(dir.join("index.json")).unwrap();
+        let map = load_index(&dir, &raw);
         let renamed = DownloadMeta {
             file: "known [aaaaaaaaaaa].ogg".into(),
             ..known
