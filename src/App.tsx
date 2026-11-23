@@ -298,8 +298,6 @@ import {
   Search,
   Mic2,
   ListMusic,
-  Dumbbell,
-  Moon,
   Settings2,
   Heart,
   ListPlus,
@@ -5158,31 +5156,6 @@ export default function App() {
             </div>
           </nav>
           <div className="playlists-section">
-            <span className="section-title">{t.moodsMoments}</span>
-            <div
-              className={`nav-item playlist-link ${activeTab === 'mood' && activeMood === 'workout' ? 'active' : ''}`}
-              role="button"
-              tabIndex={0}
-              aria-label={t.workout}
-              title={t.workout}
-              onKeyDown={clickOnKey}
-              onClick={() => openMoodById('workout')}
-            >
-              <Dumbbell size={18} />
-              <span>{t.workout}</span>
-            </div>
-            <div
-              className={`nav-item playlist-link ${activeTab === 'mood' && activeMood === 'focus' ? 'active' : ''}`}
-              role="button"
-              tabIndex={0}
-              aria-label={t.focus}
-              title={t.focus}
-              onKeyDown={clickOnKey}
-              onClick={() => openMoodById('focus')}
-            >
-              <Moon size={18} />
-              <span>{t.focus}</span>
-            </div>
             <div className="section-title-row">
               <span className="section-title">{t.playlistsTitle}</span>
               {libAuthed && (
@@ -5828,6 +5801,7 @@ export default function App() {
                       <MoodChips
                         activeCategory={activeMood}
                         onCategoryClick={loadMood}
+                        onMore={openMoodsGenres}
                         lang={lang}
                         t={t}
                       />

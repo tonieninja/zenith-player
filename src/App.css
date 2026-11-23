@@ -633,7 +633,14 @@ button.nav-item {
 
 .mood-chips-container {
   margin-bottom: 24px;
-  padding: 0 4px;
+  /* ta sama krawędź co baner i rzędy pod nim */
+  padding: 0 clamp(16px, 3vw, 48px);
+}
+
+.mood-chip.mood-chip-more {
+  gap: 4px;
+  color: var(--text-muted);
+  background: transparent;
 }
 
 .mood-chips-scroll {
