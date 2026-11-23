@@ -676,20 +676,41 @@ pub async fn ytm_browse(
         ));
     }
 
-    let data: Value = serde_json::from_str(&text).map_err(|e| e.to_string())?;
-    if data.get("error").is_some() {
-        return Err(format!(
-            "ytm error: {}",
-            data.get("error").unwrap_or(&Value::Null)
-        ));
-    }
+    browse_error(&text)?;
     // surową odpowiedź parsuje JS: uproszczona kopia parsera gubiła karty radia, odcinki i typy
     Ok(text)
+}
+
+// pełne drzewo Value z odpowiedzi rzędu 1 MB tylko po to, by znaleźć klucz error, kosztowało kilka MB i milisekund
+fn browse_error(text: &str) -> Result<(), String> {
+    #[derive(Deserialize)]
+    struct ErrorKey {
+        error: Option<serde::de::IgnoredAny>,
+    }
+    let probe: ErrorKey = serde_json::from_str(text).map_err(|e| e.to_string())?;
+    if probe.error.is_none() {
+        return Ok(());
+    }
+    let data: Value = serde_json::from_str(text).map_err(|e| e.to_string())?;
+    Err(format!(
+        "ytm error: {}",
+        data.get("error").unwrap_or(&Value::Null)
+    ))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn browse_error_finds_only_the_error_key() {
+        assert!(browse_error(r#"{"contents":{"error":1},"x":[1,2]}"#).is_ok());
+        assert_eq!(
+            browse_error(r#"{"error":{"code":400}}"#).unwrap_err(),
+            r#"ytm error: {"code":400}"#
+        );
+        assert!(browse_error("{\"contents\":").is_err());
+    }
 
     #[test]
     fn music_host_ignores_google_and_www_only_cookies() {
