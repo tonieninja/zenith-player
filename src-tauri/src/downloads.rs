@@ -333,13 +333,17 @@ pub(crate) async fn fetch_part(
 ) -> Result<u64, String> {
     use reqwest::header::{CONTENT_RANGE, RANGE};
     use tokio::io::{AsyncSeekExt, AsyncWriteExt};
+    // wspólny klient, bo każdy build wczytuje systemowy magazyn certyfikatów od nowa
+    static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
     // bez całkowitego limitu czasu: 9 h audio to kilkaset MB, a ten limit liczy też czytanie body
-    let client = reqwest::Client::builder()
-        .no_proxy()
-        .connect_timeout(std::time::Duration::from_secs(10))
-        .read_timeout(std::time::Duration::from_secs(90))
-        .build()
-        .map_err(|e| e.to_string())?;
+    let client = crate::stream_proxy::cached_client(&CLIENT, || {
+        reqwest::Client::builder()
+            .no_proxy()
+            .connect_timeout(std::time::Duration::from_secs(10))
+            .read_timeout(std::time::Duration::from_secs(90))
+            .build()
+    })
+    .ok_or("no http client")?;
     let mut file = tokio::fs::File::create(part)
         .await
         .map_err(|e| e.to_string())?;
