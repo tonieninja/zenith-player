@@ -5,6 +5,30 @@ use std::sync::Mutex;
 use tauri::{AppHandle, Manager};
 
 static LOCK: Mutex<()> = Mutex::new(());
+static PREFS_PENDING: Mutex<Option<(PathBuf, String)>> = Mutex::new(None);
+static FAVORITES_PENDING: Mutex<Option<(PathBuf, String)>> = Mutex::new(None);
+
+// komenda zostaje synchroniczna, więc kolejność treści to kolejność wywołań; zapis pliku idzie poza wątek okna
+fn write_later(slot: &'static Mutex<Option<(PathBuf, String)>>, path: PathBuf, body: String) {
+    *slot.lock().unwrap_or_else(|e| e.into_inner()) = Some((path, body));
+    tauri::async_runtime::spawn_blocking(move || {
+        let _g = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let Some((path, body)) = slot.lock().unwrap_or_else(|e| e.into_inner()).take() else {
+            return;
+        };
+        let write = || -> std::io::Result<()> {
+            if let Some(dir) = path.parent() {
+                std::fs::create_dir_all(dir)?;
+            }
+            let tmp = path.with_extension("json.tmp");
+            std::fs::write(&tmp, body)?;
+            std::fs::rename(&tmp, &path)
+        };
+        if let Err(e) = write() {
+            crate::diag::log(format!("[Zenith] {} not saved: {e}", path.display()));
+        }
+    });
+}
 
 const MAX_KEYS: usize = 400;
 const MAX_VALUE: usize = 4096;
@@ -37,7 +61,7 @@ pub fn normalize_favorites(body: &str) -> Result<String, String> {
     serde_json::to_string(arr).map_err(|e| e.to_string())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn favorites_load(app: AppHandle) -> String {
     let _g = LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let Some(path) = favorites_file(&app) else {
@@ -51,15 +75,10 @@ pub fn favorites_load(app: AppHandle) -> String {
 
 #[tauri::command]
 pub fn favorites_save(app: AppHandle, body: String) -> Result<(), String> {
-    let _g = LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let body = normalize_favorites(&body)?;
     let path = favorites_file(&app).ok_or("no data dir")?;
-    if let Some(dir) = path.parent() {
-        std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
-    }
-    let tmp = path.with_extension("json.tmp");
-    std::fs::write(&tmp, body).map_err(|e| e.to_string())?;
-    std::fs::rename(&tmp, &path).map_err(|e| e.to_string())
+    write_later(&FAVORITES_PENDING, path, body);
+    Ok(())
 }
 
 pub fn sanitize(map: HashMap<String, String>) -> HashMap<String, String> {
@@ -85,7 +104,7 @@ pub fn sanitize(map: HashMap<String, String>) -> HashMap<String, String> {
         .collect()
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn prefs_load(app: AppHandle) -> HashMap<String, String> {
     let _g = LOCK.lock().unwrap_or_else(|e| e.into_inner());
     file(&app)
@@ -102,19 +121,35 @@ pub fn prefs_save(
     prefs: HashMap<String, String>,
 ) -> Result<(), String> {
     crate::auth_store::main_window_only(&webview)?;
-    let _g = LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let path = file(&app).ok_or("no data dir")?;
-    if let Some(dir) = path.parent() {
-        std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
-    }
     let body = serde_json::to_string(&sanitize(prefs)).map_err(|e| e.to_string())?;
-    let tmp = path.with_extension("json.tmp");
-    std::fs::write(&tmp, body).map_err(|e| e.to_string())?;
-    std::fs::rename(&tmp, &path).map_err(|e| e.to_string())
+    write_later(&PREFS_PENDING, path, body);
+    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn newest_body_wins() {
+        use std::sync::Mutex;
+        static SLOT: Mutex<Option<(std::path::PathBuf, String)>> = Mutex::new(None);
+        let path = std::env::temp_dir().join(format!("zprefs_test_{}.json", std::process::id()));
+        for i in 0..20 {
+            super::write_later(&SLOT, path.clone(), i.to_string());
+        }
+        let read = || std::fs::read_to_string(&path).unwrap_or_default();
+        for _ in 0..500 {
+            if read() == "19" {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        let _g = super::LOCK.lock().unwrap();
+        assert!(SLOT.lock().unwrap().is_none());
+        assert_eq!(read(), "19");
+        let _ = std::fs::remove_file(&path);
+    }
+
     #[test]
     fn drops_big_values() {
         let mut m = std::collections::HashMap::new();
