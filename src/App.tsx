@@ -566,6 +566,7 @@ export default function App() {
   const [lang, setLang] = useState<Language>(() => {
     return (localStorage.getItem('zenith_lang') as Language) || 'en';
   });
+  const langRef = useLatest(lang);
   const [rememberLogin, setRememberLoginState] = useState(() => getRememberLogin());
   const [ageBypass, setAgeBypassState] = useState(getAgeBypass);
   const lightLyrics = useLightLyrics();
@@ -2975,6 +2976,10 @@ export default function App() {
             void resolveStreamUrlRef.current(next.id).then((u) => {
               if (u && currentTrackIdRef.current === trackId) audio.preroll(u);
             });
+            // tekst i tak pobierze się przy zmianie utworu; bez długości dopasowanie byłoby gorsze niż później
+            if (next.durationSec) {
+              void getLyrics(next, langRef.current, lyricsProviderRef.current).catch(() => null);
+            }
           }
         }
         if (plan && trackId && autoFadeTrackRef.current !== trackId) {
@@ -3226,6 +3231,7 @@ export default function App() {
     queue.length,
     playNext,
     playByIndex,
+    langRef,
     loopMode,
     duration,
     paintProgressUi,
@@ -4112,7 +4118,6 @@ export default function App() {
   const remoteEnabled = Boolean(pluginStates['remote-control']);
   const cycleLoopRef = useLatest(cycleLoop);
   const handleItemClickRef = useLatest(handleItemClick);
-  const langRef = useLatest(lang);
   const remoteSnapRef = useLatest<() => void>(() => {
     const q = queueRef.current;
     const idx = queueIndexRef.current;
