@@ -2933,7 +2933,7 @@ export default function App() {
       }
 
       if (
-        (crossfadeEnabledRef.current || playingAlbumRef.current) &&
+        (crossfadeEnabledRef.current || playingAlbumRef.current || isNativeAudio()) &&
         !audio.isCrossfading &&
         loopModeRef.current !== 'one' &&
         // pętla A-B przy końcu utworu nie może zostać przerwana przez przejście do następnego
@@ -2959,12 +2959,14 @@ export default function App() {
           gapless,
           remaining,
         });
+        // silnik natywny bierze wczytany zawczasu deck także bez crossfade, więc przejście nie czeka na sieć
+        const early = gapless || !crossfadeEnabledRef.current;
         if (
-          (gapless || crossfadeEnabledRef.current) &&
+          (gapless || crossfadeEnabledRef.current || isNativeAudio()) &&
           trackId &&
           prerollForRef.current !== trackId &&
-          remaining <= (gapless ? GAPLESS_PREROLL_SECS : cfs + 8) &&
-          remaining > (gapless ? GAPLESS_LEAD_SECS : cfs)
+          remaining <= (early ? GAPLESS_PREROLL_SECS : cfs + 8) &&
+          remaining > (early ? GAPLESS_LEAD_SECS : cfs)
         ) {
           const ni = qi < q.length - 1 ? qi + 1 : loopModeRef.current === 'all' ? 0 : -1;
           const next = ni >= 0 && ni !== qi ? q[ni] : null;

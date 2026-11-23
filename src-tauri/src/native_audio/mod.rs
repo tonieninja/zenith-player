@@ -558,6 +558,11 @@ fn cancel_fade(st: &mut State) {
     apply_volume(st, a);
 }
 
+// wczytany zawczasu, jeszcze nie grany następny utwór; deck po przejściu ma pozycję przy końcu i się nie liczy
+fn fresh_preroll(d: &Deck) -> bool {
+    !d.src.is_empty() && !d.errored && !d.want_play && d.buf.is_some() && pos_of(d) < 0.5
+}
+
 fn silence_other(st: &mut State) {
     let o = 1 - st.active;
     // next w trakcie przejścia ucinał wychodzący utwór bez wyciszenia (trzask)
@@ -616,9 +621,23 @@ pub fn run_cmd(cmd: Cmd) -> Snapshot {
             Cmd::SetSrc { url } => {
                 st.ab = None;
                 cancel_fade(&mut st);
-                silence_other(&mut st);
-                load_deck(&mut st.decks[a], &url, rate);
-                apply_volume(&st, a);
+                if st.decks[1 - a].src == url && fresh_preroll(&st.decks[1 - a]) {
+                    // bez nowego połączenia i buforowania: przerwa między utworami to jeden takt miksera
+                    clear_deck(&mut st.decks[a]);
+                    st.decks[a].gain = 0.0;
+                    apply_volume(&st, a);
+                    st.active = 1 - a;
+                    st.decks[1 - a].gain = 1.0;
+                    apply_volume(&st, 1 - a);
+                    // nieaktywny deck nie zgłaszał gotowości, a UI czeka na nią po zmianie źródła
+                    if st.decks[1 - a].ready >= 4 {
+                        events.extend(["loadedmetadata", "durationchange", "canplay"]);
+                    }
+                } else {
+                    silence_other(&mut st);
+                    load_deck(&mut st.decks[a], &url, rate);
+                    apply_volume(&st, a);
+                }
             }
             Cmd::ClearSrc => {
                 st.ab = None;
@@ -684,10 +703,12 @@ pub fn run_cmd(cmd: Cmd) -> Snapshot {
             Cmd::AbortAll => {
                 st.ab = None;
                 cancel_fade(&mut st);
-                for d in st.decks.iter_mut() {
-                    clear_deck(d);
+                clear_deck(&mut st.decks[a]);
+                // przejście bez crossfade zaczyna od AbortAll, a zaraz potem SetSrc może wziąć ten deck
+                if !fresh_preroll(&st.decks[1 - a]) {
+                    clear_deck(&mut st.decks[1 - a]);
+                    st.decks[1 - a].gain = 1.0;
                 }
-                st.decks[1 - a].gain = 1.0;
                 apply_volume(&st, a);
             }
             Cmd::ReleaseInactive => {
@@ -1277,9 +1298,7 @@ pub mod headless {
                 tauri::async_runtime::spawn(async move {
                     // przejście bez wczytanego decku startuje z opóźnieniem i ucina koniec poprzedniego
                     if let Some(u) = resolve(&id).await {
-                        if cf > 0.0 {
-                            preroll(&u);
-                        }
+                        preroll(&u);
                     }
                 });
             }
