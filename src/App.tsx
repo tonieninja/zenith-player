@@ -390,6 +390,7 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [lyricsSourcesOpen, setLyricsSourcesOpen] = useState(false);
   const [isMaximized, setIsMaximized] = useState(false);
   const [isPluginsOpen, setIsPluginsOpen] = useState(false);
   const [queueOpen, setQueueOpen] = useState(false);
@@ -3925,6 +3926,7 @@ export default function App() {
     fdEdit: fdEdit !== null,
     plugins: isPluginsOpen,
     settings: isSettingsOpen,
+    lyricsSources: lyricsSourcesOpen,
     queue: queueOpen,
   });
   useEffect(() => {
@@ -3939,6 +3941,7 @@ export default function App() {
         else if (open.fdEdit) setFdEdit(null);
         else if (open.plugins) setIsPluginsOpen(false);
         else if (open.settings) setIsSettingsOpen(false);
+        else if (open.lyricsSources) setLyricsSourcesOpen(false);
         else if (open.queue) setQueueOpen(false);
         else return;
         e.preventDefault();
@@ -5536,14 +5539,7 @@ export default function App() {
                           top={lyricsPrefs.order[0]}
                           lang={lang}
                           onSelect={setLyricsProvider}
-                          onManage={() => {
-                            setIsSettingsOpen(true);
-                            requestAnimationFrame(() =>
-                              document
-                                .getElementById('lyrics-sources')
-                                ?.scrollIntoView({ block: 'start', behavior: 'smooth' })
-                            );
-                          }}
+                          onManage={() => setLyricsSourcesOpen(true)}
                         />
                         <div className="lyrics-text-content">
                           {lyricsLoading ? (
@@ -6317,6 +6313,30 @@ export default function App() {
         </div>
       </div>
 
+      {lyricsSourcesOpen && (
+        <ModalOverlay onClick={() => setLyricsSourcesOpen(false)} testId="lyrics-sources-overlay">
+          <div
+            className="glass-modal-container lyrics-sources-modal"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="modal-header">
+              <h2>{t.lyricsSources}</h2>
+              <button
+                type="button"
+                className="modal-close-icon"
+                aria-label={t.winClose}
+                title={t.winClose}
+                onClick={() => setLyricsSourcesOpen(false)}
+              >
+                <X size={26} />
+              </button>
+            </div>
+            <div className="modal-body">
+              <LyricsSourcesSettings lang={lang} inModal />
+            </div>
+          </div>
+        </ModalOverlay>
+      )}
       {isSettingsOpen && (
         <ModalOverlay onClick={() => setIsSettingsOpen(false)} testId="settings-overlay">
           <div className="glass-modal-container" onClick={(e) => e.stopPropagation()}>

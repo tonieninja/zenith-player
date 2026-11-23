@@ -1,4 +1,3 @@
-import { useEffect, useRef } from 'react';
 import { ChevronLeft, ChevronRight, Settings2, Star } from 'lucide-react';
 import type { LyricsProvider, LyricsResult } from '../api/youtube';
 import { translations, type Language } from '../i18n';
@@ -26,7 +25,6 @@ export function LyricsSourceBar({
   onManage,
 }: Props) {
   const t = translations[lang];
-  const listRef = useRef<HTMLDivElement>(null);
   const shown = !loading && lyrics?.provider && lyrics.provider !== 'Auto' ? lyrics.provider : null;
   const title = shown ?? (selected === 'Auto' ? t.lyrics : selected);
   const missed = new Map((lyrics?.failures ?? []).map((f) => [f.provider, f.reason]));
@@ -34,27 +32,6 @@ export function LyricsSourceBar({
     const i = Math.max(0, providers.indexOf(selected));
     onSelect(providers[(i + dir + providers.length) % providers.length]);
   };
-
-  useEffect(() => {
-    const list = listRef.current;
-    const chip = list?.querySelector<HTMLElement>('.lyrics-provider-pill.active');
-    if (!list || !chip) return;
-    // tylko w poziomie: scrollIntoView przewijałby też panel z tekstem
-    list.scrollLeft = chip.offsetLeft - (list.clientWidth - chip.offsetWidth) / 2;
-  }, [selected]);
-
-  useEffect(() => {
-    const list = listRef.current;
-    if (!list) return;
-    // pasek przewijania jest ukryty, więc kółko myszy przesuwa chipy w bok zamiast panelu
-    const onWheel = (e: WheelEvent) => {
-      if (list.scrollWidth <= list.clientWidth || Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
-      e.preventDefault();
-      list.scrollLeft += e.deltaY;
-    };
-    list.addEventListener('wheel', onWheel, { passive: false });
-    return () => list.removeEventListener('wheel', onWheel);
-  }, []);
 
   return (
     <>
@@ -88,8 +65,18 @@ export function LyricsSourceBar({
         >
           <ChevronRight size={16} />
         </button>
+        {/* poza rzędem chipów, żeby w wąskim oknie nie trzeba było go szukać na końcu przewijania */}
+        <button
+          type="button"
+          className="lyrics-provider-nav lyrics-provider-manage"
+          aria-label={t.lyricsSourcesManage}
+          title={t.lyricsSourcesManage}
+          onClick={onManage}
+        >
+          <Settings2 size={15} />
+        </button>
       </div>
-      <div className="lyrics-provider-list" ref={listRef}>
+      <div className="lyrics-provider-list">
         {providers.map((p) => {
           const inUse = selected === 'Auto' && p === shown;
           const reason = missed.get(p);
@@ -109,15 +96,6 @@ export function LyricsSourceBar({
             </button>
           );
         })}
-        <button
-          type="button"
-          className="lyrics-provider-pill lyrics-provider-manage"
-          aria-label={t.lyricsSourcesManage}
-          title={t.lyricsSourcesManage}
-          onClick={onManage}
-        >
-          <Settings2 size={13} />
-        </button>
       </div>
     </>
   );

@@ -1605,27 +1605,20 @@ button.nav-item {
 }
 .lyrics-provider-list {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  overflow-x: auto;
-  scrollbar-width: none;
-  scroll-behavior: smooth;
-  /* krawędzie gasną, żeby było widać, że chipów jest więcej niż mieści się w rzędzie */
-  mask-image: linear-gradient(90deg, transparent, #000 12px, #000 calc(100% - 12px), transparent);
-  padding: 12px 16px 18px;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+  padding: 12px 16px 14px;
   background: rgba(10, 10, 12, 0.9);
   border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-}
-.lyrics-provider-list::-webkit-scrollbar {
-  display: none;
 }
 .lyrics-provider-pill {
   border: none;
   cursor: pointer;
-  font-size: 11px;
+  font-size: 10.5px;
   font-weight: 800;
   letter-spacing: 0.9px;
-  padding: 8px 12px;
+  padding: 6px 11px;
   border-radius: 999px;
   color: rgba(255, 255, 255, 0.6);
   background: rgba(255, 255, 255, 0.08);
@@ -1659,9 +1652,38 @@ button.nav-item {
   outline: 2px solid #ffffff;
   outline-offset: 2px;
 }
-.lyrics-provider-manage {
-  padding: 7px 9px;
-  margin-left: auto;
+.lyrics-provider-nav.lyrics-provider-manage {
+  position: absolute;
+  right: 16px;
+  top: calc(50% - 14px);
+  border-color: transparent;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.6);
+}
+.lyrics-provider-nav.lyrics-provider-manage:hover {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.1);
+}
+.lyrics-provider-nav:focus-visible {
+  outline: 2px solid #ffffff;
+  outline-offset: 2px;
+}
+.lyrics-sources-modal {
+  width: 460px;
+}
+.lyrics-sources.in-modal .settings-toggle-row:first-child {
+  padding-top: 0;
+}
+.lyrics-sources.in-modal .lyrics-sources-list {
+  margin: 4px 0 12px;
+  padding: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+.lyrics-sources.in-modal .lyrics-source-row {
+  padding: 7px 10px;
+}
+.lyrics-sources.in-modal .lyrics-source-name {
+  font-size: 14px;
 }
 
 .lyrics-sources-list {
