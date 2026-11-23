@@ -1,6 +1,6 @@
 # Plugins
 
-Zenith ships 37 plugins. Toggle them in the Plugins panel, the enabled set is stored in
+Zenith ships 42 plugins. Toggle them in the Plugins panel, the enabled set is stored in
 `localStorage` key `zenith_plugins_enabled`.
 
 A fresh install turns on the ones marked below (preload, queue and volume memory, smart lyrics
@@ -9,18 +9,20 @@ whatever you had.
 
 ### Playback
 
-| Name                 | Id                  | On by default | What it does                                                                                                                                                                                                                         |
-| -------------------- | ------------------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Preload next         | `preload-next`      | yes           | Prefetches stream URLs for the next 1-3 tracks in the queue.                                                                                                                                                                         |
-| Remember queue       | `queue-persist`     | yes           | Restores your queue, position and resumes playback when you reopen Zenith.                                                                                                                                                           |
-| Remember volume      | `remember-volume`   | yes           | Restores your last volume level between sessions.                                                                                                                                                                                    |
-| Crossfade            | `crossfade`         | no            | Equal-power blends between tracks near the end and on manual skips (2 to 12 s). Albums play gapless even when this is off (setting in the plugin).                                                                                   |
-| Offline downloads    | `offline-downloads` | no            | Saves tracks to disk (app data folder, `downloads/`) and plays them with no connection. Right-click a cover or a track to download; long mixes resume after a dropped connection. List, play and delete them in the plugin settings. |
-| Sleep timer          | `sleep-timer`       | no            | Automatically stops playback after a set number of minutes.                                                                                                                                                                          |
-| Variable speed       | `playback-speed`    | no            | Play tracks faster or slower.                                                                                                                                                                                                        |
-| A-B loop             | `ab-loop`           | no            | Mark two points in a track and loop between them.                                                                                                                                                                                    |
-| SponsorBlock         | `sponsorblock`      | no            | Skips talking, skits and sponsor breaks in music videos as marked by SponsorBlock. Seek back into a part and it plays it.                                                                                                            |
-| Pause when unfocused | `auto-pause-blur`   | no            | Pauses playback when you switch to another app or minimize Zenith.                                                                                                                                                                   |
+| Name                 | Id                  | On by default | What it does                                                                                                                                                                                                                                                                                                                                            |
+| -------------------- | ------------------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Preload next         | `preload-next`      | yes           | Prefetches stream URLs for the next 1-3 tracks in the queue.                                                                                                                                                                                                                                                                                            |
+| Remember queue       | `queue-persist`     | yes           | Restores your queue, position and resumes playback when you reopen Zenith.                                                                                                                                                                                                                                                                              |
+| Remember volume      | `remember-volume`   | yes           | Restores your last volume level between sessions.                                                                                                                                                                                                                                                                                                       |
+| Crossfade            | `crossfade`         | no            | Equal-power blends between tracks near the end and on manual skips (2 to 12 s). Albums play gapless even when this is off (setting in the plugin).                                                                                                                                                                                                      |
+| Offline downloads    | `offline-downloads` | no            | Saves tracks to disk (app data folder, `downloads/`) and plays them with no connection. Right-click a cover or a track to download; long mixes resume after a dropped connection. List, play and delete them in the plugin settings.                                                                                                                    |
+| Sleep timer          | `sleep-timer`       | no            | Automatically stops playback after a set number of minutes.                                                                                                                                                                                                                                                                                             |
+| Variable speed       | `playback-speed`    | no            | Play tracks faster or slower.                                                                                                                                                                                                                                                                                                                           |
+| A-B loop             | `ab-loop`           | no            | Mark two points in a track and loop between them.                                                                                                                                                                                                                                                                                                       |
+| SponsorBlock         | `sponsorblock`      | no            | Skips talking, skits and sponsor breaks in music videos as marked by SponsorBlock. Seek back into a part and it plays it.                                                                                                                                                                                                                               |
+| Block artists        | `block-artists`     | no            | Skips tracks by artists you block, also in radio and mixes. Whole words only, so blocking Prince leaves Princess Nokia alone.                                                                                                                                                                                                                           |
+| Skip AI music        | `skip-ai-music`     | no            | Skips tracks by artists that mainly publish AI-generated music. The list is [aimusic](https://ailist.flow-tube.org) (from [Soul Over AI](https://souloverai.com), CC BY 4.0, and [Spotify AI Blocker](https://github.com/CennoxX/spotify-ai-blocker), MIT), signed and checked once a day. It matches the artist channel, so a track without one plays. |
+| Pause when unfocused | `auto-pause-blur`   | no            | Pauses playback when you switch to another app or minimize Zenith.                                                                                                                                                                                                                                                                                      |
 
 ### Sound
 
@@ -50,6 +52,8 @@ whatever you had.
 | Phone remote                | `remote-control`     | no            | Control Zenith from your phone or any device on your network: volume, play/pause, skip, seek, queue, like and search in a browser.                                             |
 | DualSense pad               | `dualsense-pad`      | no            | Control Zenith with a DualSense: touchpad swipe (next/prev/play) + face buttons. LED follows cover art while playing.                                                          |
 | Webhook / Stream Deck       | `webhook`            | no            | POST JSON to a URL on every track change. Works with Stream Deck, Home Assistant and n8n.                                                                                      |
+| Taskbar buttons             | `taskbar-buttons`    | no            | Previous, play/pause and next under the window preview on the taskbar. Windows only.                                                                                           |
+| zenith:// links             | `zenith-links`       | no            | `zenith://play?v=<id>` from the browser or other apps opens in Zenith. The handler is registered only while the plugin is on. Windows and Linux.                               |
 
 ### Sharing and services
 
@@ -70,6 +74,7 @@ whatever you had.
 | System tray          | `system-tray`       | yes           | Closing the window keeps Zenith playing in the tray, with play/pause, next and show controls.                                                                                                   |
 | Dynamic window title | `window-title`      | no            | Updates the window title to show the current artist and track name.                                                                                                                             |
 | Ambient cover glow   | `ambient-glow`      | no            | Tints the player backdrop with colors sampled from the current album art.                                                                                                                       |
+| Music video          | `music-video`       | no            | Plays the music video in place of the cover art. The sound stays the same.                                                                                                                      |
 | Mini player          | `mini-player`       | no            | Compact always-on-top player: cover, draggable timeline, like, previous, play/pause, next and optional synced lyrics with the karaoke fill. Every control can be hidden in the plugin settings. |
 | Listening stats      | `stats-tracker`     | no            | Tracks total listening time and per-track play counts in the background.                                                                                                                        |
 | Listening history    | `listening-history` | no            | Keeps a rolling log of the last 80 tracks you played (stored locally).                                                                                                                          |
@@ -160,3 +165,13 @@ export const myPlugin: ZenithPlugin = {
 4. Optional settings UI: `src/components/PluginsPanel.tsx` (`renderSettings`).
 5. Keep hooks cheap: `onNowPlaying` runs on every progress tick. Plugins must not
    download media or send data anywhere unless that is their stated purpose.
+
+### When the window is gone
+
+Closing to the tray, or keeping Zenith minimized for 90 seconds on Windows, lets go of the WebView
+and the Rust engine plays the queue on its own. These plugins keep working there: media session,
+global hotkeys, crossfade, Discord, Last.fm, ListenBrainz, the webhook, listening stats,
+SponsorBlock, the sleep timer, Block artists and Skip AI music. A like from a hotkey or the tray,
+shuffle, or a phone opening the remote page brings the window back hidden, and it goes away again
+when it's done. Only a pad that isn't a DualSense over HID, voice ducking with the browser audio
+engine and an open listening room keep the window around.

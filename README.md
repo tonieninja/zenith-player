@@ -45,7 +45,7 @@ On macOS right click → Open the first time (or System Settings → Privacy & S
 
 ## What it does
 
-<img src="assets/card-lyrics-wide.svg" width="100%" alt="Lyrics from 11 sources: LRCLib, Musixmatch, YouTube Music, LyricsPlus, Boidu, Unison, NetEase, QQ Music, Kugou, Genius and lyrics.ovh. Synced, with karaoke fill, an overlay and a window for your second screen"><img src="assets/card-eq.svg" width="50%" alt="A 15-band EQ in a small Rust audio engine, with loudness normalization next to it"><img src="assets/card-crossfade.svg" width="50%" alt="Crossfade and gapless: 2 to 12 second crossfades, and albums that play through without a gap"><img src="assets/card-remote-wide.svg" width="100%" alt="Your phone is the remote: scan the code on the same Wi-Fi, then skip, like and change the volume from the phone. Queue, live lyrics and search are there too"><img src="assets/card-plugins.svg" width="50%" alt="37 plugins: hotkeys, an A-B loop, Discord, ListenBrainz, a mini player. Turn on what you want"><img src="assets/card-offline.svg" width="50%" alt="Offline, no ads, no telemetry: save tracks and play them without internet, settings stay on your computer">
+<img src="assets/card-lyrics-wide.svg" width="100%" alt="Lyrics from 11 sources: LRCLib, Musixmatch, YouTube Music, LyricsPlus, Boidu, Unison, NetEase, QQ Music, Kugou, Genius and lyrics.ovh. Synced, with karaoke fill, an overlay and a window for your second screen"><img src="assets/card-eq.svg" width="50%" alt="A 15-band EQ in a small Rust audio engine, with loudness normalization next to it"><img src="assets/card-crossfade.svg" width="50%" alt="Crossfade and gapless: 2 to 12 second crossfades, and albums that play through without a gap"><img src="assets/card-remote-wide.svg" width="100%" alt="Your phone is the remote: scan the code on the same Wi-Fi, then skip, like and change the volume from the phone. Queue, live lyrics and search are there too"><img src="assets/card-plugins.svg" width="50%" alt="42 plugins: hotkeys, an A-B loop, Discord, ListenBrainz, a mini player. Turn on what you want"><img src="assets/card-offline.svg" width="50%" alt="Offline, no ads, no telemetry: save tracks and play them without internet, settings stay on your computer">
 
 And the rest:
 
@@ -54,6 +54,8 @@ And the rest:
 - Artist pages with Play all, which plays every song of the artist like a playlist
 - Queue with drag and drop, shuffle, loop, and a radio that keeps going after the last track
 - Speed with the pitch kept, A-B loop, sleep timer, bass boost and a limiter so loud presets don't clip
+- Block artists you don't want to hear, or skip AI-generated music with a community list
+  ([Soul Over AI](https://souloverai.com) and [Spotify AI Blocker](https://github.com/CennoxX/spotify-ai-blocker))
 - Last.fm and ListenBrainz scrobbling, Discord presence, DualSense, global hotkeys you can rebind
 - Playlists go to Spotify and come back from it, matched track by track, or out to CSV and JSON
 - Listening Room for friends on the same network, a now playing card and a webhook for Stream Deck
@@ -73,19 +75,24 @@ Full plugin list: [docs/PLUGINS.md](docs/PLUGINS.md).
 
 ## RAM
 
-<img src="assets/card-ram.svg" width="100%" alt="RAM use while a song plays: main window and mini player about 260 MB, main window alone about 130 MB, in the tray with the mini player about 55 MB, in the tray alone 15 MB">
+<img src="assets/card-ram.svg" width="100%" alt="RAM use while a song plays: main window and mini player about 160 MB, main window alone about 135 MB, in the tray with the mini player about 40 MB, in the tray alone 15 MB">
 
-| What's open               | RAM     |
-| ------------------------- | ------- |
-| Main window + mini player | ~260 MB |
-| Main window               | ~130 MB |
-| Tray + mini player        | ~55 MB  |
-| Tray only, just the music | ~15 MB  |
+| What's open                       | RAM     |
+| --------------------------------- | ------- |
+| Main window + mini player         | ~160 MB |
+| Main window                       | ~135 MB |
+| Tray + mini player                | ~40 MB  |
+| Tray or minimized, just the music | ~15 MB  |
 
-Closing to the tray drops the main window after 30 s and the Rust engine keeps playing. With the
-mini player closed too there's no WebView2 running at all. Measured on Windows 11 with a Japanese
-song playing, synced lyrics and romanization on, private memory of every Zenith and WebView2
-process added up. The tray numbers settle about a minute after the window goes away.
+Closing to the tray drops the main window after 30 s and the Rust engine keeps playing. On Windows
+the same happens after 90 s minimized; the taskbar button stays and a click brings the window back
+where you left it. With the mini player closed too there's no WebView2 running at all, one process
+and next to no CPU. Scrobbling, Discord, the webhook, stats, SponsorBlock and the sleep timer keep
+going without it ([which plugins](docs/PLUGINS.md#when-the-window-is-gone)).
+
+Measured on Windows 11 with a song playing and synced lyrics on screen: the Memory column in Task
+Manager for every Zenith and WebView2 process, added up. The tray numbers settle about a minute
+after the window goes away.
 
 ## Phone remote
 
@@ -120,6 +127,8 @@ example `ffmpeg -i "Artist - Title [id].webm" -q:a 2 "Artist - Title.mp3"`.
 - Age-restricted song: Zenith plays the same song from YouTube Music instead. A few have no version
   without the age check, those need a signed-in account that Google has age-verified.
 - High CPU in lyrics: turn on _Settings → Light lyrics mode_.
+- The window takes a moment to come back after a long minimize, and the taskbar preview is plain
+  meanwhile: that's the WebView being let go to save memory. `ZENITH_MIN_DROP_MS=0` keeps it.
 - Reset: delete `%LOCALAPPDATA%\com.zenithplayer.desktop` and `%APPDATA%\com.zenithplayer.desktop`
   on Windows, or `~/.local/share/com.zenithplayer.desktop` on Linux.
 
@@ -179,7 +188,8 @@ requested by the user or the person installing or operating it.
 
 Music comes from YouTube Music and lyrics from lyrics sites. Discord, Last.fm, ListenBrainz, Spotify,
 the webhook, the phone remote and lyrics translation (lines go to Google Translate) connect only
-after you turn them on. SponsorBlock only gets the first 4 characters of a hash of the video id.
+after you turn them on. SponsorBlock only gets the first 4 characters of a hash of the video id. Skip AI music downloads
+its signed list from ailist.flow-tube.org at most once a day, and sends nothing about you.
 Japanese romanization downloads its dictionary from jsDelivr once.
 On start Zenith asks GitHub if there's a newer release.
 Settings, history and your Google cookies stay on your computer, and the
