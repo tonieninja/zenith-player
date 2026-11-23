@@ -118,7 +118,6 @@ fn login_popup_exists(app: &tauri::AppHandle) -> bool {
 }
 
 fn emit_login_synced(app: &tauri::AppHandle) {
-    let _ = app.emit("ytm-login-cookies-synced", ());
     let _ = app.emit_to("main", "ytm-login-cookies-synced", ());
 }
 
@@ -745,14 +744,8 @@ pub fn run() {
             if let Some(id) = deeplink::from_args(&args) {
                 deeplink::deliver(app, &id);
             }
-            if windows::ensure_main(app) {
-                return;
-            }
-            if let Some(w) = app.get_webview_window("main") {
-                let _ = w.unminimize();
-                let _ = w.show();
-                let _ = w.set_focus();
-            }
+            // okno schowane w zasobniku ma uśpiony WebView2 (set_low), a samo show() go nie budzi
+            show_main_window(app);
         }))
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
