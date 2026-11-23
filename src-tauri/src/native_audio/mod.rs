@@ -304,6 +304,10 @@ fn do_seek(d: &mut Deck, t: f64, rate: f64) {
     d.out.set_pos(t);
     d.out.drained.store(false, Ordering::SeqCst);
     let _ = d.tx.send(DecCmd::Seek { t, epoch, rate });
+    // dopiero po send: wybudzony dekoder musi zastać seek w kanale, inaczej znów zaśnie na sieci
+    if let Some(b) = &d.buf {
+        b.interrupt();
+    }
 }
 
 fn on_deck_event(i: usize, gen: u64, ev: DeckEv) {

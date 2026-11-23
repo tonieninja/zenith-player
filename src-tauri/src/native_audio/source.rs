@@ -1,6 +1,6 @@
 use std::io::{self, Read, Seek, SeekFrom};
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Condvar, Mutex, OnceLock};
 use std::time::Duration;
 
@@ -198,9 +198,15 @@ pub struct Buf {
     d: Mutex<Data>,
     cv: Condvar,
     cancel: AtomicBool,
+    preempt: AtomicU64,
 }
 
 const JUMP: u64 = 384 * 1024;
+const PREEMPTED: &str = "preempted";
+
+pub fn preempted(e: &io::Error) -> bool {
+    e.kind() == io::ErrorKind::Other && e.to_string() == PREEMPTED
+}
 
 impl Buf {
     pub fn cancel(&self) {
@@ -255,7 +261,16 @@ impl Buf {
         }
     }
 
+    // seek nie czeka na bajty z sieci, których po nim i tak nikt nie przeczyta (zawieszone łącze: do 120 s)
+    pub fn interrupt(&self) {
+        self.preempt.fetch_add(1, Ordering::SeqCst);
+        // przejście przez blokadę: czytelnik między sprawdzeniem licznika a wait nie zgubi pobudki
+        drop(self.lock());
+        self.cv.notify_all();
+    }
+
     fn read_at(&self, pos: u64, out: &mut [u8]) -> io::Result<usize> {
+        let gen = self.preempt.load(Ordering::SeqCst);
         let mut d = self.lock();
         loop {
             if self.cancelled() {
@@ -274,6 +289,9 @@ impl Buf {
             }
             if d.total.is_some_and(|t| pos >= t) || (d.done && d.total.is_none()) {
                 return Ok(0);
+            }
+            if self.preempt.load(Ordering::SeqCst) != gen {
+                return Err(io::Error::other(PREEMPTED));
             }
             if d.total.is_some() && (pos < d.cursor || pos > d.cursor + JUMP) && d.want != Some(pos)
             {
@@ -606,6 +624,24 @@ mod tests {
         std::thread::sleep(Duration::from_millis(50));
         b.cancel();
         assert!(t.join().unwrap());
+    }
+
+    #[test]
+    fn interrupt_wakes_only_a_waiting_read() {
+        let b = Arc::new(Buf::default());
+        let b2 = b.clone();
+        let t = std::thread::spawn(move || b2.read_at(0, &mut [0u8; 4]));
+        while !t.is_finished() {
+            b.interrupt();
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        let e = t.join().unwrap().unwrap_err();
+        assert!(preempted(&e) && !b.cancelled());
+        let full = Buf::from_bytes(vec![1, 2, 3, 4], "audio/webm");
+        full.interrupt();
+        let mut x = [0u8; 4];
+        assert_eq!(full.read_at(0, &mut x).unwrap(), 4);
+        assert_eq!(x, [1, 2, 3, 4]);
     }
 
     fn slow_server(body: Vec<u8>) -> String {

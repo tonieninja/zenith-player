@@ -376,6 +376,8 @@ impl Session {
                 return Ok(None)
             }
             Err(SymError::IoError(e)) if self.buf.cancelled() => return Err(e.to_string()),
+            // czekający już w kanale seek otwiera format od nowa, więc urwany pakiet nie ma znaczenia
+            Err(SymError::IoError(e)) if super::source::preempted(&e) => return Ok(Some(-1.0)),
             // zerwane pobieranie to błąd, nie koniec utworu; inaczej aplikacja przeskakuje zamiast wznowić
             Err(SymError::IoError(e)) => return Err(e.to_string()),
             Err(SymError::ResetRequired) => {
@@ -575,6 +577,10 @@ fn worker(i: usize, out: Arc<DeckOut>, rx: Receiver<DecCmd>, sink: Sink) {
                     let sr = super::output::sample_rate();
                     DEC_SR.store(sr, Ordering::Relaxed);
                     if let Err(e) = cur.seek(t, epoch, rate, sr) {
+                        // nowszy seek przerwał ten w czasie czekania na sieć; zrobi go od nowa następna komenda
+                        if out.queue().epoch != epoch {
+                            continue;
+                        }
                         if !cur.buf.cancelled() {
                             sink(i, cur.gen, DeckEv::Error(e));
                         }
