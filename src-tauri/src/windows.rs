@@ -24,7 +24,8 @@ struct SavedPos {
 
 static POSITIONS: Mutex<Option<HashMap<String, SavedPos>>> = Mutex::new(None);
 
-pub const WEBVIEW2_ARGS: &str = "--disable-features=BlockInsecurePrivateNetworkRequests,PrivateNetworkAccessSendPreflights,PrivateNetworkAccessRespectPreflightResults,IntensiveWakeUpThrottling,msWebOOUI,msPdfOOUI,msSmartScreenProtection,SpareRendererForSitePerProcess,BackForwardCache,Translate,OptimizationHints,MediaRouter,AutofillServerCommunication --disable-background-networking --disable-component-update --disable-domain-reliability --disable-sync --no-pings --renderer-process-limit=1";
+// --in-process-gpu oszczędza ~100 MB przy oknie na ekranie; muzyka gra w Ruście, więc awaria GPU jej nie przerwie
+pub const WEBVIEW2_ARGS: &str = "--disable-features=BlockInsecurePrivateNetworkRequests,PrivateNetworkAccessSendPreflights,PrivateNetworkAccessRespectPreflightResults,IntensiveWakeUpThrottling,msWebOOUI,msPdfOOUI,msSmartScreenProtection,SpareRendererForSitePerProcess,BackForwardCache,Translate,OptimizationHints,MediaRouter,AutofillServerCommunication --disable-background-networking --disable-component-update --disable-domain-reliability --disable-sync --no-pings --renderer-process-limit=1 --in-process-gpu";
 
 pub fn merged_webview_args() -> String {
     match std::env::var("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS") {
