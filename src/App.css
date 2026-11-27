@@ -4437,6 +4437,25 @@ button.modal-close-icon {
   animation: skeletonShimmer 1.4s ease-in-out infinite;
 }
 
+/* okładka w drodze mieni się jak szkielet, a nuta z imgErr zostaje dla braku adresu albo błędu wczytania;
+   osobna reguła, bo silnik bez :has() odrzuciłby całą listę selektorów szkieletów */
+:is(.yt-card-thumb, .search-result-cover-wrap, .explore-trending-cover-wrap):has(
+    > img:not([data-loaded])
+  )::after {
+  content: '';
+  position: absolute;
+  inset: 0 0 0 -400%;
+  background: linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0),
+      rgba(255, 255, 255, 0.07),
+      rgba(255, 255, 255, 0)
+    )
+    0 0 / 40% 100% repeat-x;
+  animation: skeletonShimmer 1.4s ease-in-out infinite;
+  pointer-events: none;
+}
+
 @keyframes skeletonShimmer {
   from {
     transform: translateX(0);

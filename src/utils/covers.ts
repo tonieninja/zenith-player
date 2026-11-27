@@ -81,10 +81,16 @@ export function coverAttrs(
   const cached = cachedCoverUrl(src, size === 'large' ? 544 : size === 'thumb' ? 120 : 240);
   return {
     src: cached,
+    onLoad: imgLoaded,
     onError: imgErr,
     ...(cached !== src ? { 'data-orig': src } : {}),
     ...(isYouTubeVideoId(track.id) ? { 'data-video-id': track.id } : {}),
   };
+}
+
+// do pierwszego load ramka okładki mieni się w CSS, więc nuta z imgErr znaczy tylko brak albo błąd obrazka
+export function imgLoaded(e: React.SyntheticEvent<HTMLImageElement>) {
+  e.currentTarget.dataset.loaded = '1';
 }
 
 export function imgErr(e: React.SyntheticEvent<HTMLImageElement>) {
