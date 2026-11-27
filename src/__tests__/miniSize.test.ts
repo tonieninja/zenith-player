@@ -16,5 +16,6 @@ describe('miniSize', () => {
 
   it('adds the lyrics strip under the player', () => {
     expect(miniSize({ ...all, lyrics: true }).h).toBe(152);
+    expect(miniSize({ ...all, seek: false, lyrics: true }).h).toBe(152);
   });
 });
