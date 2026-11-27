@@ -706,6 +706,44 @@ export interface HomeFeed {
 }
 
 const QUICK_PICK_TITLES = ['quick picks', 'szybkie wybory'];
+const HOME_MORE_PAGES = 4;
+const homeNext = new Map<string, { token: string | null; visitor: string | null }>();
+const homeMore = new Map<string, Section[]>();
+
+/** Dalsze półki strony głównej (miksy, albumy dla ciebie, teledyski); pierwsza porcja nie czeka na nie. */
+export async function getHomeMore(lang: Language): Promise<Section[]> {
+  const authed = extractSapisid(await getYtmCookie()) ? '1' : '0';
+  const key = `FEmusic_home:${lang}:${authed}`;
+  const done = homeMore.get(key);
+  if (done) return done;
+  const next = homeNext.get(key);
+  if (!next) return [];
+  const isPl = lang === 'pl';
+  const out: Section[] = [];
+  let token = next.token;
+  for (let i = 0; i < HOME_MORE_PAGES && token; i++) {
+    const json = await invokeWithTimeout<string>(
+      'ytm_browse',
+      {
+        browseId: 'FEmusic_home',
+        hl: isPl ? 'pl' : 'en',
+        gl: isPl ? 'PL' : 'US',
+        params: null,
+        continuation: token,
+        visitor: next.visitor,
+      },
+      12000
+    )
+      .then((t) => JSON.parse(t))
+      .catch(() => null);
+    if (!json) break;
+    out.push(...parseShelves(json, translations[lang]));
+    token = findContinuationToken(json);
+  }
+  const result = dedupeSections(out);
+  if (result.length) homeMore.set(key, result);
+  return result;
+}
 
 export async function getHomeFeed(lang: Language): Promise<HomeFeed> {
   let sections = await fetchBrowse('FEmusic_home', lang);
@@ -1011,7 +1049,17 @@ async function fetchBrowseUncached(
       },
       12000
     )
-      .then((rawText) => parsePayload(JSON.parse(rawText)))
+      .then((rawText) => {
+        const json = JSON.parse(rawText);
+        if (browseId === 'FEmusic_home' && !params) {
+          homeNext.set(cacheKey, {
+            token: findContinuationToken(json),
+            visitor: json?.responseContext?.visitorData ?? null,
+          });
+          homeMore.delete(cacheKey);
+        }
+        return parsePayload(json);
+      })
       .catch(() => []);
     if (result.length) return store(result);
   }

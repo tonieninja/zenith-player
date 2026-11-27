@@ -605,6 +605,8 @@ pub async fn ytm_browse(
     hl: String,
     gl: String,
     params: Option<String>,
+    continuation: Option<String>,
+    visitor: Option<String>,
 ) -> Result<String, String> {
     hydrate_innertube(&app);
     let cookie = resolve_cookies(&app);
@@ -626,60 +628,29 @@ pub async fn ytm_browse(
 
     let client = crate::player::client("", 12, true).ok_or("http client")?;
     let base = format!("{YTM_BROWSE}?prettyPrint=false&key={}", innertube_api_key());
-    let text = browse_post(&client, &base, &body, &cookie, &hl).await?;
-    browse_error(&text)?;
-    if browse_id != "FEmusic_home" || body.get("params").is_some() {
-        return Ok(text);
-    }
-    // pierwsza odpowiedź ma kilka półek; miksy, albumy dla ciebie i teledyski przychodzą w kontynuacjach
-    let mut page: Value = serde_json::from_str(&text).map_err(|e| e.to_string())?;
-    let mut token = home_token(&page[HOME_LIST]);
-    // bez visitorData z pierwszej odpowiedzi gość dostaje pustą kontynuację
-    let mut next_body = body.clone();
-    if let Some(v) = page["responseContext"]["visitorData"].as_str() {
-        next_body["context"]["client"]["visitorData"] = json!(v);
-    }
-    for _ in 0..HOME_PAGES {
-        let Some(t) = token.take() else { break };
-        let url = format!("{base}&ctoken={t}&continuation={t}");
-        let Ok(more) = browse_post(&client, &url, &next_body, &cookie, &hl).await else {
-            break;
-        };
-        let Ok(more) = serde_json::from_str::<Value>(&more) else {
-            break;
-        };
-        let part = &more["continuationContents"]["sectionListContinuation"];
-        token = home_token(part);
-        if let (Some(dst), Some(src)) = (
-            page.pointer_mut(HOME_PTR).and_then(Value::as_array_mut),
-            part["contents"].as_array(),
-        ) {
-            dst.extend(src.iter().cloned());
+    // kolejne półki strony głównej (miksy, albumy dla ciebie, teledyski) przychodzą w kontynuacjach
+    let url = match continuation.as_deref() {
+        Some(t) if valid_token(t) => {
+            // bez visitorData z pierwszej odpowiedzi gość dostaje pustą kontynuację
+            if let Some(v) = visitor.filter(|v| valid_token(v)) {
+                body["context"]["client"]["visitorData"] = json!(v);
+            }
+            format!("{base}&ctoken={t}&continuation={t}")
         }
-    }
-    Ok(page.to_string())
+        Some(_) => return Err("bad continuation".into()),
+        None => base,
+    };
+    let text = browse_post(&client, &url, &body, &cookie, &hl).await?;
+    browse_error(&text)?;
+    // surową odpowiedź parsuje JS: uproszczona kopia parsera gubiła karty radia, odcinki i typy
+    Ok(text)
 }
 
-const HOME_PAGES: usize = 4;
-const HOME_LIST: &str = "contents";
-const HOME_PTR: &str =
-    "/contents/singleColumnBrowseResultsRenderer/tabs/0/tabRenderer/content/sectionListRenderer/contents";
-
-fn home_token(list: &Value) -> Option<String> {
-    let list = if list.get("continuations").is_some() {
-        list
-    } else {
-        &list["singleColumnBrowseResultsRenderer"]["tabs"][0]["tabRenderer"]["content"]
-            ["sectionListRenderer"]
-    };
-    list["continuations"][0]["nextContinuationData"]["continuation"]
-        .as_str()
-        .filter(|t| {
-            !t.is_empty()
-                && t.chars()
-                    .all(|c| c.is_ascii_alphanumeric() || "-_%=".contains(c))
-        })
-        .map(String::from)
+fn valid_token(t: &str) -> bool {
+    !t.is_empty()
+        && t.len() < 4096
+        && t.chars()
+            .all(|c| c.is_ascii_alphanumeric() || "-_%=".contains(c))
 }
 
 async fn browse_post(
@@ -762,13 +733,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn home_token_reads_first_page_and_continuations() {
-        let first = json!({"singleColumnBrowseResultsRenderer":{"tabs":[{"tabRenderer":{"content":{"sectionListRenderer":{
-            "continuations":[{"nextContinuationData":{"continuation":"4qmFsgK_A%3D"}}]}}}}]}});
-        assert_eq!(home_token(&first).as_deref(), Some("4qmFsgK_A%3D"));
-        let next = json!({"continuations":[{"nextContinuationData":{"continuation":"a&b=c"}}]});
-        assert_eq!(home_token(&next), None);
-        assert_eq!(home_token(&json!({"contents":[]})), None);
+    fn continuation_tokens_cannot_inject_query_params() {
+        assert!(valid_token("4qmFsgK_A%3D"));
+        assert!(!valid_token("a&key=b"));
+        assert!(!valid_token(""));
     }
 
     #[test]

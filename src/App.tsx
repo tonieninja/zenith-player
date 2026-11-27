@@ -55,6 +55,7 @@ import {
   getUserPlaylists,
   getWatchRelated,
   getRadioTracks,
+  getHomeMore,
   getTrackRefs,
   getRelatedTracks,
   preloadImage,
@@ -1034,6 +1035,13 @@ export default function App() {
           if (dataSeq !== feedSeqRef.current.home) return;
           const normalizedHome = stableOrderSections(nextHome);
           setHomeSections(normalizedHome);
+          void getHomeMore(language).then((more) => {
+            if (!more.length || dataSeq !== feedSeqRef.current.home) return;
+            setHomeSections((cur) => {
+              const seen = new Set(cur.map((s) => s.title));
+              return [...cur, ...more.filter((s) => !seen.has(s.title))];
+            });
+          });
           if (pluginManager.isEnabled('discover')) {
             void discoverSection(language, translations[language].discoverRow).then((row) => {
               if (!row || dataSeq !== feedSeqRef.current.home) return;
