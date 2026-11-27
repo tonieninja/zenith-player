@@ -4741,7 +4741,8 @@ html.has-cover-theme .main-play-pause-circle {
   animation: fadeIn 0.2s ease;
 }
 
-.global-modal-overlay:focus {
+.global-modal-overlay:focus,
+.pm-dialog:focus {
   outline: none;
 }
 
