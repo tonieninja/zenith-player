@@ -63,13 +63,16 @@ export function coverAttrs(
   track: CoverTrack,
   size: 'thumb' | 'small' | 'medium' | 'large' = 'small'
 ) {
-  const src = localCover(
+  let src = localCover(
     size === 'large'
       ? track.coverLarge || track.cover || track.coverSmall || ''
       : size === 'medium'
         ? track.cover || track.coverLarge || track.coverSmall || ''
         : track.coverSmall || track.cover || track.coverLarge || ''
   );
+  // hqdefault ma wbudowane czarne pasy widoczne w kwadratowym kadrze, a hq720 to czyste 16:9
+  if (size === 'large' && src.startsWith(YTIMG))
+    src = src.replace(/\/hqdefault\.jpg$/, '/hq720.jpg');
   const cached = cachedCoverUrl(src, size === 'large' ? 544 : size === 'thumb' ? 120 : 240);
   return {
     src: cached,
@@ -93,8 +96,8 @@ export function imgErr(e: React.SyntheticEvent<HTMLImageElement>) {
   const src = el.getAttribute('src') || el.src || '';
   const videoId = el.dataset.videoId || '';
 
-  if (src.includes('maxresdefault')) {
-    el.src = src.replace('maxresdefault', 'hqdefault');
+  if (src.includes('maxresdefault') || src.includes('/hq720.jpg')) {
+    el.src = src.replace(/maxresdefault|hq720/, 'hqdefault');
     return;
   }
 

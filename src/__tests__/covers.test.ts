@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { coverAttrs, isPlaceholderCover, letterCover, localCover } from '../utils/covers';
+import type React from 'react';
+import { coverAttrs, imgErr, isPlaceholderCover, letterCover, localCover } from '../utils/covers';
 
 const svgOf = (u: string) => decodeURIComponent(u.split(',')[1]);
 
@@ -48,5 +49,15 @@ describe('coverAttrs', () => {
     expect(coverAttrs(tr, 'small').src).toBe('s=w120-h120');
     expect(coverAttrs(tr, 'large').src).toBe('l=w544-h544');
     expect(coverAttrs({ id: 'x', coverLarge: 'l' }, 'medium').src).toBe('l');
+  });
+
+  it('swaps the letterboxed hqdefault for hq720 in large covers and falls back when it is missing', () => {
+    const vid = { id: 'abcdefghijk', cover: 'https://i.ytimg.com/vi/abcdefghijk/hqdefault.jpg' };
+    expect(coverAttrs(vid, 'large').src).toBe('https://i.ytimg.com/vi/abcdefghijk/hq720.jpg');
+    expect(coverAttrs(vid, 'medium').src).toBe('https://i.ytimg.com/vi/abcdefghijk/hqdefault.jpg');
+    const img = document.createElement('img');
+    img.src = 'https://i.ytimg.com/vi/abcdefghijk/hq720.jpg';
+    imgErr({ currentTarget: img } as unknown as React.SyntheticEvent<HTMLImageElement>);
+    expect(img.src).toBe('https://i.ytimg.com/vi/abcdefghijk/hqdefault.jpg');
   });
 });

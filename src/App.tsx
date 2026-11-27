@@ -5583,17 +5583,22 @@ export default function App() {
                     </div>
                     <div className="player-view-meta">
                       <div className="player-view-label">{t.nowPlaying}</div>
-                      <h1 className="player-view-title">{currentTrack.title}</h1>
+                      <h1 className="player-view-title" title={currentTrack.title}>
+                        {currentTrack.title}
+                      </h1>
                       {refsTrackId || currentRefs?.artistId ? (
                         <button
                           type="button"
                           className="player-view-artist link-btn"
+                          title={currentTrack.artist}
                           onClick={() => void openTrackArtist()}
                         >
                           {currentTrack.artist}
                         </button>
                       ) : (
-                        <div className="player-view-artist">{currentTrack.artist}</div>
+                        <div className="player-view-artist" title={currentTrack.artist}>
+                          {currentTrack.artist}
+                        </div>
                       )}
                       {currentRefs?.albumId && currentRefs.album && (
                         <button
