@@ -311,16 +311,31 @@ async fn proxy_cover(Path((token, px, url)): Path<(String, String, String)>) -> 
     let Some((px, url)) = crate::cover_cache::parse_path(&format!("/{px}/{url}")) else {
         return status(400);
     };
-    match crate::cover_cache::get(px, url).await {
-        Ok(bytes) => Response::builder()
+    if let Some(bytes) = crate::cover_cache::cached(px, &url).await {
+        return Response::builder()
             .status(StatusCode::OK)
             .header(header::CONTENT_TYPE, "image/jpeg")
             .header(header::CACHE_CONTROL, "max-age=604800, immutable")
             .header(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
             .body(Body::from(bytes))
-            .unwrap_or_default(),
-        Err(c) => status(c),
+            .unwrap_or_default();
     }
+    crate::cover_cache::fill_later(px, url.clone());
+    cover_redirect(&url)
+}
+
+// lokalny serwer mówi HTTP/1.1 (6 połączeń naraz), więc nową okładkę szybciej da CDN po HTTP/2;
+// bez no-store przeglądarka pamiętałaby przekierowanie i nie sięgnęła po przeskalowany plik z dysku
+fn cover_redirect(url: &str) -> Response {
+    // nagłówek przyjmie tylko ASCII, a adres po dekodowaniu może mieć inne znaki
+    let location = url::Url::parse(url).map_or_else(|_| url.to_string(), String::from);
+    Response::builder()
+        .status(StatusCode::TEMPORARY_REDIRECT)
+        .header(header::LOCATION, location)
+        .header(header::CACHE_CONTROL, "no-store")
+        .header(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
+        .body(Body::empty())
+        .unwrap_or_default()
 }
 
 pub fn offline_url(video_id: &str) -> Option<String> {
@@ -764,6 +779,23 @@ mod tests {
         );
         assert_eq!(video_upstream("eeeeeeeeeee").map(|v| v.1), Some(4));
         assert_eq!(video_map().lock().unwrap().len(), MAX_VIDEO_URLS);
+    }
+
+    #[test]
+    fn cover_miss_redirects_to_the_cdn_without_caching_the_redirect() {
+        let url = "https://i.ytimg.com/vi/abc/hqdefault.jpg";
+        let r = cover_redirect(url);
+        assert_eq!(r.status(), StatusCode::TEMPORARY_REDIRECT);
+        let h = |k| r.headers().get(k).and_then(|v| v.to_str().ok());
+        assert_eq!(h(header::LOCATION), Some(url));
+        assert_eq!(h(header::CACHE_CONTROL), Some("no-store"));
+        assert_eq!(h(header::ACCESS_CONTROL_ALLOW_ORIGIN), Some("*"));
+        let r = cover_redirect("https://lh3.googleusercontent.com/zażółć=w120");
+        assert_eq!(r.status(), StatusCode::TEMPORARY_REDIRECT);
+        assert!(r.headers()[header::LOCATION]
+            .to_str()
+            .unwrap()
+            .ends_with("/za%C5%BC%C3%B3%C5%82%C4%87=w120"));
     }
 
     #[test]

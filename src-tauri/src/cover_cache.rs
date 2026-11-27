@@ -1,7 +1,7 @@
 use sha1::{Digest, Sha1};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::sync::OnceLock;
+use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 use tauri::{AppHandle, Manager, Runtime};
 
@@ -19,6 +19,7 @@ const ALLOWED_HOSTS: [&str; 5] = [
 
 static DIR: OnceLock<PathBuf> = OnceLock::new();
 static WRITES: AtomicU32 = AtomicU32::new(0);
+static FILLING: Mutex<Vec<(u32, String)>> = Mutex::new(Vec::new());
 
 fn cache_dir<R: Runtime>(app: &AppHandle<R>) -> Option<&'static PathBuf> {
     if let Some(d) = DIR.get() {
@@ -141,16 +142,37 @@ pub fn init<R: Runtime>(app: &AppHandle<R>) {
     let _ = cache_dir(app);
 }
 
+pub async fn cached(px: u32, url: &str) -> Option<Vec<u8>> {
+    let f = DIR.get()?.join(format!("{}.jpg", key(px, url)));
+    tokio::fs::read(f).await.ok()
+}
+
+// ta sama okładka bywa naraz w kilku miejscach strony, a pobrać i przeskalować wystarczy ją raz
+pub fn fill_later(px: u32, url: String) {
+    {
+        let mut busy = FILLING.lock().unwrap_or_else(|e| e.into_inner());
+        if busy.iter().any(|(p, u)| *p == px && *u == url) {
+            return;
+        }
+        busy.push((px, url.clone()));
+    }
+    tokio::spawn(async move {
+        let _ = get(px, url.clone()).await;
+        FILLING
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .retain(|(p, u)| !(*p == px && *u == url));
+    });
+}
+
 pub async fn get(px: u32, url: String) -> Result<Vec<u8>, u16> {
+    if let Some(bytes) = cached(px, &url).await {
+        return Ok(bytes);
+    }
     let dir = DIR.get().cloned();
     let file = dir
         .as_ref()
         .map(|d| d.join(format!("{}.jpg", key(px, &url))));
-    if let Some(f) = file.as_ref() {
-        if let Ok(bytes) = tokio::fs::read(f).await {
-            return Ok(bytes);
-        }
-    }
     let src = match http().ok_or(502u16)?.get(&url).send().await {
         Ok(r) if r.status().is_success() => r.bytes().await.ok(),
         _ => None,
