@@ -3451,6 +3451,46 @@ button.modal-close-icon {
   cursor: pointer;
 }
 
+.eq-bands {
+  display: grid;
+  grid-template-columns: repeat(15, minmax(0, 1fr));
+  gap: 2px;
+  padding: 10px 0 4px;
+}
+
+.eq-band {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.eq-band-db {
+  color: var(--text-secondary);
+}
+
+.eq-band-slot {
+  position: relative;
+  width: 100%;
+  height: 128px;
+}
+
+/* obrót zamiast writing-mode: pionowe suwaki przez writing-mode nie działają w starszym WebKitGTK */
+.eq-band-slot input {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 128px;
+  margin: 0;
+  transform: translate(-50%, -50%) rotate(-90deg);
+  accent-color: #ffffff;
+  cursor: pointer;
+}
+
 .crossfade-secs-value {
   font-size: 13px;
   font-weight: 800;
@@ -5904,7 +5944,7 @@ html.window-occluded *::after {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin: 0 22px 4px;
+  margin: 14px 22px 10px;
   padding: 0 12px;
   height: 38px;
   border-radius: 10px;

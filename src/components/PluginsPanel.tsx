@@ -831,31 +831,33 @@ export function PluginsPanel({
                 </span>
               </div>
             </div>
-            {eqBands.map((g, i) => (
-              <div className="plugin-setting-row" key={EQ_LABELS[i]}>
-                <div className="plugin-setting-label">
-                  <span>{EQ_LABELS[i]} Hz</span>
-                </div>
-                <div className="crossfade-secs-control">
-                  <input
-                    type="range"
-                    min={EQ_MIN_DB}
-                    max={EQ_MAX_DB}
-                    step={1}
-                    value={g}
-                    aria-label={`${EQ_LABELS[i]} Hz`}
-                    onChange={(e) => {
-                      const next = [...eqBands];
-                      next[i] = Number(e.target.value);
-                      setEqBandsState(next);
-                      setEqPresetState('custom');
-                      setEqBands(next, 'custom');
-                    }}
-                  />
-                  <span className="crossfade-secs-value">{g > 0 ? `+${g}` : g} dB</span>
-                </div>
-              </div>
-            ))}
+            {/* pionowe suwaki obok siebie, żeby krzywą korektora było widać naraz */}
+            <div className="eq-bands">
+              {eqBands.map((g, i) => (
+                <label className="eq-band" key={EQ_LABELS[i]}>
+                  <span className="eq-band-db">{g > 0 ? `+${g}` : g}</span>
+                  <span className="eq-band-slot">
+                    <input
+                      type="range"
+                      min={EQ_MIN_DB}
+                      max={EQ_MAX_DB}
+                      step={1}
+                      value={g}
+                      aria-label={`${EQ_LABELS[i]} Hz`}
+                      aria-valuetext={`${g > 0 ? `+${g}` : g} dB`}
+                      onChange={(e) => {
+                        const next = [...eqBands];
+                        next[i] = Number(e.target.value);
+                        setEqBandsState(next);
+                        setEqPresetState('custom');
+                        setEqBands(next, 'custom');
+                      }}
+                    />
+                  </span>
+                  <span className="eq-band-hz">{EQ_LABELS[i]}</span>
+                </label>
+              ))}
+            </div>
           </>
         );
       case 'loudness-normalization':
