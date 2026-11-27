@@ -4023,11 +4023,22 @@ button.modal-close-icon {
   font-size: 14px;
 }
 
+/* wiersz ma 14 px wewnętrznego marginesu, więc numer zaczyna się w linii z tytułem sekcji */
 .artist-top-songs {
   list-style: none;
-  padding: 0 clamp(16px, 3vw, 52px);
+  padding: 0 calc(var(--content-gutter) - 14px);
   display: flex;
   flex-direction: column;
+}
+
+.artist-top-songs .artist-song-index {
+  text-align: left;
+}
+
+@media (max-width: 768px) {
+  .artist-top-songs {
+    padding: 0 calc(var(--content-gutter) - 8px);
+  }
 }
 
 .artist-song-index {
@@ -4435,6 +4446,47 @@ button.modal-close-icon {
   right: 0;
   background: var(--skeleton-sweep) 0 0 / 40% 100% repeat-x;
   animation: skeletonShimmer 1.4s ease-in-out infinite;
+}
+
+/* okładka w drodze mieni się jak szkielet, a nuta z imgErr zostaje dla braku adresu albo błędu wczytania;
+   osobna reguła, bo silnik bez :has() odrzuciłby całą listę selektorów szkieletów */
+:is(.yt-card-thumb, .search-result-cover-wrap, .explore-trending-cover-wrap):has(
+    > img:not([data-loaded])
+  )::after {
+  content: '';
+  position: absolute;
+  inset: 0 0 0 -400%;
+  background: linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0),
+      rgba(255, 255, 255, 0.07),
+      rgba(255, 255, 255, 0)
+    )
+    0 0 / 40% 100% repeat-x;
+  animation: skeletonShimmer 1.4s ease-in-out infinite;
+  pointer-events: none;
+}
+
+/* okładka nagłówka nie ma ramki z ::after, więc mieni się jej własne tło */
+:is(.collection-cover, .artist-hero-avatar):not([data-loaded]) {
+  background-image: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0),
+    rgba(255, 255, 255, 0.07),
+    rgba(255, 255, 255, 0)
+  );
+  background-size: 40% 100%;
+  background-repeat: no-repeat;
+  animation: coverSweep 1.4s ease-in-out infinite;
+}
+
+@keyframes coverSweep {
+  from {
+    background-position: -70% 0;
+  }
+  to {
+    background-position: 170% 0;
+  }
 }
 
 @keyframes skeletonShimmer {

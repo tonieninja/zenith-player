@@ -75,16 +75,25 @@ export function coverAttrs(
         ? track.cover || track.coverLarge || track.coverSmall || ''
         : track.coverSmall || track.cover || track.coverLarge || ''
   );
+  // React pomija pusty src, a obrazek bez niego nie da load ani error, więc mieniłby się bez końca
+  if (!src)
+    src = isYouTubeVideoId(track.id) ? `${YTIMG}${track.id}/hqdefault.jpg` : FALLBACK_AVATAR;
   // hqdefault ma wbudowane czarne pasy widoczne w kwadratowym kadrze, a hq720 to czyste 16:9
   if (size === 'large' && src.startsWith(YTIMG))
     src = src.replace(/\/hqdefault\.jpg$/, '/hq720.jpg');
   const cached = cachedCoverUrl(src, size === 'large' ? 544 : size === 'thumb' ? 120 : 240);
   return {
     src: cached,
+    onLoad: imgLoaded,
     onError: imgErr,
     ...(cached !== src ? { 'data-orig': src } : {}),
     ...(isYouTubeVideoId(track.id) ? { 'data-video-id': track.id } : {}),
   };
+}
+
+// do pierwszego load ramka okładki mieni się w CSS, więc nuta z imgErr znaczy tylko brak albo błąd obrazka
+export function imgLoaded(e: React.SyntheticEvent<HTMLImageElement>) {
+  e.currentTarget.dataset.loaded = '1';
 }
 
 export function imgErr(e: React.SyntheticEvent<HTMLImageElement>) {

@@ -302,6 +302,8 @@ import {
 import { resetOnboarding, shouldShowOnboarding } from './utils/onboarding';
 import { smartShuffle } from './utils/smartShuffle';
 import {
+  hiddenShelfEntry,
+  isShelfHidden,
   loadHiddenShelves,
   loadHomeSnapshot,
   QUICK_PICKS_SHELF,
@@ -1205,7 +1207,7 @@ export default function App() {
   const hideShelf = useCallback(
     (s: Section) => {
       const key = shelfKey(s);
-      setHiddenShelves((prev) => ({ ...prev, [key]: s.title }));
+      setHiddenShelves((prev) => ({ ...prev, [key]: hiddenShelfEntry(s) }));
       // oko stoi tuż przy strzałce „dalej”, więc przypadkowe ukrycie musi dać się cofnąć od razu
       pushToast(
         t.shelfHidden.replace('{name}', () => s.title),
@@ -4544,10 +4546,20 @@ export default function App() {
   );
 
   const openTrackAlbum = useCallback(
-    (picked?: Track) => {
+    async (picked?: Track) => {
       const track = picked ?? currentTrack;
-      const refs = picked ?? currentRefs;
-      if (!track || !refs?.albumId) return;
+      if (!track) return;
+      const known = picked ?? currentRefs;
+      // wiersze z playlist i półek często nie niosą albumu; podaje go dopiero odpowiedź next dla utworu
+      const refs: Pick<Track, 'albumId' | 'album'> = known?.albumId
+        ? known
+        : isVideoTrackId(track.id)
+          ? await getTrackRefs(track.id, radioLangRef.current).catch(() => ({}))
+          : {};
+      if (!refs.albumId) {
+        pushToast(t.ctxAlbumNotFound);
+        return;
+      }
       void openCollectionPage({
         id: refs.albumId,
         type: 'album',
@@ -4558,7 +4570,7 @@ export default function App() {
         coverLarge: track.coverLarge,
       });
     },
-    [currentTrack, currentRefs, openCollectionPage]
+    [currentTrack, currentRefs, openCollectionPage, radioLangRef, t]
   );
 
   // samo id z linku: radio zaczyna od tego utworu (dla teledysku od jego wersji audio), a dalej daje kolejkę
@@ -5530,7 +5542,7 @@ export default function App() {
 
   const sectionRows = useMemo(() => {
     const home = activeTab === 'home';
-    const shown = home ? homeSections.filter((s) => !hiddenShelves[shelfKey(s)]) : sections;
+    const shown = home ? homeSections.filter((s) => !isShelfHidden(hiddenShelves, s)) : sections;
     return stableOrderSections(shown).map((section, idx) => (
       <SectionRow
         key={`${section.title}-${idx}`}
@@ -6038,7 +6050,7 @@ export default function App() {
                         <button
                           type="button"
                           className="player-view-album link-btn"
-                          onClick={() => openTrackAlbum()}
+                          onClick={() => void openTrackAlbum()}
                         >
                           {currentRefs.album}
                         </button>
@@ -7053,7 +7065,7 @@ export default function App() {
               {Object.keys(hiddenShelves).length > 0 && (
                 <div className="settings-row-item local-files-row">
                   <span className="setting-label">{t.hiddenShelves}</span>
-                  {Object.entries(hiddenShelves).map(([key, title]) => {
+                  {Object.entries(hiddenShelves).map(([key, { title }]) => {
                     const name = key === QUICK_PICKS_SHELF ? t.quickPicks : title;
                     return (
                       <div key={key} className="local-files-folder">
@@ -7393,13 +7405,13 @@ export default function App() {
               >
                 {t.ctxGoToArtist}
               </button>
-              {ctxMenu.track.albumId && (
+              {(ctxMenu.track.albumId || isVideoTrackId(ctxMenu.track.id)) && (
                 <button
                   role="menuitem"
                   onClick={() => {
                     const track = ctxMenu.track;
                     setCtxMenu(null);
-                    openTrackAlbum(track);
+                    void openTrackAlbum(track);
                   }}
                 >
                   {t.ctxGoToAlbum}

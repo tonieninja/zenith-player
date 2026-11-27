@@ -1,10 +1,26 @@
 import { cachedCoverUrl } from '../utils/covers';
 import { NowPlayingInfo, ZenithPlugin } from './types';
 
+// Outfit z @font-face w lyricsTypography.css; brakujące znaki canvas bierze z kolejnych fontów
+const FONT = 'Outfit, "Segoe UI", system-ui, sans-serif';
+
+// canvas nie czeka na @font-face, więc bez tego pierwsza karta wyszłaby fontem zastępczym
+async function loadCardFont(text: string): Promise<void> {
+  try {
+    await Promise.race([
+      document.fonts.load('700 52px Outfit', text),
+      new Promise((r) => setTimeout(r, 1500)),
+    ]);
+  } catch {
+    /* bez Outfit karta rysuje się fontem systemowym z FONT */
+  }
+}
+
 export async function generateShareCard(
   info: NowPlayingInfo,
   coverImg?: HTMLImageElement | null
 ): Promise<Blob> {
+  await loadCardFont(`${info.title} ${info.artist} ZENITH`);
   const W = 1080;
   const H = 1080;
   const canvas = document.createElement('canvas');
@@ -48,13 +64,13 @@ export async function generateShareCard(
   }
 
   ctx.fillStyle = '#ffffff';
-  ctx.font = 'bold 52px "Segoe UI", system-ui, sans-serif';
+  ctx.font = `bold 52px ${FONT}`;
   ctx.textAlign = 'center';
   // dwa wiersze tytułu i wykonawca pod ostatnim, żeby nic nie wchodziło na pasek postępu
   const titleEnd = wrapText(ctx, info.title, W / 2, coverY + coverSize + 80, W - 120, 60, 2);
 
   ctx.fillStyle = 'rgba(255,255,255,0.55)';
-  ctx.font = '600 32px "Segoe UI", system-ui, sans-serif';
+  ctx.font = `600 32px ${FONT}`;
   ctx.fillText(fitLine(ctx, info.artist, W - 160), W / 2, titleEnd + 64);
 
   const barY = H - 180;
@@ -72,7 +88,7 @@ export async function generateShareCard(
   ctx.fill();
 
   ctx.fillStyle = 'rgba(255,255,255,0.35)';
-  ctx.font = '800 22px "Segoe UI", system-ui, sans-serif';
+  ctx.font = `800 22px ${FONT}`;
   ctx.fillText('Z E N I T H', W / 2, H - 80);
 
   return new Promise((resolve, reject) => {

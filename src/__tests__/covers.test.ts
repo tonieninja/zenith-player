@@ -61,6 +61,13 @@ describe('coverAttrs', () => {
     expect(img.src).toBe('https://i.ytimg.com/vi/abcdefghijk/hqdefault.jpg');
   });
 
+  it('never leaves src empty, so the loading shimmer always ends', () => {
+    expect(coverAttrs({ id: 'abcdefghijk' }, 'thumb').src).toBe(
+      'https://i.ytimg.com/vi/abcdefghijk/hqdefault.jpg'
+    );
+    expect(isPlaceholderCover(coverAttrs({ id: 'MPREb_x1y2z3' }).src)).toBe(true);
+  });
+
   it('ends on a placeholder it recognises, so a failing fallback cannot loop', () => {
     const img = document.createElement('img');
     img.src = 'https://lh3.googleusercontent.com/x=s100';
