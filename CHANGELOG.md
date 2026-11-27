@@ -1,5 +1,29 @@
 # Changelog
 
+## 4.8.0
+
+- search works like in YouTube Music: suggestions and quick results with covers while you type, your recent searches, and chips above the results to show only songs, videos, albums, artists, playlists, podcasts or profiles, loading more as you scroll. Typing no longer redraws the whole window
+- radios and mixes can be tuned with the chips above Up next (Familiar, Popular, Discover, Deep cuts and more), the current song keeps playing
+- Cast: send the music to a Chromecast or Google TV from the button in the player bar. Play, pause, seek, skip and volume go to the TV and the queue moves on there
+- light theme, or let Zenith follow the system (Settings, Appearance)
+- start with the system, optionally straight into the tray (Settings)
+- signed in, Home and the mood pages show your own mixes like in YouTube Music: Mixed for you, Recaps, Supermixes, Forgotten favorites
+- My library: collections, folders and tags kept on this computer. Songs you have on disk play from the file instead of the stream
+- listening stats with a taste map, rising artists and Last.fm history import. Repeat one counts every play
+- Home shows the last feed right away on start, its shelves get More buttons and song lists, and it keeps loading as you scroll. Hide a shelf you don't want and bring it back in Settings, it stays hidden after a language switch
+- albums, playlists and artists open at once when you come back to them or hover them first
+- playlists open their page like in YouTube Music, play buttons start them at once. Go to album works for every song
+- covers shimmer while they load, the music note is only for covers that are really missing
+- eight accent colours, and all settings can be saved to one file and brought back on another computer
+- queue and volume memory, preload, crossfade and close to tray moved from plugins into Settings, every lyrics setting now lives in the lyrics window
+- playback: the Rust engine starts the next song and does the crossfade. A radio that continues after an album crossfades again instead of being stitched like the album, and it no longer serves the same song in five remixes
+- downloaded m4a files carry the title, artist, album and cover too
+- Windows: the taskbar preview shows the cover and its buttons keep working while the window sleeps in the background. A window fully covered by others stops drawing until you can see it again
+- plugins: switching one off leaves nothing running behind it, the sleep timer no longer starts by itself, the Last.fm import rides out rate limits, Discord catches up within a second, and the phone remote shows lyrics and the sleep countdown right away
+- Discover plugin: a Home row from outside the YouTube Music bubble
+- songs play again with YouTube's newest player. A broken audio file no longer closes the app, and database work no longer freezes the window
+- lots of smaller fixes: the song menu works with Escape and arrow keys, narrow windows, loading placeholders that match the finished page, rounded scrollbars, the mini player and the lyrics overlay
+
 ## 4.7.0
 
 - a lot less memory: closed to the tray the window goes away after 30 s and only the small Rust engine keeps playing, about 15 MB. On Windows the same happens after 90 s minimized, the taskbar button stays and a click brings the window back where you left it
