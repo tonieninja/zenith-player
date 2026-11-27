@@ -1,5 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { resolveFeedItem, bylineFromRuns, tidyByline } from '../utils/feed';
+import type { Section, Track } from '../api/youtube';
+import {
+  resolveFeedItem,
+  bylineFromRuns,
+  tidyByline,
+  upsertSections,
+  shelfKey,
+  loadHiddenShelves,
+  saveHiddenShelves,
+  saveHomeSnapshot,
+  loadHomeSnapshot,
+} from '../utils/feed';
 import { browseMoodId, isViewingPlaylist, itemClickPlan, sidebarClickPlan } from '../utils/tracks';
 
 describe('search / feed item identity', () => {
@@ -203,5 +214,61 @@ describe('byline play counts', () => {
       id: 'i_ZUw4sB7RE',
       type: 'track',
     });
+  });
+});
+
+const track = (id: string): Track => ({ id, type: 'track', title: id, artist: '', cover: '' });
+const shelf = (title: string, n = 2, extra: Partial<Section> = {}): Section => ({
+  title,
+  items: Array.from({ length: n }, (_, i) => track(`${title}-${i}`)),
+  ...extra,
+});
+
+describe('home shelves merge', () => {
+  it('replaces a shelf with the same title in place and appends new ones', () => {
+    const a = shelf('A');
+    const b = shelf('B');
+    const b2 = shelf('B', 3);
+    const next = upsertSections([a, b], [b2, shelf('C')]);
+    expect(next.map((s) => s.title)).toEqual(['A', 'B', 'C']);
+    expect(next[1]).toBe(b2);
+  });
+
+  it('keeps the same array when nothing changed', () => {
+    const cur = [shelf('A'), shelf('B')];
+    expect(upsertSections(cur, [cur[1]])).toBe(cur);
+  });
+});
+
+describe('hidden home shelves', () => {
+  it('keys by the "more" target when there is one, else by title', () => {
+    expect(shelfKey(shelf('New releases', 1, { more: { browseId: 'FEmusic_new_releases' } }))).toBe(
+      'FEmusic_new_releases'
+    );
+    expect(shelfKey(shelf(' Party Music '))).toBe('party music');
+  });
+
+  it('survives a restart and clears the key when empty', () => {
+    saveHiddenShelves({ 'party music': 'Party music' });
+    expect(loadHiddenShelves()).toEqual({ 'party music': 'Party music' });
+    saveHiddenShelves({});
+    expect(localStorage.getItem('zenith_home_hidden')).toBeNull();
+    localStorage.setItem('zenith_home_hidden', '[1]');
+    expect(loadHiddenShelves()).toEqual({});
+  });
+});
+
+describe('home snapshot for a cold start', () => {
+  it('is read back only for the same language and sign-in state, trimmed', () => {
+    const sections = Array.from({ length: 10 }, (_, i) => shelf(`S${i}`, 20));
+    saveHomeSnapshot({ key: 'FEmusic_home:pl:0', sections, quickPicks: [track('q')], chips: [] });
+    const snap = loadHomeSnapshot('FEmusic_home:pl:0')!;
+    expect(snap.sections).toHaveLength(8);
+    expect(snap.sections[0].items).toHaveLength(12);
+    expect(snap.quickPicks).toHaveLength(1);
+    expect(loadHomeSnapshot('FEmusic_home:pl:1')).toBeNull();
+    expect(loadHomeSnapshot('FEmusic_home:en:0')).toBeNull();
+    localStorage.setItem('zenith_home_cache_v1', '{broken');
+    expect(loadHomeSnapshot('FEmusic_home:pl:0')).toBeNull();
   });
 });

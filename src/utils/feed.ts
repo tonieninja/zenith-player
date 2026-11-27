@@ -1,4 +1,4 @@
-import type { Section, Track } from '../api/youtube';
+import type { HomeChip, Section, Track } from '../api/youtube';
 
 export type FeedItemIdentity = { id: string; type: Track['type'] };
 
@@ -145,4 +145,80 @@ export function stableOrderSections(sections: Section[]): Section[] {
     seen.add(key);
     return true;
   });
+}
+
+/** Półki o tym samym tytule podmienia w miejscu, nowe dokleja na końcu; bez zmian zwraca tę samą tablicę. */
+export function upsertSections(cur: Section[], incoming: Section[]): Section[] {
+  const at = new Map(cur.map((s, i) => [s.title, i]));
+  const next = [...cur];
+  let changed = false;
+  for (const s of incoming) {
+    const i = at.get(s.title);
+    if (i === undefined) {
+      at.set(s.title, next.length);
+      next.push(s);
+      changed = true;
+    } else if (next[i] !== s) {
+      next[i] = s;
+      changed = true;
+    }
+  }
+  return changed ? next : cur;
+}
+
+// browseId „Więcej” nie zależy od języka, więc ukryta półka zostaje ukryta po zmianie języka
+export const shelfKey = (s: Section) => s.more?.browseId ?? s.title.toLowerCase().trim();
+
+const HIDDEN_SHELVES_KEY = 'zenith_home_hidden';
+
+export function loadHiddenShelves(): Record<string, string> {
+  try {
+    const v = JSON.parse(localStorage.getItem(HIDDEN_SHELVES_KEY) || '{}');
+    return v && typeof v === 'object' && !Array.isArray(v) ? v : {};
+  } catch {
+    return {};
+  }
+}
+
+export function saveHiddenShelves(hidden: Record<string, string>) {
+  try {
+    if (Object.keys(hidden).length)
+      localStorage.setItem(HIDDEN_SHELVES_KEY, JSON.stringify(hidden));
+    else localStorage.removeItem(HIDDEN_SHELVES_KEY);
+  } catch {
+    /* bez zapisu ukrycie działa do końca sesji */
+  }
+}
+
+export interface HomeSnapshot {
+  key: string;
+  sections: Section[];
+  quickPicks: Track[];
+  chips: HomeChip[];
+}
+
+const HOME_SNAPSHOT_KEY = 'zenith_home_cache_v1';
+
+export function saveHomeSnapshot(snap: HomeSnapshot) {
+  try {
+    const sections = snap.sections.slice(0, 8).map((s) => ({ ...s, items: s.items.slice(0, 12) }));
+    localStorage.setItem(HOME_SNAPSHOT_KEY, JSON.stringify({ ...snap, sections }));
+  } catch {
+    /* pełny localStorage: start pokaże splash do odpowiedzi sieci, jak bez migawki */
+  }
+}
+
+/** Ostatnia Główna dla tego języka i stanu logowania, żeby start nie czekał na sieć. */
+export function loadHomeSnapshot(key: string): HomeSnapshot | null {
+  try {
+    const v = JSON.parse(localStorage.getItem(HOME_SNAPSHOT_KEY) || 'null');
+    const ok =
+      v?.key === key &&
+      Array.isArray(v.sections) &&
+      Array.isArray(v.quickPicks) &&
+      Array.isArray(v.chips);
+    return ok ? v : null;
+  } catch {
+    return null;
+  }
 }
