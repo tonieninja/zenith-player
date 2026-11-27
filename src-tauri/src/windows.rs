@@ -451,6 +451,10 @@ pub fn drop_main(app: &AppHandle) {
             }
         }
         mark_not_ready();
+        #[cfg(windows)]
+        if let (true, Ok(h)) = (minimized, w.hwnd()) {
+            crate::thumbbar::iconic(app, h.0 as isize, true);
+        }
         crate::native_audio::set_headless(true);
         #[cfg(target_os = "linux")]
         let _ = w.with_webview(|wv| {
@@ -498,6 +502,10 @@ fn rebuild_main(app: &AppHandle, show: bool) -> bool {
     let h = app.clone();
     let _ = app.run_on_main_thread(move || {
         if let Some(win) = h.get_window("main") {
+            #[cfg(windows)]
+            if let Ok(hwnd) = win.hwnd() {
+                crate::thumbbar::iconic(&h, hwnd.0 as isize, false);
+            }
             let size = win.inner_size().unwrap_or_default();
             let b = tauri::webview::WebviewBuilder::from_config(&cfg)
                 .auto_resize()
