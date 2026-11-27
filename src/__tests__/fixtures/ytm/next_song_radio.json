@@ -1,0 +1,825 @@
+{
+  "contents": {
+    "singleColumnMusicWatchNextResultsRenderer": {
+      "tabbedRenderer": {
+        "watchNextTabbedResultsRenderer": {
+          "tabs": [
+            {
+              "tabRenderer": {
+                "content": {
+                  "musicQueueRenderer": {
+                    "content": {
+                      "playlistPanelRenderer": {
+                        "contents": [
+                          {
+                            "playlistPanelVideoRenderer": {
+                              "title": {
+                                "runs": [
+                                  {
+                                    "text": "Get Lucky (Official Audio) (feat. Pharrell Williams & Nile Rodgers)"
+                                  }
+                                ]
+                              },
+                              "longBylineText": {
+                                "runs": [
+                                  {
+                                    "text": "Daft Punk",
+                                    "navigationEndpoint": {
+                                      "browseEndpoint": {
+                                        "browseId": "UCRr1xG_2WIDs18a6cIiCxeA",
+                                        "browseEndpointContextSupportedConfigs": {
+                                          "browseEndpointContextMusicConfig": {
+                                            "pageType": "MUSIC_PAGE_TYPE_ARTIST"
+                                          }
+                                        }
+                                      }
+                                    }
+                                  },
+                                  {
+                                    "text": " • "
+                                  },
+                                  {
+                                    "text": "887M views"
+                                  },
+                                  {
+                                    "text": " • "
+                                  },
+                                  {
+                                    "text": "5.4M likes"
+                                  }
+                                ]
+                              },
+                              "thumbnail": {
+                                "thumbnails": [
+                                  {
+                                    "url": "https://i.ytimg.com/vi/5NV6Rdv1a3I/hqdefault.jpg?sqp=-oaymwEWCJADEOEBIAQqCggAEOADGC0guwJIWg&rs=AMzJL3mvsP8mFDRro1d2OpZBLOyPo9fHxA",
+                                    "width": 400,
+                                    "height": 225
+                                  },
+                                  {
+                                    "url": "https://i.ytimg.com/vi/5NV6Rdv1a3I/hq720.jpg?sqp=-oaymwEKCKAGEMIDIABIWg&rs=AMzJL3lJswswkp9oMkQnzpawS-ms0dNXng",
+                                    "width": 800,
+                                    "height": 450
+                                  },
+                                  {
+                                    "url": "https://i.ytimg.com/vi/5NV6Rdv1a3I/hq720.jpg?sqp=-oaymwEKCNUGEN8DIABIWg&rs=AMzJL3kWp73LkZiWlHm7uSS6X8A7WatGsg",
+                                    "width": 853,
+                                    "height": 479
+                                  }
+                                ]
+                              },
+                              "lengthText": {
+                                "runs": [
+                                  {
+                                    "text": "4:09"
+                                  }
+                                ]
+                              },
+                              "selected": true,
+                              "navigationEndpoint": {
+                                "watchEndpoint": {
+                                  "videoId": "5NV6Rdv1a3I",
+                                  "playlistId": "RDAMVM5NV6Rdv1a3I",
+                                  "index": 0,
+                                  "params": "OAHyAQIIAQ%3D%3D",
+                                  "playlistSetVideoId": "56B44F6D10557CC6"
+                                }
+                              },
+                              "videoId": "5NV6Rdv1a3I",
+                              "shortBylineText": {
+                                "runs": [
+                                  {
+                                    "text": "Daft Punk"
+                                  }
+                                ]
+                              },
+                              "playlistSetVideoId": "56B44F6D10557CC6",
+                              "canReorder": true,
+                              "queueNavigationEndpoint": {
+                                "queueAddEndpoint": {
+                                  "queueTarget": {
+                                    "videoId": "5NV6Rdv1a3I"
+                                  },
+                                  "queueInsertPosition": "INSERT_AT_END",
+                                  "params": "Q0FJJTNE"
+                                }
+                              }
+                            }
+                          },
+                          {
+                            "playlistPanelVideoRenderer": {
+                              "title": {
+                                "runs": [
+                                  {
+                                    "text": "I Feel It Coming ft. Daft Punk (Official Video)"
+                                  }
+                                ]
+                              },
+                              "longBylineText": {
+                                "runs": [
+                                  {
+                                    "text": "The Weeknd",
+                                    "navigationEndpoint": {
+                                      "browseEndpoint": {
+                                        "browseId": "UClYV6hHlupm_S_ObS1W-DYw",
+                                        "browseEndpointContextSupportedConfigs": {
+                                          "browseEndpointContextMusicConfig": {
+                                            "pageType": "MUSIC_PAGE_TYPE_ARTIST"
+                                          }
+                                        }
+                                      }
+                                    }
+                                  },
+                                  {
+                                    "text": " • "
+                                  },
+                                  {
+                                    "text": "1.4B views"
+                                  },
+                                  {
+                                    "text": " • "
+                                  },
+                                  {
+                                    "text": "6.4M likes"
+                                  }
+                                ]
+                              },
+                              "thumbnail": {
+                                "thumbnails": [
+                                  {
+                                    "url": "https://i.ytimg.com/vi/qFLhGq0060w/hqdefault.jpg?sqp=-oaymwEWCJADEOEBIAQqCggAEOADGC0guwJIWg&rs=AMzJL3mliCEMNwacYatgjBx_v64YyEx6Iw",
+                                    "width": 400,
+                                    "height": 225
+                                  },
+                                  {
+                                    "url": "https://i.ytimg.com/vi/qFLhGq0060w/hq720.jpg?sqp=-oaymwEKCKAGEMIDIABIWg&rs=AMzJL3md6PnsQpv_vCBxJ_z4a0_OdXA9tQ",
+                                    "width": 800,
+                                    "height": 450
+                                  },
+                                  {
+                                    "url": "https://i.ytimg.com/vi/qFLhGq0060w/hq720.jpg?sqp=-oaymwEKCNUGEN8DIABIWg&rs=AMzJL3llK23MNe_TOPuG2wirtgpkL6OKkQ",
+                                    "width": 853,
+                                    "height": 479
+                                  }
+                                ]
+                              },
+                              "lengthText": {
+                                "runs": [
+                                  {
+                                    "text": "4:58"
+                                  }
+                                ]
+                              },
+                              "selected": false,
+                              "navigationEndpoint": {
+                                "watchEndpoint": {
+                                  "videoId": "qFLhGq0060w",
+                                  "playlistId": "RDAMVM5NV6Rdv1a3I",
+                                  "index": 1,
+                                  "params": "OAHyAQIIAQ%3D%3D",
+                                  "playlistSetVideoId": "289F4A46DF0A30D2"
+                                }
+                              },
+                              "videoId": "qFLhGq0060w",
+                              "shortBylineText": {
+                                "runs": [
+                                  {
+                                    "text": "The Weeknd"
+                                  }
+                                ]
+                              },
+                              "playlistSetVideoId": "289F4A46DF0A30D2",
+                              "canReorder": true,
+                              "queueNavigationEndpoint": {
+                                "queueAddEndpoint": {
+                                  "queueTarget": {
+                                    "videoId": "qFLhGq0060w"
+                                  },
+                                  "queueInsertPosition": "INSERT_AT_END",
+                                  "params": "Q0FJJTNE"
+                                }
+                              }
+                            }
+                          },
+                          {
+                            "playlistPanelVideoRenderer": {
+                              "title": {
+                                "runs": [
+                                  {
+                                    "text": "Blurred Lines (feat. Pharrell & T.I.)"
+                                  }
+                                ]
+                              },
+                              "longBylineText": {
+                                "runs": [
+                                  {
+                                    "text": "Robin Thicke",
+                                    "navigationEndpoint": {
+                                      "browseEndpoint": {
+                                        "browseId": "UCyYnxJIyBDCIkDIpE7lsUkw",
+                                        "browseEndpointContextSupportedConfigs": {
+                                          "browseEndpointContextMusicConfig": {
+                                            "pageType": "MUSIC_PAGE_TYPE_ARTIST"
+                                          }
+                                        }
+                                      }
+                                    }
+                                  },
+                                  {
+                                    "text": " • "
+                                  },
+                                  {
+                                    "text": "1B views"
+                                  },
+                                  {
+                                    "text": " • "
+                                  },
+                                  {
+                                    "text": "4.4M likes"
+                                  }
+                                ]
+                              },
+                              "thumbnail": {
+                                "thumbnails": [
+                                  {
+                                    "url": "https://i.ytimg.com/vi/yyDUC1LUXSU/hqdefault.jpg?sqp=-oaymwEWCJADEOEBIAQqCggAEOADGC0guwJIWg&rs=AMzJL3ktPXcizhvfC_PL3sfLrhU9GK1SCA",
+                                    "width": 400,
+                                    "height": 225
+                                  },
+                                  {
+                                    "url": "https://i.ytimg.com/vi/yyDUC1LUXSU/hq720.jpg?sqp=-oaymwEKCKAGEMIDIABIWg&rs=AMzJL3kf_WT0Z1lRIDsvbTh4oNIEZsfk6w",
+                                    "width": 800,
+                                    "height": 450
+                                  },
+                                  {
+                                    "url": "https://i.ytimg.com/vi/yyDUC1LUXSU/hq720.jpg?sqp=-oaymwEKCNUGEN8DIABIWg&rs=AMzJL3lu0QkfXyK4QWBeTM7UtT0FO8_Shw",
+                                    "width": 853,
+                                    "height": 479
+                                  }
+                                ]
+                              },
+                              "lengthText": {
+                                "runs": [
+                                  {
+                                    "text": "4:32"
+                                  }
+                                ]
+                              },
+                              "selected": false,
+                              "navigationEndpoint": {
+                                "watchEndpoint": {
+                                  "videoId": "yyDUC1LUXSU",
+                                  "playlistId": "RDAMVM5NV6Rdv1a3I",
+                                  "index": 2,
+                                  "params": "OAHyAQIIAQ%3D%3D",
+                                  "playlistSetVideoId": "017208FAA85233F9"
+                                }
+                              },
+                              "videoId": "yyDUC1LUXSU",
+                              "shortBylineText": {
+                                "runs": [
+                                  {
+                                    "text": "Robin Thicke"
+                                  }
+                                ]
+                              },
+                              "playlistSetVideoId": "017208FAA85233F9",
+                              "canReorder": true,
+                              "queueNavigationEndpoint": {
+                                "queueAddEndpoint": {
+                                  "queueTarget": {
+                                    "videoId": "yyDUC1LUXSU"
+                                  },
+                                  "queueInsertPosition": "INSERT_AT_END",
+                                  "params": "Q0FJJTNE"
+                                }
+                              }
+                            }
+                          },
+                          {
+                            "playlistPanelVideoRenderer": {
+                              "title": {
+                                "runs": [
+                                  {
+                                    "text": "Passion (feat. Nile Rodgers)"
+                                  }
+                                ]
+                              },
+                              "longBylineText": {
+                                "runs": [
+                                  {
+                                    "text": "Roosevelt",
+                                    "navigationEndpoint": {
+                                      "browseEndpoint": {
+                                        "browseId": "UC7jTDrwBF4FNMX_zzaIC5mQ",
+                                        "browseEndpointContextSupportedConfigs": {
+                                          "browseEndpointContextMusicConfig": {
+                                            "pageType": "MUSIC_PAGE_TYPE_ARTIST"
+                                          }
+                                        }
+                                      }
+                                    }
+                                  },
+                                  {
+                                    "text": " • "
+                                  },
+                                  {
+                                    "text": "1M views"
+                                  },
+                                  {
+                                    "text": " • "
+                                  },
+                                  {
+                                    "text": "14K likes"
+                                  }
+                                ]
+                              },
+                              "thumbnail": {
+                                "thumbnails": [
+                                  {
+                                    "url": "https://i.ytimg.com/vi/4byolRzsPmo/hqdefault.jpg?sqp=-oaymwEWCJADEOEBIAQqCggAEOADGC0guwJIWg&rs=AMzJL3lFLseW2B0TzI69j8kMDMB5UotKTg",
+                                    "width": 400,
+                                    "height": 225
+                                  },
+                                  {
+                                    "url": "https://i.ytimg.com/vi/4byolRzsPmo/hq720.jpg?sqp=-oaymwEKCKAGEMIDIABIWg&rs=AMzJL3l8N2NGhviFlV_pd1Zr6X5X7lYkzw",
+                                    "width": 800,
+                                    "height": 450
+                                  },
+                                  {
+                                    "url": "https://i.ytimg.com/vi/4byolRzsPmo/hq720.jpg?sqp=-oaymwEKCNUGEN8DIABIWg&rs=AMzJL3kfr_Ly6S8PC_8Xw7y67KI-FPTT0g",
+                                    "width": 853,
+                                    "height": 479
+                                  }
+                                ]
+                              },
+                              "lengthText": {
+                                "runs": [
+                                  {
+                                    "text": "3:45"
+                                  }
+                                ]
+                              },
+                              "selected": false,
+                              "navigationEndpoint": {
+                                "watchEndpoint": {
+                                  "videoId": "4byolRzsPmo",
+                                  "playlistId": "RDAMVM5NV6Rdv1a3I",
+                                  "index": 3,
+                                  "params": "OAHyAQIIAQ%3D%3D",
+                                  "playlistSetVideoId": "52152B4946C2F73F"
+                                }
+                              },
+                              "videoId": "4byolRzsPmo",
+                              "shortBylineText": {
+                                "runs": [
+                                  {
+                                    "text": "Roosevelt"
+                                  }
+                                ]
+                              },
+                              "playlistSetVideoId": "52152B4946C2F73F",
+                              "canReorder": true,
+                              "queueNavigationEndpoint": {
+                                "queueAddEndpoint": {
+                                  "queueTarget": {
+                                    "videoId": "4byolRzsPmo"
+                                  },
+                                  "queueInsertPosition": "INSERT_AT_END",
+                                  "params": "Q0FJJTNE"
+                                }
+                              }
+                            }
+                          }
+                        ],
+                        "playlistId": "RDAMVM5NV6Rdv1a3I",
+                        "isInfinite": true,
+                        "continuations": [
+                          {
+                            "nextRadioContinuationData": {
+                              "continuation": "CDISPhILc09TOWFPSVhQRWsiEVJEQU1WTTVOVjZSZHYxYTNJMgR3QUVCODHQAQH6ARBENjI1QUI0MDI5NEQzODFEGAo%3D"
+                            }
+                          }
+                        ]
+                      }
+                    },
+                    "subHeaderChipCloud": {
+                      "chipCloudRenderer": {
+                        "chips": [
+                          {
+                            "chipCloudChipRenderer": {
+                              "text": {
+                                "runs": [
+                                  {
+                                    "text": "All"
+                                  }
+                                ]
+                              },
+                              "navigationEndpoint": {
+                                "queueUpdateCommand": {
+                                  "queueUpdateSection": "QUEUE_UPDATE_SECTION_QUEUE",
+                                  "fetchContentsCommand": {
+                                    "watchEndpoint": {
+                                      "playlistId": "RDAMVM5NV6Rdv1a3I",
+                                      "params": "ggUMRWdBWUFRJTNEJTNE"
+                                    }
+                                  },
+                                  "dedupeAgainstLocalQueue": true,
+                                  "syncMode": "QUEUE_UPDATE_SYNC_MODE_DEDUPE_AGAINST_LOCAL"
+                                }
+                              },
+                              "accessibilityData": {
+                                "accessibilityData": {
+                                  "label": "All"
+                                }
+                              },
+                              "isSelected": true,
+                              "uniqueId": "All"
+                            }
+                          },
+                          {
+                            "chipCloudChipRenderer": {
+                              "text": {
+                                "runs": [
+                                  {
+                                    "text": "Popular"
+                                  }
+                                ]
+                              },
+                              "navigationEndpoint": {
+                                "queueUpdateCommand": {
+                                  "queueUpdateSection": "QUEUE_UPDATE_SECTION_QUEUE",
+                                  "fetchContentsCommand": {
+                                    "watchEndpoint": {
+                                      "playlistId": "RDATpYv5NV6Rdv1a3I",
+                                      "params": "ggU4Q2hKU1JFRlVjRmwyTlU1V05sSmtkakZoTTBrWUN5SU5DZ2RRYjNCMWJHRnlHZ0psYmclM0QlM0Q%3D"
+                                    }
+                                  },
+                                  "dedupeAgainstLocalQueue": true,
+                                  "syncMode": "QUEUE_UPDATE_SYNC_MODE_DEDUPE_AGAINST_LOCAL"
+                                }
+                              },
+                              "accessibilityData": {
+                                "accessibilityData": {
+                                  "label": "Popular"
+                                }
+                              },
+                              "isSelected": false,
+                              "uniqueId": "Popular"
+                            }
+                          },
+                          {
+                            "chipCloudChipRenderer": {
+                              "text": {
+                                "runs": [
+                                  {
+                                    "text": "Discover"
+                                  }
+                                ]
+                              },
+                              "navigationEndpoint": {
+                                "queueUpdateCommand": {
+                                  "queueUpdateSection": "QUEUE_UPDATE_SECTION_QUEUE",
+                                  "fetchContentsCommand": {
+                                    "watchEndpoint": {
+                                      "playlistId": "RDATiXv5NV6Rdv1a3I",
+                                      "params": "ggU2Q2hKU1JFRlVhVmgyTlU1V05sSmtkakZoTTBrWUN5SU9DZ2hFYVhOamIzWmxjaG9DWlc0JTNE"
+                                    }
+                                  },
+                                  "dedupeAgainstLocalQueue": true,
+                                  "syncMode": "QUEUE_UPDATE_SYNC_MODE_DEDUPE_AGAINST_LOCAL"
+                                }
+                              },
+                              "accessibilityData": {
+                                "accessibilityData": {
+                                  "label": "Discover"
+                                }
+                              },
+                              "isSelected": false,
+                              "uniqueId": "Discover"
+                            }
+                          },
+                          {
+                            "chipCloudChipRenderer": {
+                              "text": {
+                                "runs": [
+                                  {
+                                    "text": "Deep cuts"
+                                  }
+                                ]
+                              },
+                              "navigationEndpoint": {
+                                "queueUpdateCommand": {
+                                  "queueUpdateSection": "QUEUE_UPDATE_SECTION_QUEUE",
+                                  "fetchContentsCommand": {
+                                    "watchEndpoint": {
+                                      "playlistId": "RDATpXv5NV6Rdv1a3I",
+                                      "params": "ggU0Q2hKU1JFRlVjRmgyTlU1V05sSmtkakZoTTBrWUN5SVBDZ2xFWldWd0lHTjFkSE1hQW1WdQ%3D%3D"
+                                    }
+                                  },
+                                  "dedupeAgainstLocalQueue": true,
+                                  "syncMode": "QUEUE_UPDATE_SYNC_MODE_DEDUPE_AGAINST_LOCAL"
+                                }
+                              },
+                              "accessibilityData": {
+                                "accessibilityData": {
+                                  "label": "Deep cuts"
+                                }
+                              },
+                              "isSelected": false,
+                              "uniqueId": "Deep cuts"
+                            }
+                          },
+                          {
+                            "chipCloudChipRenderer": {
+                              "text": {
+                                "runs": [
+                                  {
+                                    "text": "Party"
+                                  }
+                                ]
+                              },
+                              "navigationEndpoint": {
+                                "queueUpdateCommand": {
+                                  "queueUpdateSection": "QUEUE_UPDATE_SECTION_QUEUE",
+                                  "fetchContentsCommand": {
+                                    "watchEndpoint": {
+                                      "playlistId": "RDATmev5NV6Rdv1a3I",
+                                      "params": "ggUyQ2hKU1JFRlViV1YyTlU1V05sSmtkakZoTTBrWUN5SUxDZ1ZRWVhKMGVSb0NaVzQlM0Q%3D"
+                                    }
+                                  },
+                                  "dedupeAgainstLocalQueue": true,
+                                  "syncMode": "QUEUE_UPDATE_SYNC_MODE_DEDUPE_AGAINST_LOCAL"
+                                }
+                              },
+                              "accessibilityData": {
+                                "accessibilityData": {
+                                  "label": "Party"
+                                }
+                              },
+                              "isSelected": false,
+                              "uniqueId": "Party"
+                            }
+                          },
+                          {
+                            "chipCloudChipRenderer": {
+                              "text": {
+                                "runs": [
+                                  {
+                                    "text": "2010s"
+                                  }
+                                ]
+                              },
+                              "navigationEndpoint": {
+                                "queueUpdateCommand": {
+                                  "queueUpdateSection": "QUEUE_UPDATE_SECTION_QUEUE",
+                                  "fetchContentsCommand": {
+                                    "watchEndpoint": {
+                                      "playlistId": "RDATd0Xv5NV6Rdv1a3I",
+                                      "params": "ggUwQ2hOU1JFRlVaREJZZGpWT1ZqWlNaSFl4WVROSkdBc2lDd29GTWpBeE1ITWFBbVZ1"
+                                    }
+                                  },
+                                  "dedupeAgainstLocalQueue": true,
+                                  "syncMode": "QUEUE_UPDATE_SYNC_MODE_DEDUPE_AGAINST_LOCAL"
+                                }
+                              },
+                              "accessibilityData": {
+                                "accessibilityData": {
+                                  "label": "2010s"
+                                }
+                              },
+                              "isSelected": false,
+                              "uniqueId": "2010s"
+                            }
+                          },
+                          {
+                            "chipCloudChipRenderer": {
+                              "text": {
+                                "runs": [
+                                  {
+                                    "text": "Workout"
+                                  }
+                                ]
+                              },
+                              "navigationEndpoint": {
+                                "queueUpdateCommand": {
+                                  "queueUpdateSection": "QUEUE_UPDATE_SECTION_QUEUE",
+                                  "fetchContentsCommand": {
+                                    "watchEndpoint": {
+                                      "playlistId": "RDATmZv5NV6Rdv1a3I",
+                                      "params": "ggU4Q2hKU1JFRlViVnAyTlU1V05sSmtkakZoTTBrWUN5SU5DZ2RYYjNKcmIzVjBHZ0psYmclM0QlM0Q%3D"
+                                    }
+                                  },
+                                  "dedupeAgainstLocalQueue": true,
+                                  "syncMode": "QUEUE_UPDATE_SYNC_MODE_DEDUPE_AGAINST_LOCAL"
+                                }
+                              },
+                              "accessibilityData": {
+                                "accessibilityData": {
+                                  "label": "Workout"
+                                }
+                              },
+                              "isSelected": false,
+                              "uniqueId": "Workout"
+                            }
+                          },
+                          {
+                            "chipCloudChipRenderer": {
+                              "text": {
+                                "runs": [
+                                  {
+                                    "text": "2000s"
+                                  }
+                                ]
+                              },
+                              "navigationEndpoint": {
+                                "queueUpdateCommand": {
+                                  "queueUpdateSection": "QUEUE_UPDATE_SECTION_QUEUE",
+                                  "fetchContentsCommand": {
+                                    "watchEndpoint": {
+                                      "playlistId": "RDATd-v5NV6Rdv1a3I",
+                                      "params": "ggUyQ2hKU1JFRlVaQzEyTlU1V05sSmtkakZoTTBrWUN5SUxDZ1V5TURBd2N4b0NaVzQlM0Q%3D"
+                                    }
+                                  },
+                                  "dedupeAgainstLocalQueue": true,
+                                  "syncMode": "QUEUE_UPDATE_SYNC_MODE_DEDUPE_AGAINST_LOCAL"
+                                }
+                              },
+                              "accessibilityData": {
+                                "accessibilityData": {
+                                  "label": "2000s"
+                                }
+                              },
+                              "isSelected": false,
+                              "uniqueId": "2000s"
+                            }
+                          },
+                          {
+                            "chipCloudChipRenderer": {
+                              "text": {
+                                "runs": [
+                                  {
+                                    "text": "Electronic"
+                                  }
+                                ]
+                              },
+                              "navigationEndpoint": {
+                                "queueUpdateCommand": {
+                                  "queueUpdateSection": "QUEUE_UPDATE_SECTION_QUEUE",
+                                  "fetchContentsCommand": {
+                                    "watchEndpoint": {
+                                      "playlistId": "RDATgiv5NV6Rdv1a3I",
+                                      "params": "ggU8Q2hKU1JFRlVaMmwyTlU1V05sSmtkakZoTTBrWUN5SVFDZ3BGYkdWamRISnZibWxqR2dKbGJnJTNEJTNE"
+                                    }
+                                  },
+                                  "dedupeAgainstLocalQueue": true,
+                                  "syncMode": "QUEUE_UPDATE_SYNC_MODE_DEDUPE_AGAINST_LOCAL"
+                                }
+                              },
+                              "accessibilityData": {
+                                "accessibilityData": {
+                                  "label": "Electronic"
+                                }
+                              },
+                              "isSelected": false,
+                              "uniqueId": "Electronic"
+                            }
+                          },
+                          {
+                            "chipCloudChipRenderer": {
+                              "text": {
+                                "runs": [
+                                  {
+                                    "text": "Pop"
+                                  }
+                                ]
+                              },
+                              "navigationEndpoint": {
+                                "queueUpdateCommand": {
+                                  "queueUpdateSection": "QUEUE_UPDATE_SECTION_QUEUE",
+                                  "fetchContentsCommand": {
+                                    "watchEndpoint": {
+                                      "playlistId": "RDATg9Xv5NV6Rdv1a3I",
+                                      "params": "ggU0Q2hOU1JFRlVaemxZZGpWT1ZqWlNaSFl4WVROSkdBc2lDUW9EVUc5d0dnSmxiZyUzRCUzRA%3D%3D"
+                                    }
+                                  },
+                                  "dedupeAgainstLocalQueue": true,
+                                  "syncMode": "QUEUE_UPDATE_SYNC_MODE_DEDUPE_AGAINST_LOCAL"
+                                }
+                              },
+                              "accessibilityData": {
+                                "accessibilityData": {
+                                  "label": "Pop"
+                                }
+                              },
+                              "isSelected": false,
+                              "uniqueId": "Pop"
+                            }
+                          },
+                          {
+                            "chipCloudChipRenderer": {
+                              "text": {
+                                "runs": [
+                                  {
+                                    "text": "Hip hop"
+                                  }
+                                ]
+                              },
+                              "navigationEndpoint": {
+                                "queueUpdateCommand": {
+                                  "queueUpdateSection": "QUEUE_UPDATE_SECTION_QUEUE",
+                                  "fetchContentsCommand": {
+                                    "watchEndpoint": {
+                                      "playlistId": "RDATgrv5NV6Rdv1a3I",
+                                      "params": "ggU4Q2hKU1JFRlVaM0oyTlU1V05sSmtkakZoTTBrWUN5SU5DZ2RJYVhBZ2FHOXdHZ0psYmclM0QlM0Q%3D"
+                                    }
+                                  },
+                                  "dedupeAgainstLocalQueue": true,
+                                  "syncMode": "QUEUE_UPDATE_SYNC_MODE_DEDUPE_AGAINST_LOCAL"
+                                }
+                              },
+                              "accessibilityData": {
+                                "accessibilityData": {
+                                  "label": "Hip hop"
+                                }
+                              },
+                              "isSelected": false,
+                              "uniqueId": "Hip hop"
+                            }
+                          },
+                          {
+                            "chipCloudChipRenderer": {
+                              "text": {
+                                "runs": [
+                                  {
+                                    "text": "Alternative"
+                                  }
+                                ]
+                              },
+                              "navigationEndpoint": {
+                                "queueUpdateCommand": {
+                                  "queueUpdateSection": "QUEUE_UPDATE_SECTION_QUEUE",
+                                  "fetchContentsCommand": {
+                                    "watchEndpoint": {
+                                      "playlistId": "RDATgXv5NV6Rdv1a3I",
+                                      "params": "ggU6Q2hKU1JFRlVaMWgyTlU1V05sSmtkakZoTTBrWUN5SVJDZ3RCYkhSbGNtNWhkR2wyWlJvQ1pXNCUzRA%3D%3D"
+                                    }
+                                  },
+                                  "dedupeAgainstLocalQueue": true,
+                                  "syncMode": "QUEUE_UPDATE_SYNC_MODE_DEDUPE_AGAINST_LOCAL"
+                                }
+                              },
+                              "accessibilityData": {
+                                "accessibilityData": {
+                                  "label": "Alternative"
+                                }
+                              },
+                              "isSelected": false,
+                              "uniqueId": "Alternative"
+                            }
+                          },
+                          {
+                            "chipCloudChipRenderer": {
+                              "text": {
+                                "runs": [
+                                  {
+                                    "text": "Art Pop"
+                                  }
+                                ]
+                              },
+                              "navigationEndpoint": {
+                                "queueUpdateCommand": {
+                                  "queueUpdateSection": "QUEUE_UPDATE_SECTION_QUEUE",
+                                  "fetchContentsCommand": {
+                                    "watchEndpoint": {
+                                      "playlistId": "RDATG1hb_fc26tEv5NV6Rdv1a3I",
+                                      "params": "ggVEQ2h0U1JFRlVSekZvWWw5bVl6STJkRVYyTlU1V05sSmtkakZoTTBrWUN5SU5DZ2RCY25RZ1VHOXdHZ0psYmclM0QlM0Q%3D"
+                                    }
+                                  },
+                                  "dedupeAgainstLocalQueue": true,
+                                  "syncMode": "QUEUE_UPDATE_SYNC_MODE_DEDUPE_AGAINST_LOCAL"
+                                }
+                              },
+                              "accessibilityData": {
+                                "accessibilityData": {
+                                  "label": "Art Pop"
+                                }
+                              },
+                              "isSelected": false,
+                              "uniqueId": "Art Pop"
+                            }
+                          }
+                        ],
+                        "selectionBehavior": "CHIP_CLOUD_SELECTION_BEHAVIOR_SINGLE_SELECT_ALWAYS_SELECTED"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}

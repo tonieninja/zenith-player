@@ -5514,6 +5514,27 @@ html.has-cover-theme .main-play-pause-circle {
   color: var(--text-muted);
 }
 
+/* rząd stoi w kolumnie szuflady i panelu, więc nie może rosnąć w pionie jak przewijany rząd na Głównej */
+.radio-chips {
+  flex: none;
+  gap: 8px;
+  padding: 4px 0 10px;
+}
+
+.queue-drawer .radio-chips {
+  padding: 12px 18px 4px;
+}
+
+.radio-chips .mood-chip {
+  gap: 6px;
+  padding: 6px 12px;
+  font-size: 12px;
+}
+
+.radio-chips[aria-busy='true'] .mood-chip {
+  cursor: progress;
+}
+
 .queue-drag-handle {
   flex-shrink: 0;
   display: grid;

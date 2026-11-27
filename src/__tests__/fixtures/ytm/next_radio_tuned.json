@@ -1,0 +1,415 @@
+{
+  "contents": {
+    "singleColumnMusicWatchNextResultsRenderer": {
+      "tabbedRenderer": {
+        "watchNextTabbedResultsRenderer": {
+          "tabs": [
+            {
+              "tabRenderer": {
+                "content": {
+                  "musicQueueRenderer": {
+                    "content": {
+                      "playlistPanelRenderer": {
+                        "contents": [
+                          {
+                            "playlistPanelVideoRenderer": {
+                              "title": {
+                                "runs": [
+                                  {
+                                    "text": "Get Lucky (Official Audio) (feat. Pharrell Williams & Nile Rodgers)"
+                                  }
+                                ]
+                              },
+                              "longBylineText": {
+                                "runs": [
+                                  {
+                                    "text": "Daft Punk",
+                                    "navigationEndpoint": {
+                                      "browseEndpoint": {
+                                        "browseId": "UCRr1xG_2WIDs18a6cIiCxeA",
+                                        "browseEndpointContextSupportedConfigs": {
+                                          "browseEndpointContextMusicConfig": {
+                                            "pageType": "MUSIC_PAGE_TYPE_ARTIST"
+                                          }
+                                        }
+                                      }
+                                    }
+                                  },
+                                  {
+                                    "text": " • "
+                                  },
+                                  {
+                                    "text": "887M views"
+                                  },
+                                  {
+                                    "text": " • "
+                                  },
+                                  {
+                                    "text": "5.4M likes"
+                                  }
+                                ]
+                              },
+                              "thumbnail": {
+                                "thumbnails": [
+                                  {
+                                    "url": "https://i.ytimg.com/vi/5NV6Rdv1a3I/hqdefault.jpg?sqp=-oaymwEWCJADEOEBIAQqCggAEOADGC0guwJIWg&rs=AMzJL3mvsP8mFDRro1d2OpZBLOyPo9fHxA",
+                                    "width": 400,
+                                    "height": 225
+                                  },
+                                  {
+                                    "url": "https://i.ytimg.com/vi/5NV6Rdv1a3I/hq720.jpg?sqp=-oaymwEKCKAGEMIDIABIWg&rs=AMzJL3lJswswkp9oMkQnzpawS-ms0dNXng",
+                                    "width": 800,
+                                    "height": 450
+                                  },
+                                  {
+                                    "url": "https://i.ytimg.com/vi/5NV6Rdv1a3I/hq720.jpg?sqp=-oaymwEKCNUGEN8DIABIWg&rs=AMzJL3kWp73LkZiWlHm7uSS6X8A7WatGsg",
+                                    "width": 853,
+                                    "height": 479
+                                  }
+                                ]
+                              },
+                              "lengthText": {
+                                "runs": [
+                                  {
+                                    "text": "4:09"
+                                  }
+                                ]
+                              },
+                              "selected": true,
+                              "navigationEndpoint": {
+                                "watchEndpoint": {
+                                  "videoId": "5NV6Rdv1a3I",
+                                  "playlistId": "RDATpYv5NV6Rdv1a3I",
+                                  "index": 0,
+                                  "params": "OAHyAQIIAQ%3D%3D",
+                                  "playlistSetVideoId": "56B44F6D10557CC6"
+                                }
+                              },
+                              "videoId": "5NV6Rdv1a3I",
+                              "shortBylineText": {
+                                "runs": [
+                                  {
+                                    "text": "Daft Punk"
+                                  }
+                                ]
+                              },
+                              "playlistSetVideoId": "56B44F6D10557CC6",
+                              "canReorder": true,
+                              "queueNavigationEndpoint": {
+                                "queueAddEndpoint": {
+                                  "queueTarget": {
+                                    "videoId": "5NV6Rdv1a3I"
+                                  },
+                                  "queueInsertPosition": "INSERT_AT_END",
+                                  "params": "Q0FJJTNE"
+                                }
+                              }
+                            }
+                          },
+                          {
+                            "playlistPanelVideoRenderer": {
+                              "title": {
+                                "runs": [
+                                  {
+                                    "text": "As It Was (Official Video)"
+                                  }
+                                ]
+                              },
+                              "longBylineText": {
+                                "runs": [
+                                  {
+                                    "text": "Harry Styles",
+                                    "navigationEndpoint": {
+                                      "browseEndpoint": {
+                                        "browseId": "UCVacQ2t5GUZ2t_J3Ia9BynA",
+                                        "browseEndpointContextSupportedConfigs": {
+                                          "browseEndpointContextMusicConfig": {
+                                            "pageType": "MUSIC_PAGE_TYPE_ARTIST"
+                                          }
+                                        }
+                                      }
+                                    }
+                                  },
+                                  {
+                                    "text": " • "
+                                  },
+                                  {
+                                    "text": "1B views"
+                                  },
+                                  {
+                                    "text": " • "
+                                  },
+                                  {
+                                    "text": "9.4M likes"
+                                  }
+                                ]
+                              },
+                              "thumbnail": {
+                                "thumbnails": [
+                                  {
+                                    "url": "https://i.ytimg.com/vi/H5v3kku4y6Q/hqdefault.jpg?sqp=-oaymwEWCJADEOEBIAQqCggAEOADGC0guwJIWg&rs=AMzJL3md8jTCrEXiqGF7Bsarf4IdmfoAyw",
+                                    "width": 400,
+                                    "height": 225
+                                  },
+                                  {
+                                    "url": "https://i.ytimg.com/vi/H5v3kku4y6Q/hq720.jpg?sqp=-oaymwEKCKAGEMIDIABIWg&rs=AMzJL3kekwZrjL_GYe9KG8ipqkmYuMAsog",
+                                    "width": 800,
+                                    "height": 450
+                                  },
+                                  {
+                                    "url": "https://i.ytimg.com/vi/H5v3kku4y6Q/hq720.jpg?sqp=-oaymwEKCNUGEN8DIABIWg&rs=AMzJL3mJvc_AEYsjuFcyYobI3CQpbMwTuw",
+                                    "width": 853,
+                                    "height": 479
+                                  }
+                                ]
+                              },
+                              "lengthText": {
+                                "runs": [
+                                  {
+                                    "text": "2:46"
+                                  }
+                                ]
+                              },
+                              "selected": false,
+                              "navigationEndpoint": {
+                                "watchEndpoint": {
+                                  "videoId": "H5v3kku4y6Q",
+                                  "playlistId": "RDATpYv5NV6Rdv1a3I",
+                                  "index": 1,
+                                  "params": "OAHyAQIIAQ%3D%3D",
+                                  "playlistSetVideoId": "289F4A46DF0A30D2"
+                                }
+                              },
+                              "videoId": "H5v3kku4y6Q",
+                              "shortBylineText": {
+                                "runs": [
+                                  {
+                                    "text": "Harry Styles"
+                                  }
+                                ]
+                              },
+                              "playlistSetVideoId": "289F4A46DF0A30D2",
+                              "canReorder": true,
+                              "queueNavigationEndpoint": {
+                                "queueAddEndpoint": {
+                                  "queueTarget": {
+                                    "videoId": "H5v3kku4y6Q"
+                                  },
+                                  "queueInsertPosition": "INSERT_AT_END",
+                                  "params": "Q0FJJTNE"
+                                }
+                              }
+                            }
+                          },
+                          {
+                            "playlistPanelVideoRenderer": {
+                              "title": {
+                                "runs": [
+                                  {
+                                    "text": "Flowers (Official Video)"
+                                  }
+                                ]
+                              },
+                              "longBylineText": {
+                                "runs": [
+                                  {
+                                    "text": "Miley Cyrus",
+                                    "navigationEndpoint": {
+                                      "browseEndpoint": {
+                                        "browseId": "UCREdEwBdZcnQLIT0ThaAtmQ",
+                                        "browseEndpointContextSupportedConfigs": {
+                                          "browseEndpointContextMusicConfig": {
+                                            "pageType": "MUSIC_PAGE_TYPE_ARTIST"
+                                          }
+                                        }
+                                      }
+                                    }
+                                  },
+                                  {
+                                    "text": " • "
+                                  },
+                                  {
+                                    "text": "1.3B views"
+                                  },
+                                  {
+                                    "text": " • "
+                                  },
+                                  {
+                                    "text": "9.3M likes"
+                                  }
+                                ]
+                              },
+                              "thumbnail": {
+                                "thumbnails": [
+                                  {
+                                    "url": "https://i.ytimg.com/vi/G7KNmW9a75Y/hqdefault.jpg?sqp=-oaymwEWCJADEOEBIAQqCggAEOADGC0guwJIWg&rs=AMzJL3lEqAUD1X6YzG4RAcwv6pIAemBbXA",
+                                    "width": 400,
+                                    "height": 225
+                                  },
+                                  {
+                                    "url": "https://i.ytimg.com/vi/G7KNmW9a75Y/hq720.jpg?sqp=-oaymwEKCKAGEMIDIABIWg&rs=AMzJL3krWXh3KBEH3RwBu-g9KKgefnyJNQ",
+                                    "width": 800,
+                                    "height": 450
+                                  },
+                                  {
+                                    "url": "https://i.ytimg.com/vi/G7KNmW9a75Y/hq720.jpg?sqp=-oaymwEKCNUGEN8DIABIWg&rs=AMzJL3k8vYwglFNdjzfiKGwRGUzsWsOzpA",
+                                    "width": 853,
+                                    "height": 479
+                                  }
+                                ]
+                              },
+                              "lengthText": {
+                                "runs": [
+                                  {
+                                    "text": "3:22"
+                                  }
+                                ]
+                              },
+                              "selected": false,
+                              "navigationEndpoint": {
+                                "watchEndpoint": {
+                                  "videoId": "G7KNmW9a75Y",
+                                  "playlistId": "RDATpYv5NV6Rdv1a3I",
+                                  "index": 2,
+                                  "params": "OAHyAQIIAQ%3D%3D",
+                                  "playlistSetVideoId": "017208FAA85233F9"
+                                }
+                              },
+                              "videoId": "G7KNmW9a75Y",
+                              "shortBylineText": {
+                                "runs": [
+                                  {
+                                    "text": "Miley Cyrus"
+                                  }
+                                ]
+                              },
+                              "playlistSetVideoId": "017208FAA85233F9",
+                              "canReorder": true,
+                              "queueNavigationEndpoint": {
+                                "queueAddEndpoint": {
+                                  "queueTarget": {
+                                    "videoId": "G7KNmW9a75Y"
+                                  },
+                                  "queueInsertPosition": "INSERT_AT_END",
+                                  "params": "Q0FJJTNE"
+                                }
+                              }
+                            }
+                          },
+                          {
+                            "playlistPanelVideoRenderer": {
+                              "title": {
+                                "runs": [
+                                  {
+                                    "text": "Rude"
+                                  }
+                                ]
+                              },
+                              "longBylineText": {
+                                "runs": [
+                                  {
+                                    "text": "MAGIC!",
+                                    "navigationEndpoint": {
+                                      "browseEndpoint": {
+                                        "browseId": "UCi7x9i4t7_KUX2-gWLnMNkQ",
+                                        "browseEndpointContextSupportedConfigs": {
+                                          "browseEndpointContextMusicConfig": {
+                                            "pageType": "MUSIC_PAGE_TYPE_ARTIST"
+                                          }
+                                        }
+                                      }
+                                    }
+                                  },
+                                  {
+                                    "text": " • "
+                                  },
+                                  {
+                                    "text": "2.7B views"
+                                  },
+                                  {
+                                    "text": " • "
+                                  },
+                                  {
+                                    "text": "12M likes"
+                                  }
+                                ]
+                              },
+                              "thumbnail": {
+                                "thumbnails": [
+                                  {
+                                    "url": "https://i.ytimg.com/vi/PIh2xe4jnpk/hqdefault.jpg?sqp=-oaymwEWCJADEOEBIAQqCggAEOADGC0guwJIWg&rs=AMzJL3kdlySZK6KkOVzRvZDHR93xteADXQ",
+                                    "width": 400,
+                                    "height": 225
+                                  },
+                                  {
+                                    "url": "https://i.ytimg.com/vi/PIh2xe4jnpk/hq720.jpg?sqp=-oaymwEKCKAGEMIDIABIWg&rs=AMzJL3lRcIgpoFknfr4JJk8VX-D7CRxUTg",
+                                    "width": 800,
+                                    "height": 450
+                                  },
+                                  {
+                                    "url": "https://i.ytimg.com/vi/PIh2xe4jnpk/hq720.jpg?sqp=-oaymwEKCNUGEN8DIABIWg&rs=AMzJL3kVIi9pJg9UfPOlycSlwz3ZyOu_qg",
+                                    "width": 853,
+                                    "height": 479
+                                  }
+                                ]
+                              },
+                              "lengthText": {
+                                "runs": [
+                                  {
+                                    "text": "3:46"
+                                  }
+                                ]
+                              },
+                              "selected": false,
+                              "navigationEndpoint": {
+                                "watchEndpoint": {
+                                  "videoId": "PIh2xe4jnpk",
+                                  "playlistId": "RDATpYv5NV6Rdv1a3I",
+                                  "index": 3,
+                                  "params": "OAHyAQIIAQ%3D%3D",
+                                  "playlistSetVideoId": "52152B4946C2F73F"
+                                }
+                              },
+                              "videoId": "PIh2xe4jnpk",
+                              "shortBylineText": {
+                                "runs": [
+                                  {
+                                    "text": "MAGIC!"
+                                  }
+                                ]
+                              },
+                              "playlistSetVideoId": "52152B4946C2F73F",
+                              "canReorder": true,
+                              "queueNavigationEndpoint": {
+                                "queueAddEndpoint": {
+                                  "queueTarget": {
+                                    "videoId": "PIh2xe4jnpk"
+                                  },
+                                  "queueInsertPosition": "INSERT_AT_END",
+                                  "params": "Q0FJJTNE"
+                                }
+                              }
+                            }
+                          }
+                        ],
+                        "playlistId": "RDATpYv5NV6Rdv1a3I",
+                        "isInfinite": false,
+                        "continuations": [
+                          {
+                            "nextRadioContinuationData": {
+                              "continuation": "CBkSjQESCzQ3ZHRGWjhDRm84IhJSREFUcFl2NU5WNlJkdjFhM0kyUmdnVTRRMmhLVTFKRlJsVmpSbXd5VGxVMVYwNXNTbXRrYWtab1RUQnJXVU41U1U1RFoyUlJZak5DTVdKSFJubEhaMHBzWW1jbE0wUWxNMFElM0Q4GNABAfoBEEM3MTVGNkQxRkIyMDREMEEYCg%3D%3D"
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}
