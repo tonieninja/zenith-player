@@ -90,7 +90,7 @@ export function CollectionDialog({
             maxLength={120}
             onChange={(e) => setFolder(e.target.value)}
           />
-          <button type="submit" className="np-cancel-btn" disabled={!name.trim()}>
+          <button type="submit" className="np-create-btn" disabled={!name.trim()}>
             {t.libSave}
           </button>
         </form>
@@ -138,7 +138,7 @@ export function TagsDialog({
     <ModalOverlay onClick={onClose} onEscape={onClose} testId="tags-dialog">
       <div className="glass-modal-container lib-dialog" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
-          <h2>{t.libTagsFor.replace('{title}', track.title)}</h2>
+          <h2 title={track.title}>{t.libTagsFor.replace('{title}', track.title)}</h2>
           <button
             type="button"
             className="modal-close-icon"
@@ -188,7 +188,7 @@ export function TagsDialog({
                 ))}
             </div>
           )}
-          <button type="button" className="np-cancel-btn" onClick={save}>
+          <button type="button" className="np-create-btn" onClick={save}>
             {t.libSave}
           </button>
         </div>

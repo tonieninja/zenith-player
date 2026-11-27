@@ -3386,9 +3386,14 @@ button.modal-close-icon {
   transition: all 0.2s var(--ease-standard);
 }
 
-.np-cancel-btn:hover {
+.np-cancel-btn:hover:not(:disabled) {
   background: rgba(255, 255, 255, 0.1);
   color: var(--text-primary);
+}
+
+.np-cancel-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .np-create-btn {
@@ -6254,6 +6259,16 @@ html.window-occluded *::after {
 
 .lib-dialog {
   width: 420px;
+}
+
+/* Tytuł z „feat.” i nawiasami łamał nagłówek „Tagi: …” na cztery linie. */
+.lib-dialog .modal-header h2 {
+  min-width: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
 }
 
 .lib-form {
