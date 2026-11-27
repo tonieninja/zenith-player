@@ -445,6 +445,8 @@ export default function App() {
   const [homeChips, setHomeChips] = useState<HomeChip[]>([]);
   const [homeHasMore, setHomeHasMore] = useState(false);
   const [homeMoreTick, setHomeMoreTick] = useState(0);
+  // bez wskaźnika pod listą koniec Głównej offline wygląda jak koniec treści
+  const [homeMore, setHomeMore] = useState<'idle' | 'loading' | 'error'>('idle');
   const [hiddenShelves, setHiddenShelves] = useState(loadHiddenShelves);
   const [activeMood, setActiveMood] = useState<string | null>(null);
   const [browseTitle, setBrowseTitle] = useState<string | null>(null);
@@ -1008,7 +1010,8 @@ ${language}`;
         setPrefetchComplete(true);
         return;
       }
-      covers.forEach((p) => p.finally(() => setPrefetchDone((prev) => prev + 1)));
+      const bump = () => setPrefetchDone((prev) => prev + 1);
+      covers.forEach((p) => p.then(bump, bump));
       Promise.allSettled(covers).then(() => {
         if (mountedRef.current) setPrefetchComplete(true);
       });
@@ -1034,6 +1037,55 @@ ${language}`;
     },
     [startBackgroundPrefetch]
   );
+
+  const homeMoreBusyRef = useRef(false);
+  const homeMoreFailsRef = useRef(0);
+  const loadHomeNext = useCallback(() => {
+    if (homeMoreBusyRef.current) return;
+    homeMoreBusyRef.current = true;
+    setHomeMore('loading');
+    getHomeNextPage(lang)
+      .then((page) => {
+        homeMoreFailsRef.current = 0;
+        if (page.key !== homeKeyRef.current) return;
+        if (page.quickPicks.length) {
+          const stale = quickFromCacheRef.current;
+          quickFromCacheRef.current = false;
+          const box = document.querySelector<HTMLElement>('.content-area .sections-container');
+          const scroller = box?.closest<HTMLElement>('.content-scrollable');
+          const before = box?.getBoundingClientRect().top ?? 0;
+          flushSync(() =>
+            setQuickPicks((prev) => (prev.length && !stale ? prev : page.quickPicks))
+          );
+          // wiersz wstawiony nad widokiem; Chromium sam trzyma treść w miejscu, WebKit nie ma zakotwiczenia
+          const shift = (box?.getBoundingClientRect().top ?? 0) - before;
+          if (scroller && shift && before < scroller.getBoundingClientRect().top) {
+            scroller.scrollBy(0, shift);
+          }
+        }
+        if (page.sections.length) {
+          setHomeSections((cur) => upsertSections(cur, stableOrderSections(page.sections)));
+        }
+        setHomeHasMore(page.more);
+      })
+      .then(
+        () => {
+          homeMoreBusyRef.current = false;
+          setHomeMore('idle');
+          setHomeMoreTick((n) => n + 1);
+        },
+        () => {
+          homeMoreBusyRef.current = false;
+          setHomeMore('error');
+          const fails = ++homeMoreFailsRef.current;
+          // obserwator ponowiłby od razu, a sieci po błędzie zwykle trzeba chwili
+          window.setTimeout(
+            () => setHomeMoreTick((n) => n + 1),
+            Math.min(30_000, 1000 * 2 ** fails)
+          );
+        }
+      );
+  }, [lang]);
 
   const loadHome = useCallback(
     (language: Language = lang, navigate = true) => {
@@ -1074,6 +1126,9 @@ ${language}`;
           if (feed.quickPicks.length || !quickFromCacheRef.current) {
             quickFromCacheRef.current = false;
             setQuickPicks((prev) => (feed.quickPicks.length || fresh ? feed.quickPicks : prev));
+          } else if (feed.more) {
+            // Szybki wybór gościa przychodzi z kontynuacją, a wysoki wiersz z migawki odsuwa strażnika z widoku
+            loadHomeNext();
           }
           setHomeChips(feed.chips);
           setHomeHasMore(feed.more);
@@ -1098,54 +1153,9 @@ ${language}`;
       startBackgroundPrefetch,
       showCachedHome,
       homeEmptyRef,
+      loadHomeNext,
     ]
   );
-
-  const homeMoreBusyRef = useRef(false);
-  const homeMoreFailsRef = useRef(0);
-  const loadHomeNext = useCallback(() => {
-    if (homeMoreBusyRef.current) return;
-    homeMoreBusyRef.current = true;
-    getHomeNextPage(lang)
-      .then((page) => {
-        homeMoreFailsRef.current = 0;
-        if (page.key !== homeKeyRef.current) return;
-        if (page.quickPicks.length) {
-          const stale = quickFromCacheRef.current;
-          quickFromCacheRef.current = false;
-          const box = document.querySelector<HTMLElement>('.content-area .sections-container');
-          const scroller = box?.closest<HTMLElement>('.content-scrollable');
-          const before = box?.getBoundingClientRect().top ?? 0;
-          flushSync(() =>
-            setQuickPicks((prev) => (prev.length && !stale ? prev : page.quickPicks))
-          );
-          // wiersz wstawiony nad widokiem; Chromium sam trzyma treść w miejscu, WebKit nie ma zakotwiczenia
-          const shift = (box?.getBoundingClientRect().top ?? 0) - before;
-          if (scroller && shift && before < scroller.getBoundingClientRect().top) {
-            scroller.scrollBy(0, shift);
-          }
-        }
-        if (page.sections.length) {
-          setHomeSections((cur) => upsertSections(cur, stableOrderSections(page.sections)));
-        }
-        setHomeHasMore(page.more);
-      })
-      .then(
-        () => {
-          homeMoreBusyRef.current = false;
-          setHomeMoreTick((n) => n + 1);
-        },
-        () => {
-          homeMoreBusyRef.current = false;
-          const fails = ++homeMoreFailsRef.current;
-          // obserwator ponowiłby od razu, a sieci po błędzie zwykle trzeba chwili
-          window.setTimeout(
-            () => setHomeMoreTick((n) => n + 1),
-            Math.min(30_000, 1000 * 2 ** fails)
-          );
-        }
-      );
-  }, [lang]);
 
   const changeLanguage = useCallback(
     (newLang: Language) => {
@@ -1182,7 +1192,8 @@ ${language}`;
     saveHomeSnapshot({
       key: homeKeyRef.current,
       sections: homeSections,
-      quickPicks,
+      // stare picks z migawki pod świeżym kluczem żyłyby bez końca, gdy kontynuacja nie dojdzie
+      quickPicks: quickFromCacheRef.current ? [] : quickPicks,
       chips: homeChips,
     });
   }, [homeSections, quickPicks, homeChips]);
@@ -1695,6 +1706,10 @@ ${lang}`
     clearAuthCache();
     clearCaches();
     streamCacheRef.current.clear();
+    // bez tego pusta Główna po wylogowaniu offline nie wczytałaby się po powrocie sieci
+    homeKeyRef.current = '';
+    setHomeChips([]);
+    setHomeHasMore(false);
     setSections([]);
     setHomeSections([]);
     setExploreSections([]);
@@ -6447,7 +6462,28 @@ ${lang}`
                         <div className="sections-container">
                           {sectionRows}
                           {activeTab === 'home' && homeHasMore && (
-                            <LoadMoreSentinel onVisible={loadHomeNext} tick={homeMoreTick} />
+                            <>
+                              <LoadMoreSentinel onVisible={loadHomeNext} tick={homeMoreTick} />
+                              <div className="feed-load-more" role="status">
+                                {homeMore === 'loading' ? (
+                                  <Loader2
+                                    size={24}
+                                    className="spin-icon"
+                                    aria-label={t.loadingMore}
+                                  />
+                                ) : (
+                                  homeMore === 'error' && (
+                                    <button
+                                      type="button"
+                                      className="primary-action-btn"
+                                      onClick={loadHomeNext}
+                                    >
+                                      {t.retry}
+                                    </button>
+                                  )
+                                )}
+                              </div>
+                            </>
                           )}
                         </div>
                       )
