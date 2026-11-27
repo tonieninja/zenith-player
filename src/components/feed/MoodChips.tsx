@@ -7,6 +7,7 @@ import { moodLabel } from '../../i18n/plugins';
 export const MoodChips = memo(function MoodChips({
   chips,
   activeCategory,
+  activeTitle,
   onCategoryClick,
   onMore,
   lang,
@@ -14,6 +15,7 @@ export const MoodChips = memo(function MoodChips({
 }: {
   chips: HomeChip[];
   activeCategory: string | null;
+  activeTitle?: string | null;
   onCategoryClick: (id: string, browseId: string, title?: string) => void;
   onMore: () => void;
   lang: Language;
@@ -31,6 +33,7 @@ export const MoodChips = memo(function MoodChips({
           })),
     [chips, lang, t]
   );
+  // „Relax” i kafel „Chill” otwierają tę samą kategorię, ale podświetlony chip z inną nazwą myli
   return (
     <div className="mood-chips-container">
       <div className="mood-chips-scroll">
@@ -38,7 +41,7 @@ export const MoodChips = memo(function MoodChips({
           <button
             key={chip.id}
             type="button"
-            className={`mood-chip ${activeCategory === chip.id ? 'active' : ''}`}
+            className={`mood-chip ${activeCategory === chip.id && (!activeTitle || activeTitle === chip.title) ? 'active' : ''}`}
             onClick={() => onCategoryClick(chip.id, chip.browseId, chip.title)}
           >
             <span className="mood-chip-label">{chip.title}</span>

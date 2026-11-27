@@ -1244,9 +1244,10 @@ ${lang}`
       setFeedTabLoading('mood', true);
       navigateTo('mood');
       setSearchQuery('');
-      setBrowseTitle(null);
+      setBrowseTitle(title ?? null);
       setBrowseEmptyKind(null);
       setActiveMood(categoryId);
+      setSections([]);
       const safety = window.setTimeout(() => setFeedTabLoading('mood', false), 8000);
       getMoodPage(browseId, title, language)
         .then((data) => {
@@ -1415,9 +1416,9 @@ ${lang}`
   }, [navigateTo, savedTracks.length, setFeedTabLoading, t.favs, lang, accountLikes.length]);
 
   const openMoodById = useCallback(
-    (categoryId: string) => {
+    (categoryId: string, title?: string) => {
       const browseId = moodBrowseIdFor(categoryId) ?? moodBrowseIdFor('focus');
-      if (browseId) loadMood(categoryId, browseId);
+      if (browseId) loadMood(categoryId, browseId, title);
     },
     [loadMood]
   );
@@ -6277,8 +6278,9 @@ ${lang}`
                                 cover: '',
                               });
                             }
-                          } else if (activeTab === 'mood' && activeMood) openMoodById(activeMood);
-                          else loadHome(lang);
+                          } else if (activeTab === 'mood' && activeMood) {
+                            openMoodById(activeMood, browseTitle ?? undefined);
+                          } else loadHome(lang);
                         }}
                       >
                         {t.retry}
@@ -6294,12 +6296,19 @@ ${lang}`
                       <MoodChips
                         chips={homeChips}
                         activeCategory={activeMood}
+                        activeTitle={browseTitle}
                         onCategoryClick={loadMood}
                         onMore={openMoodsGenres}
                         lang={lang}
                         t={t}
                       />
                     )}
+                    {activeTab === 'mood' &&
+                      browseTitle &&
+                      !isBrowseMood(activeMood) &&
+                      activeMood !== FAVORITES_ID && (
+                        <h2 className="moods-genres-heading">{browseTitle}</h2>
+                      )}
                     {activeTab === 'mood' &&
                       browseTitle &&
                       !artistHeader &&
