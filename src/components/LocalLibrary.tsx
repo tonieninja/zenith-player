@@ -53,7 +53,7 @@ export function CollectionDialog({
       .then((id) => onDone(id, name.trim()))
       .catch((e) => pushToast(String(e), 'error'));
   return (
-    <ModalOverlay onClick={onClose} testId="collection-dialog">
+    <ModalOverlay onClick={onClose} onEscape={onClose} testId="collection-dialog">
       <div className="glass-modal-container lib-dialog" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <h2>{initial ? t.libRenameCollection : t.libNewCollection}</h2>
@@ -133,7 +133,7 @@ export function TagsDialog({
       })
       .catch((e) => pushToast(String(e), 'error'));
   return (
-    <ModalOverlay onClick={onClose} testId="tags-dialog">
+    <ModalOverlay onClick={onClose} onEscape={onClose} testId="tags-dialog">
       <div className="glass-modal-container lib-dialog" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <h2>{t.libTagsFor.replace('{title}', track.title)}</h2>
@@ -246,6 +246,7 @@ export function LocalLibrary({
     <ModalOverlay
       // okna tagów i kolekcji są portalem w tym drzewie, więc ich tło też by tu trafiało
       onClick={(e) => e.target === e.currentTarget && onClose()}
+      onEscape={onClose}
       testId="local-library"
     >
       <div className="glass-modal-container local-lib" onClick={(e) => e.stopPropagation()}>

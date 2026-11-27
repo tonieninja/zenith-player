@@ -1,11 +1,24 @@
 import { useEffect, useId, useRef } from 'react';
 import type { MouseEvent, ReactNode } from 'react';
 import { createPortal } from 'react-dom';
+import { useLatest } from '../../hooks/useLatest';
 
 const FOCUSABLE =
   'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
-const stack: HTMLElement[] = [];
+// każde okno odkłada ref swojego onEscape; ref jest unikalny, więc służy też za klucz w stosie
+const stack: { current?: () => void }[] = [];
+
+/** Escape w App łapie klawisz pierwszy (capture), więc to on pyta wierzchnie okno, czy samo się zamknie. */
+export function escapeTopModal(): boolean {
+  const close = stack[stack.length - 1]?.current;
+  close?.();
+  return Boolean(close);
+}
+
+export function modalOpen(): boolean {
+  return stack.length > 0;
+}
 
 function focusables(root: HTMLElement): HTMLElement[] {
   return Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE)).filter(
@@ -16,21 +29,24 @@ function focusables(root: HTMLElement): HTMLElement[] {
 export function ModalOverlay({
   children,
   onClick,
+  onEscape,
   className = '',
   testId = 'global-modal-overlay',
 }: {
   children: ReactNode;
   onClick?: (e: MouseEvent<HTMLDivElement>) => void;
+  onEscape?: () => void;
   className?: string;
   testId?: string;
 }) {
   const ref = useRef<HTMLDivElement | null>(null);
   const titleId = useId();
+  const escape = useLatest(onEscape);
 
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    stack.push(el);
+    stack.push(escape);
     const heading = el.querySelector('h1, h2, h3');
     if (heading) {
       if (!heading.id) heading.id = titleId;
@@ -44,7 +60,7 @@ export function ModalOverlay({
       (focusables(el)[0] ?? el).focus();
     }, 0);
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Tab' || e.defaultPrevented || stack[stack.length - 1] !== el) return;
+      if (e.key !== 'Tab' || e.defaultPrevented || stack[stack.length - 1] !== escape) return;
       const list = focusables(el);
       if (!list.length) return;
       const first = list[0];
@@ -59,12 +75,12 @@ export function ModalOverlay({
     return () => {
       window.clearTimeout(timer);
       document.removeEventListener('keydown', onKey);
-      stack.splice(stack.indexOf(el), 1);
+      stack.splice(stack.indexOf(escape), 1);
       // nie zabieramy fokusu, jeśli w tym samym renderze dostał go już inny element (np. autoFocus)
       const lost = document.activeElement === document.body || el.contains(document.activeElement);
       if (lost && before?.isConnected && before !== document.body) before.focus();
     };
-  }, [titleId]);
+  }, [titleId, escape]);
 
   return createPortal(
     <div

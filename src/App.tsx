@@ -140,7 +140,7 @@ import {
 import { useDebounce } from './hooks/useDebounce';
 import { useScrubBar } from './hooks/useScrubBar';
 import { PopoverMenu } from './components/ui/PopoverMenu';
-import { ModalOverlay } from './components/ui/ModalOverlay';
+import { ModalOverlay, escapeTopModal, modalOpen } from './components/ui/ModalOverlay';
 import { clickOnKey, sliderKeyValue } from './components/ui/keyboard';
 import { YtmRatingButtons } from './components/player/YtmRatingButtons';
 import {
@@ -4100,6 +4100,11 @@ export default function App() {
       if (e.key === 'Escape') {
         if (document.querySelector('.zen-select.open')) return;
         if (typing && (e.target as HTMLInputElement | null)?.value) return;
+        if (escapeTopModal()) {
+          e.preventDefault();
+          e.stopPropagation();
+          return;
+        }
         const open = overlayStackRef.current;
         if (open.np) setNpOpen(false);
         else if (open.plEdit) setPlEdit(null);
@@ -4117,7 +4122,7 @@ export default function App() {
       const slash = e.key === '/' && !e.ctrlKey && !e.metaKey && !e.altKey && !typing;
       if (findCombo || slash) {
         const open = overlayStackRef.current;
-        if (open.np || open.plugins || open.settings) return;
+        if (open.np || open.plugins || open.settings || modalOpen()) return;
         e.preventDefault();
         const input = searchInputRef.current;
         if (input) {

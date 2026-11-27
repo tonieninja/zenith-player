@@ -1,7 +1,7 @@
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { describe, expect, it } from 'vitest';
-import { ModalOverlay } from '../components/ui/ModalOverlay';
+import { describe, expect, it, vi } from 'vitest';
+import { ModalOverlay, escapeTopModal, modalOpen } from '../components/ui/ModalOverlay';
 
 describe('ModalOverlay', () => {
   it('renders on document.body so overflow:clip ancestors cannot hide it', () => {
@@ -59,5 +59,41 @@ describe('ModalOverlay', () => {
     expect(document.activeElement).toBe(opener);
     host.remove();
     opener.remove();
+  });
+
+  it('Escape closes only the top dialog, and only if it handles Escape itself', () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    const outer = vi.fn();
+    const inner = vi.fn();
+    const render = (withInner: boolean, innerEscape?: () => void) =>
+      act(() => {
+        root.render(
+          <ModalOverlay onEscape={outer}>
+            <button type="button">lib</button>
+            {withInner && (
+              <ModalOverlay onEscape={innerEscape}>
+                <button type="button">tags</button>
+              </ModalOverlay>
+            )}
+          </ModalOverlay>
+        );
+      });
+    expect(modalOpen()).toBe(false);
+    render(false);
+    render(true, inner);
+    expect(modalOpen()).toBe(true);
+    expect(escapeTopModal()).toBe(true);
+    expect(inner).toHaveBeenCalledTimes(1);
+    expect(outer).not.toHaveBeenCalled();
+    render(false);
+    expect(escapeTopModal()).toBe(true);
+    expect(outer).toHaveBeenCalledTimes(1);
+    render(true);
+    expect(escapeTopModal()).toBe(false);
+    act(() => root.unmount());
+    expect(modalOpen()).toBe(false);
+    host.remove();
   });
 });

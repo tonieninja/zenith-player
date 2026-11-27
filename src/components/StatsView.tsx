@@ -137,7 +137,7 @@ export function StatsView({
   const weekdays = t.statsWeekdays.split(',');
 
   return (
-    <ModalOverlay onClick={onClose} testId="stats-view">
+    <ModalOverlay onClick={onClose} onEscape={onClose} testId="stats-view">
       <div className="glass-modal-container stats-modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <h2>{t.statsTitle}</h2>
