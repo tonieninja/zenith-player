@@ -363,11 +363,11 @@ export function LocalLibrary({
               {current && (
                 <button
                   type="button"
-                  className="np-cancel-btn"
+                  className={'np-cancel-btn' + (armedDelete === current.id ? ' is-armed' : '')}
                   aria-label={
                     armedDelete === current.id ? t.libDeleteConfirm : t.libDeleteCollection
                   }
-                  title={t.libDeleteCollection}
+                  title={armedDelete === current.id ? t.libDeleteConfirm : t.libDeleteCollection}
                   onClick={() => {
                     if (armedDelete !== current.id) return setArmedDelete(current.id);
                     setArmedDelete(null);
@@ -380,7 +380,7 @@ export function LocalLibrary({
                     );
                   }}
                 >
-                  {armedDelete === current.id ? t.libDeleteConfirm : <Trash2 size={16} />}
+                  <Trash2 size={16} />
                 </button>
               )}
             </div>

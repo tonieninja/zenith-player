@@ -10,7 +10,8 @@ export function isPrimaryButton(button: number | undefined): boolean {
 }
 
 export function ctxTrackAttr(
-  item: Pick<Track, 'id' | 'title' | 'artist' | 'cover'> & { type?: Track['type'] }
+  item: Pick<Track, 'id' | 'title' | 'artist' | 'cover'> &
+    Partial<Pick<Track, 'type' | 'artistId' | 'albumId' | 'album' | 'durationSec'>>
 ): string | undefined {
   if (!isVideoTrackId(item.id)) return undefined;
   if (item.type && item.type !== 'track') return undefined;
@@ -20,8 +21,14 @@ export function ctxTrackAttr(
     title: item.title,
     artist: item.artist,
     cover: item.cover,
+    artistId: item.artistId,
+    albumId: item.albumId,
+    album: item.album,
+    durationSec: item.durationSec,
   });
 }
+
+const optString = (v: unknown) => (typeof v === 'string' && v ? v : undefined);
 
 export function parseCtxTrackAttr(raw: string | undefined | null): Track | null {
   if (!raw) return null;
@@ -41,6 +48,10 @@ export function parseCtxTrackAttr(raw: string | undefined | null): Track | null 
         title: typeof track.title === 'string' ? track.title : '',
         artist: typeof track.artist === 'string' ? track.artist : '',
         cover: typeof track.cover === 'string' ? track.cover : '',
+        artistId: optString(track.artistId),
+        albumId: optString(track.albumId),
+        album: optString(track.album),
+        durationSec: typeof track.durationSec === 'number' ? track.durationSec : undefined,
       };
     }
   } catch {
@@ -49,6 +60,11 @@ export function parseCtxTrackAttr(raw: string | undefined | null): Track | null 
     }
   }
   return null;
+}
+
+// miniatura w wierszu działa jak przycisk odtwarzania, a reszta wiersza otwiera stronę albumu lub playlisty
+export function hitsPlayIcon(e: { target: EventTarget | null }): boolean {
+  return !!(e.target as Element | null)?.closest?.('.search-result-play-icon');
 }
 
 export const BROWSE_MOOD_PREFIX = 'browse:';
@@ -86,12 +102,20 @@ export function sidebarClickPlan(track: Pick<Track, 'id' | 'type'>): { kind: Ite
   return itemClickPlan(track);
 }
 
-export function itemClickPlan(track: Pick<Track, 'id' | 'type'>): { kind: ItemClickKind } {
-  if (track.type === 'artist' || track.type === 'profile' || track.type === 'album') {
-    return { kind: 'browse-page' };
-  }
-  if (track.type === 'playlist' || track.type === 'podcast') {
-    return { kind: 'play-collection' };
+// radio od utworu lub wykonawcy (RDAMVM, RDEM…) to sama kolejka bez strony; mieszanki RDTMAK i RDCLAK ją mają
+export function hasCollectionPage(id: string): boolean {
+  const plain = toPlainPlaylistId(id);
+  return !plain.startsWith('RD') || /^RD(CLAK|TMAK)/.test(plain);
+}
+
+// klik otwiera stronę kolekcji jak w YouTube Music, a przycisk odtwarzania (play) gra ją od razu
+export function itemClickPlan(
+  track: Pick<Track, 'id' | 'type'>,
+  play = false
+): { kind: ItemClickKind } {
+  if (track.type === 'artist' || track.type === 'profile') return { kind: 'browse-page' };
+  if (track.type === 'album' || track.type === 'playlist' || track.type === 'podcast') {
+    return { kind: play || !hasCollectionPage(track.id) ? 'play-collection' : 'browse-page' };
   }
   if (track.type === 'track' || /^[\w-]{11}$/.test(track.id)) return { kind: 'play-track' };
   return { kind: 'play-collection' };

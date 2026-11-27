@@ -12,6 +12,7 @@ import {
   useCallback,
   useEffect,
   useEffectEvent,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -121,6 +122,7 @@ import {
   itemClickPlan,
   sidebarClickPlan,
   ctxTrackAttr,
+  hitsPlayIcon,
   parseCtxTrackAttr,
   withCollectionMeta,
   isVideoTrackId,
@@ -145,7 +147,7 @@ import {
 } from './constants/playback';
 import { useDebounce } from './hooks/useDebounce';
 import { useScrubBar } from './hooks/useScrubBar';
-import { PopoverMenu } from './components/ui/PopoverMenu';
+import { contextMenuCoords, menuKeyIndex, PopoverMenu } from './components/ui/PopoverMenu';
 import { ModalOverlay, escapeTopModal, modalOpen } from './components/ui/ModalOverlay';
 import { clickOnKey, sliderKeyValue } from './components/ui/keyboard';
 import { YtmRatingButtons } from './components/player/YtmRatingButtons';
@@ -2544,12 +2546,12 @@ ${lang}`
   );
 
   const handleItemClick = useCallback(
-    async (track: Track, sectionTitle?: string, sectionItems?: Track[]) => {
-      const plan = itemClickPlan(track);
+    async (track: Track, sectionTitle?: string, sectionItems?: Track[], play = false) => {
+      const plan = itemClickPlan(track, play);
       if (plan.kind === 'browse-page') {
-        // rustowy parser karuzel nie zna strony albumu i zrobiłby z niej sekcję z jednym utworem
-        if (track.type === 'album') void openCollectionPage(track);
-        else openBrowsePage(track);
+        // parser karuzel nie zna strony albumu ani playlisty i zrobiłby z niej sekcję z jednym utworem
+        if (track.type === 'artist' || track.type === 'profile') openBrowsePage(track);
+        else void openCollectionPage(track);
         return;
       }
       if (plan.kind === 'play-collection') {
@@ -2592,24 +2594,24 @@ ${lang}`
     [openPlayer, loadTrack, handleCollectionClick, openBrowsePage, openCollectionPage]
   );
 
-  const playArtist = useCallback(
-    (mode: ArtistPlayMode) => {
-      const h = artistPage?.header;
-      if (!artistPage || !h) return;
-      const sourceId = artistPage.id;
+  const playArtistFrom = useCallback(
+    (page: ArtistPageState, pageSections: Section[], mode: ArtistPlayMode) => {
+      const h = page.header;
+      if (!h) return;
+      const sourceId = page.id;
       if (mode === 'radio' && h.radioId) {
-        void handleCollectionClick(artistSongsTrack(artistPage, h.radioId), { sourceId });
+        void handleCollectionClick(artistSongsTrack(page, h.radioId), { sourceId });
         return;
       }
       if (h.songsId) {
-        void handleCollectionClick(artistSongsTrack(artistPage, h.songsId), {
+        void handleCollectionClick(artistSongsTrack(page, h.songsId), {
           sourceId,
           shuffle: mode === 'shuffle',
         });
         return;
       }
       // wykonawca z kilkoma utworami nie ma listy „Pokaż wszystkie”, zostają najpopularniejsze
-      const top = sections.find((s) => s.title === h.songsTitle)?.items ?? [];
+      const top = pageSections.find((s) => s.title === h.songsTitle)?.items ?? [];
       const list = mode === 'shuffle' ? smartShuffle(top) : top;
       if (!list.length) return;
       // ostatnio otwarty album o tej samej nazwie włączyłby tryb albumu dla przypadkowych utworów
@@ -2620,7 +2622,24 @@ ${lang}`
         originalQueueRef.current = top;
       }
     },
-    [artistPage, sections, handleCollectionClick, handleItemClick]
+    [handleCollectionClick, handleItemClick]
+  );
+  const playArtist = useCallback(
+    (mode: ArtistPlayMode) => {
+      if (artistPage) playArtistFrom(artistPage, sections, mode);
+    },
+    [artistPage, sections, playArtistFrom]
+  );
+  // najlepszy wynik wyszukiwania gra wykonawcę bez wchodzenia na jego stronę, jak w YouTube Music
+  const playArtistItem = useCallback(
+    (avatar: Track, mode: ArtistPlayMode) => {
+      void getArtistPage(avatar.id, lang).then(
+        (page) =>
+          playArtistFrom({ id: avatar.id, avatar, header: page.header }, page.sections, mode),
+        () => pushToast(translations[lang].loadFailed, 'error')
+      );
+    },
+    [lang, playArtistFrom]
   );
 
   const showArtistSongs = useCallback(() => {
@@ -2846,23 +2865,27 @@ ${lang}`
   const ratingWantRef = useRef(new Map<string, TrackLikeStatus>());
   const ratingChainRef = useRef(new Map<string, Promise<unknown>>());
   const applyTrackRating = useCallback(
-    (next: TrackLikeStatus) => {
-      if (!currentTrack) return;
+    (next: TrackLikeStatus, picked?: Track) => {
+      const src = picked ?? currentTrack;
+      if (!src) return;
       const track: Track = {
-        id: currentTrack.id,
+        id: src.id,
         type: 'track',
-        title: currentTrack.title,
-        artist: currentTrack.artist,
-        cover: currentTrack.cover,
-        coverSmall: currentTrack.coverSmall,
-        coverLarge: currentTrack.coverLarge,
-        artistId: currentTrack.artistId,
-        albumId: currentTrack.albumId,
-        album: currentTrack.album,
+        title: src.title,
+        artist: src.artist,
+        cover: src.cover,
+        coverSmall: src.coverSmall,
+        coverLarge: src.coverLarge,
+        artistId: src.artistId,
+        albumId: src.albumId,
+        album: src.album,
       };
       const wasSaved = savedTracks.some((x) => x.id === track.id);
-      ratingReqRef.current += 1;
-      setTrackRatingState(next);
+      // stan serduszka w odtwarzaczu dotyczy tylko bieżącego utworu, nie tego z menu kontekstowego
+      if (track.id === currentTrack?.id) {
+        ratingReqRef.current += 1;
+        setTrackRatingState(next);
+      }
       void invoke('db_rate', {
         videoId: track.id,
         rating: next === 'LIKE' ? 1 : next === 'DISLIKE' ? -1 : 0,
@@ -4279,12 +4302,20 @@ ${lang}`
     settings: isSettingsOpen,
     lyricsSources: lyricsSourcesOpen,
     queue: queueOpen,
+    ctx: ctxMenu !== null,
   });
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const typing = isTypingEvent(e);
       if (e.key === 'Escape') {
         if (document.querySelector('.zen-select.open')) return;
+        // menu leży nad wszystkimi oknami, więc Escape zamyka najpierw je, a nie okno pod spodem
+        if (overlayStackRef.current.ctx) {
+          e.preventDefault();
+          e.stopPropagation();
+          setCtxMenu(null);
+          return;
+        }
         // pola w tych oknach nie obsługują Escape same, a nazwa kolekcji jest wypełniona od razu
         if (escapeTopModal()) {
           e.preventDefault();
@@ -4336,9 +4367,12 @@ ${lang}`
       const track = onCover ? currentTrackLatest.current : parseCtxTrackAttr(row?.dataset.ctxTrack);
       if (track) {
         e.stopPropagation();
-        const x = Math.min(e.clientX, window.innerWidth - 230);
-        const y = Math.min(e.clientY, window.innerHeight - 300);
-        setCtxMenu({ x, y, track, at: onCover && linkOn ? progressRef.current : undefined });
+        setCtxMenu({
+          x: e.clientX,
+          y: e.clientY,
+          track,
+          at: onCover && linkOn ? progressRef.current : undefined,
+        });
       } else {
         setCtxMenu(null);
       }
@@ -4357,6 +4391,37 @@ ${lang}`
       window.removeEventListener('auxclick', onAuxClick, true);
     };
   }, [currentTrackLatest]);
+
+  const ctxMenuRef = useRef<HTMLDivElement>(null);
+  // wysokość zależy od liczby kolekcji i playlist, więc pozycję liczymy po pomiarze, jeszcze przed malowaniem
+  useLayoutEffect(() => {
+    const el = ctxMenuRef.current;
+    if (!el || !ctxMenu) return;
+    el.style.left = '0px';
+    el.style.top = '0px';
+    const bar = document.querySelector('.player-bar')?.getBoundingClientRect();
+    const { left, top } = contextMenuCoords(
+      ctxMenu.x,
+      ctxMenu.y,
+      { width: el.offsetWidth, height: el.offsetHeight },
+      { width: window.innerWidth, bottom: bar?.height ? bar.top : window.innerHeight }
+    );
+    el.style.left = `${left}px`;
+    el.style.top = `${top}px`;
+  }, [ctxMenu, libCollections, userPlaylists]);
+  const ctxOpen = ctxMenu !== null;
+  const ctxLiked =
+    !!ctxMenu &&
+    (likedIdSet.has(ctxMenu.track.id) ||
+      (ctxMenu.track.id === currentTrack?.id && trackRating === 'LIKE'));
+  useEffect(() => {
+    if (!ctxOpen) return;
+    const opener = document.activeElement as HTMLElement | null;
+    ctxMenuRef.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
+    return () => {
+      if (opener?.isConnected) opener.focus();
+    };
+  }, [ctxOpen]);
 
   useEffect(() => {
     if (!pluginManager.isEnabled('duck-on-voice')) {
@@ -4401,30 +4466,41 @@ ${lang}`
     };
   }, [activeTab, refsTrackId, radioLangRef]);
 
-  const openTrackArtist = useCallback(async () => {
-    if (!currentTrack) return;
-    const refs: Pick<Track, 'artistId'> = currentRefs?.artistId
-      ? currentRefs
-      : refsTrackId
-        ? await getTrackRefs(refsTrackId, radioLangRef.current).catch(() => ({}))
-        : {};
-    if (!refs.artistId) return;
-    const name = currentTrack.artist.split(' • ')[0].split(/,| & /)[0].trim();
-    openBrowsePage({ id: refs.artistId, type: 'artist', title: name, artist: '', cover: '' });
-  }, [currentTrack, currentRefs, refsTrackId, openBrowsePage, radioLangRef]);
+  const openTrackArtist = useCallback(
+    async (picked?: Track) => {
+      const track = picked ?? currentTrack;
+      if (!track) return;
+      const known = picked ?? currentRefs;
+      const lookupId = picked ? picked.id : refsTrackId;
+      const refs: Pick<Track, 'artistId'> = known?.artistId
+        ? known
+        : lookupId
+          ? await getTrackRefs(lookupId, radioLangRef.current).catch(() => ({}))
+          : {};
+      if (!refs.artistId) return;
+      const name = track.artist.split(' • ')[0].split(/,| & /)[0].trim();
+      openBrowsePage({ id: refs.artistId, type: 'artist', title: name, artist: '', cover: '' });
+    },
+    [currentTrack, currentRefs, refsTrackId, openBrowsePage, radioLangRef]
+  );
 
-  const openTrackAlbum = useCallback(() => {
-    if (!currentTrack || !currentRefs?.albumId) return;
-    void openCollectionPage({
-      id: currentRefs.albumId,
-      type: 'album',
-      title: currentRefs.album || '',
-      artist: currentTrack.artist,
-      cover: currentTrack.cover,
-      coverSmall: currentTrack.coverSmall,
-      coverLarge: currentTrack.coverLarge,
-    });
-  }, [currentTrack, currentRefs, openCollectionPage]);
+  const openTrackAlbum = useCallback(
+    (picked?: Track) => {
+      const track = picked ?? currentTrack;
+      const refs = picked ?? currentRefs;
+      if (!track || !refs?.albumId) return;
+      void openCollectionPage({
+        id: refs.albumId,
+        type: 'album',
+        title: refs.album || '',
+        artist: track.artist,
+        cover: track.cover,
+        coverSmall: track.coverSmall,
+        coverLarge: track.coverLarge,
+      });
+    },
+    [currentTrack, currentRefs, openCollectionPage]
+  );
 
   // samo id z linku: radio zaczyna od tego utworu (dla teledysku od jego wersji audio), a dalej daje kolejkę
   const playLinkRef = useLatest(async (id: string) => {
@@ -4505,6 +4581,22 @@ ${lang}`
   const remoteEnabled = Boolean(pluginStates['remote-control']);
   const cycleLoopRef = useLatest(cycleLoop);
   const handleItemClickRef = useLatest(handleItemClick);
+  // pusta kolejka nie ma „po bieżącym”, więc utwór po prostu zaczyna grać; true znaczy, że trafił do kolejki
+  const insertTrack = useCallback(
+    (t: Track, next: boolean) => {
+      const q = queueRef.current;
+      if (!q.length || !currentTrackIdRef.current) {
+        void handleItemClickRef.current(t);
+        return false;
+      }
+      const at = next ? Math.min(q.length, queueIndexRef.current + 1) : q.length;
+      const nq = [...q.slice(0, at), t, ...q.slice(at)];
+      queueRef.current = nq;
+      setQueue(nq);
+      return true;
+    },
+    [queueRef, queueIndexRef, currentTrackIdRef, handleItemClickRef]
+  );
   const remoteSnapRef = useLatest<() => void>(() => {
     const q = queueRef.current;
     const idx = queueIndexRef.current;
@@ -4576,17 +4668,6 @@ ${lang}`
       coverSmall: r.cover,
       coverLarge: r.cover,
     });
-    const insertTrack = (t: Track, next: boolean) => {
-      const q = queueRef.current;
-      if (!q.length || !currentTrackIdRef.current) {
-        void handleItemClickRef.current(t);
-        return;
-      }
-      const at = next ? Math.min(q.length, queueIndexRef.current + 1) : q.length;
-      const nq = [...q.slice(0, at), t, ...q.slice(at)];
-      queueRef.current = nq;
-      setQueue(nq);
-    };
     const handler = (c: RemoteCommand) => {
       switch (c.cmd) {
         case 'toggle':
@@ -4693,6 +4774,7 @@ ${lang}`
     cycleLoopRef,
     durationRef,
     handleItemClickRef,
+    insertTrack,
     isPlayingRef,
     langRef,
     playNextRef,
@@ -5192,7 +5274,12 @@ ${lang}`
   // FeedHero jest w memo; lambda w JSX psułaby je przy każdym znaku wpisanym w wyszukiwarkę
   const playHomeHero = useCallback(() => {
     if (homeHeroTrack) {
-      void handleItemClick(homeHeroTrack, t.quickPicks, quickPicks.length ? quickPicks : undefined);
+      void handleItemClick(
+        homeHeroTrack,
+        t.quickPicks,
+        quickPicks.length ? quickPicks : undefined,
+        true
+      );
     }
   }, [homeHeroTrack, handleItemClick, t.quickPicks, quickPicks]);
 
@@ -5290,7 +5377,7 @@ ${lang}`
     (item: Track) => {
       if (item.type === 'artist' && item.id.startsWith('UC')) {
         void getArtistPage(item.id, lang).catch(() => undefined);
-      } else if (item.type === 'album' || itemClickPlan(item).kind === 'play-collection') {
+      } else if (itemClickPlan(item, true).kind === 'play-collection') {
         prefetchPlaylist(item.id, lang);
       }
     },
@@ -5935,7 +6022,7 @@ ${lang}`
                         <button
                           type="button"
                           className="player-view-album link-btn"
-                          onClick={openTrackAlbum}
+                          onClick={() => openTrackAlbum()}
                         >
                           {currentRefs.album}
                         </button>
@@ -6216,8 +6303,13 @@ ${lang}`
                                     key={item.id}
                                     data-ctx-track={ctxTrackAttr(item)}
                                     className={`search-result-row search-result-type-${item.type}`}
-                                    onClick={() =>
-                                      handleItemClick(item, section.title, section.items)
+                                    onClick={(e) =>
+                                      handleItemClick(
+                                        item,
+                                        section.title,
+                                        section.items,
+                                        hitsPlayIcon(e)
+                                      )
                                     }
                                   >
                                     <div className="search-result-cover-wrap">
@@ -6375,9 +6467,20 @@ ${lang}`
                     {activeTab === 'search' && heroTrack && (
                       <HeroSection
                         track={heroTrack}
-                        onPlay={() =>
+                        onOpen={() =>
                           handleItemClick(heroTrack, sections[0]?.title, sections[0]?.items)
                         }
+                        onPlay={(mode) =>
+                          heroTrack.type === 'artist'
+                            ? playArtistItem(heroTrack, mode)
+                            : handleItemClick(
+                                heroTrack,
+                                sections[0]?.title,
+                                sections[0]?.items,
+                                true
+                              )
+                        }
+                        onHover={prefetchItem}
                         t={t}
                       />
                     )}
@@ -6396,8 +6499,13 @@ ${lang}`
                                 key={item.id}
                                 data-ctx-track={ctxTrackAttr(item)}
                                 className={`search-result-row search-result-type-${item.type}`}
-                                onClick={() =>
-                                  handleItemClick(item, ownerSection?.title, ownerSection?.items)
+                                onClick={(e) =>
+                                  handleItemClick(
+                                    item,
+                                    ownerSection?.title,
+                                    ownerSection?.items,
+                                    hitsPlayIcon(e)
+                                  )
                                 }
                               >
                                 <div className="search-result-cover-wrap">
@@ -7251,11 +7359,85 @@ ${lang}`
               onContextMenu={() => setCtxMenu(null)}
             />
             <div
+              ref={ctxMenuRef}
               className="ctx-menu"
-              style={{ left: ctxMenu.x, top: ctxMenu.y }}
               role="menu"
+              aria-label={ctxMenu.track.title || undefined}
               data-testid="track-ctx-menu"
+              onKeyDown={(e) => {
+                if (e.key === 'Tab') {
+                  e.preventDefault();
+                  setCtxMenu(null);
+                  return;
+                }
+                const items = Array.from(
+                  e.currentTarget.querySelectorAll<HTMLElement>('[role="menuitem"]')
+                );
+                const next = menuKeyIndex(
+                  e.key,
+                  items.indexOf(document.activeElement as HTMLElement),
+                  items.length
+                );
+                if (next === null) return;
+                e.preventDefault();
+                items[next]?.focus();
+              }}
             >
+              <button
+                role="menuitem"
+                onClick={() => {
+                  const track = ctxMenu.track;
+                  setCtxMenu(null);
+                  if (insertTrack(track, true))
+                    pushToast(t.ctxQueuedNext.replace('{title}', track.title), 'success', 2200);
+                }}
+              >
+                {t.ctxPlayNext}
+              </button>
+              <button
+                role="menuitem"
+                onClick={() => {
+                  const track = ctxMenu.track;
+                  setCtxMenu(null);
+                  if (insertTrack(track, false))
+                    pushToast(t.ctxQueued.replace('{title}', track.title), 'success', 2200);
+                }}
+              >
+                {t.ctxAddToQueue}
+              </button>
+              <button
+                role="menuitem"
+                onClick={() => {
+                  const track = ctxMenu.track;
+                  setCtxMenu(null);
+                  applyTrackRating(ctxLiked ? 'INDIFFERENT' : 'LIKE', track);
+                }}
+              >
+                {ctxLiked ? t.ctxRemoveFav : t.save}
+              </button>
+              <button
+                role="menuitem"
+                onClick={() => {
+                  const track = ctxMenu.track;
+                  setCtxMenu(null);
+                  void openTrackArtist(track);
+                }}
+              >
+                {t.ctxGoToArtist}
+              </button>
+              {ctxMenu.track.albumId && (
+                <button
+                  role="menuitem"
+                  onClick={() => {
+                    const track = ctxMenu.track;
+                    setCtxMenu(null);
+                    openTrackAlbum(track);
+                  }}
+                >
+                  {t.ctxGoToAlbum}
+                </button>
+              )}
+              <div className="ctx-menu-sep" role="separator" />
               {ctxMenu.at !== undefined &&
                 [undefined, ctxMenu.at].map((sec) => (
                   <button

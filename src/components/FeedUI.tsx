@@ -225,7 +225,7 @@ const ExploreTrendingShelf = memo(function ExploreTrendingShelf({
 
 type ExploreProps = {
   sections: Section[];
-  onItemClick: (t: Track, st?: string, si?: Track[]) => void;
+  onItemClick: (t: Track, st?: string, si?: Track[], play?: boolean) => void;
   onNavigateMoods: () => void;
   t: Record<string, string>;
   lang: Language;
@@ -265,7 +265,7 @@ export const ExploreView = memo(function ExploreView({
           track={heroTrack}
           eyebrow={t.featured}
           playLabel={t.play}
-          onPlay={() => onItemClick(heroTrack, sections[0].title, sections[0].items)}
+          onPlay={() => onItemClick(heroTrack, sections[0].title, sections[0].items, true)}
         />
       )}
       <div className="explore-top-nav">

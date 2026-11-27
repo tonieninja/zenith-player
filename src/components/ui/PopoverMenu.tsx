@@ -41,6 +41,29 @@ export function popoverMenuCoords(
   return { left, top: anchor.bottom + 6, minWidth, dropUp };
 }
 
+// null dla klawiszy, które nie przesuwają fokusu; strzałki zawijają się na końcach listy
+export function menuKeyIndex(key: string, current: number, count: number): number | null {
+  if (key !== 'ArrowDown' && key !== 'ArrowUp' && key !== 'Home' && key !== 'End') return null;
+  if (key === 'Home' || !count) return 0;
+  if (key === 'End' || (current < 0 && key === 'ArrowUp')) return count - 1;
+  return (current + (key === 'ArrowDown' ? 1 : -1) + count) % count;
+}
+
+// przy dolnej krawędzi menu otwiera się w górę od kursora, jak systemowe, i nie wchodzi na pasek odtwarzacza
+export function contextMenuCoords(
+  x: number,
+  y: number,
+  size: { width: number; height: number },
+  area: { width: number; bottom: number }
+): { left: number; top: number } {
+  const left = Math.max(8, Math.min(x, area.width - size.width - 8));
+  const top =
+    y + size.height + 8 <= area.bottom
+      ? y
+      : Math.max(8, Math.min(y - size.height, area.bottom - size.height - 8));
+  return { left, top };
+}
+
 export function PopoverMenu({
   trigger,
   items,
@@ -117,17 +140,10 @@ export function PopoverMenu({
   const onListKey = (e: ReactKeyboardEvent<HTMLUListElement>) => {
     const els = enabledItems(listRef.current);
     const i = els.indexOf(document.activeElement as HTMLElement);
-    if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Home' || e.key === 'End') {
+    const next = menuKeyIndex(e.key, i, els.length);
+    if (next !== null) {
       e.preventDefault();
-      if (!els.length) return;
-      const d = e.key === 'ArrowDown' ? 1 : -1;
-      const next =
-        e.key === 'Home'
-          ? 0
-          : e.key === 'End' || (i < 0 && d < 0)
-            ? els.length - 1
-            : (i + d + els.length) % els.length;
-      els[next].focus();
+      els[next]?.focus();
     } else if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
       els[i]?.click();
