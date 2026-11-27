@@ -1,4 +1,5 @@
 import { memo, useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { translations, type Language } from '../i18n';
 
@@ -109,9 +110,10 @@ function actionLabel(action: ToastAction, lang: Language): string {
 }
 
 // region aria-live stoi cały czas; dodany razem z pierwszym komunikatem czytniki ekranu często pomijają
+// portal do body, bo .zenith-app tworzy kontekst nakładania i modale z portalu przykrywały toasty
 export const ToastHost = memo(function ToastHost({ lang = 'en' }: { lang?: Language }) {
   const list = useToasts();
-  return (
+  return createPortal(
     <div className="toast-host" aria-live="polite">
       {list.map((t) => (
         <div
@@ -151,6 +153,7 @@ export const ToastHost = memo(function ToastHost({ lang = 'en' }: { lang?: Langu
           </button>
         </div>
       ))}
-    </div>
+    </div>,
+    document.body
   );
 });
