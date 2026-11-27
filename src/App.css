@@ -3407,6 +3407,14 @@ button.modal-close-icon {
   color: var(--text-primary);
 }
 
+/* kolor i dymek zamiast tekstu w przycisku, bo dłuższa etykieta zawijała pasek narzędzi w wąskim oknie */
+.np-cancel-btn.is-armed,
+.np-cancel-btn.is-armed:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.16);
+  border-color: rgba(239, 68, 68, 0.5);
+  color: #fca5a5;
+}
+
 .np-cancel-btn:disabled {
   opacity: 0.45;
   cursor: not-allowed;

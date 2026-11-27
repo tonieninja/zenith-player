@@ -606,7 +606,7 @@ const en = {
   libSortPlays: 'Most played',
   libSortRecent: 'Recently played',
   libDeleteCollection: 'Delete collection',
-  libDeleteConfirm: 'Delete?',
+  libDeleteConfirm: 'Click again to delete the collection',
   libLocalEmpty: 'Nothing here yet. Right-click a song to add it to a collection or tag it.',
   libEditTags: 'Edit tags',
   libRemoveFromCollection: 'Remove from collection',
@@ -1363,7 +1363,7 @@ const pl: Record<keyof typeof en, string> = {
   libSortPlays: 'Najczęściej grane',
   libSortRecent: 'Ostatnio grane',
   libDeleteCollection: 'Usuń kolekcję',
-  libDeleteConfirm: 'Usunąć?',
+  libDeleteConfirm: 'Kliknij jeszcze raz, aby usunąć kolekcję',
   libLocalEmpty:
     'Na razie pusto. Kliknij utwór prawym przyciskiem, żeby dodać go do kolekcji albo otagować.',
   libEditTags: 'Edytuj tagi',
