@@ -1695,12 +1695,26 @@ export function playlistContentRoot(data: any, browseId: string): any {
 
 export type PlaylistLoad = { items: Track[]; status: 'ok' | 'empty' | 'failed' };
 
-export async function getRadioTracks(
-  videoId: string,
-  lang: Language,
-  keepSeed = false
-): Promise<Track[]> {
-  if (!isYoutubeVideoId(videoId)) return [];
+/** Przełącznik strojenia radia nad „Następne” (Wszystko, Popularne…) z endpointem nowej kolejki. */
+export type RadioChip = { label: string; playlistId: string; params: string; selected: boolean };
+type RadioTune = Pick<RadioChip, 'playlistId' | 'params'>;
+
+export function parseRadioChips(data: unknown): RadioChip[] {
+  const chips = findRenderer(data, 'musicQueueRenderer')?.subHeaderChipCloud?.chipCloudRenderer
+    ?.chips;
+  if (!Array.isArray(chips)) return [];
+  return chips.flatMap((c: any) => {
+    const r = c?.chipCloudChipRenderer;
+    const ep = r?.navigationEndpoint?.queueUpdateCommand?.fetchContentsCommand?.watchEndpoint;
+    const label = runsText(r?.text);
+    if (!label || typeof ep?.playlistId !== 'string') return [];
+    return [
+      { label, playlistId: ep.playlistId, params: ep.params ?? '', selected: !!r.isSelected },
+    ];
+  });
+}
+
+async function fetchRadio(videoId: string, lang: Language, tune: RadioTune): Promise<unknown> {
   const response = await fetchWithTimeout(
     ytmUrl('next'),
     {
@@ -1709,18 +1723,39 @@ export async function getRadioTracks(
       body: JSON.stringify({
         ...buildClientContext(lang),
         videoId,
-        playlistId: `RDAMVM${videoId}`,
-        params: 'wAEB',
+        playlistId: tune.playlistId,
+        params: tune.params,
         enablePersistentPlaylistPanel: true,
         isAudioOnly: true,
       }),
     },
     15000
   );
-  if (!response.ok) return [];
-  return extractAllTracks(JSON.parse(await response.text()), translations[lang]).filter(
+  return response.ok ? JSON.parse(await response.text()) : null;
+}
+
+export async function getRadioTracks(
+  videoId: string,
+  lang: Language,
+  keepSeed = false,
+  tune: RadioTune = { playlistId: `RDAMVM${videoId}`, params: 'wAEB' }
+): Promise<Track[]> {
+  if (!isYoutubeVideoId(videoId)) return [];
+  const data = await fetchRadio(videoId, lang, tune);
+  if (!data) return [];
+  return extractAllTracks(data, translations[lang]).filter(
     (t) => t.type === 'track' && (keepSeed || t.id !== videoId)
   );
+}
+
+/** Przełączniki radia lub miksu w języku interfejsu; album i zwykła playlista ich nie mają. */
+export async function getRadioChips(
+  videoId: string,
+  playlistId: string,
+  lang: Language
+): Promise<RadioChip[]> {
+  if (!isYoutubeVideoId(videoId)) return [];
+  return parseRadioChips(await fetchRadio(videoId, lang, { playlistId, params: 'wAEB' }));
 }
 
 const refsCache = new Map<string, Pick<Track, 'artistId' | 'albumId' | 'album'>>();

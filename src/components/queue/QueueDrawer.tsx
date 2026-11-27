@@ -4,6 +4,7 @@ import { GripVertical, Trash2, X } from 'lucide-react';
 import type { Track } from '../../api/youtube';
 import { coverAttrs } from '../../utils/covers';
 import { useWindowedList } from '../../hooks/useWindowedList';
+import { RadioChips, type RadioState } from './RadioChips';
 
 type QueueDrawerProps = {
   open: boolean;
@@ -15,6 +16,8 @@ type QueueDrawerProps = {
   onRemoveTrack?: (index: number) => void;
   onClearQueue?: () => void;
   onReorder?: (from: number, to: number) => void;
+  radio?: RadioState | null;
+  onTuneRadio?: (index: number) => void;
 };
 
 type DragState = { from: number; over: number; pointerId: number; startY: number; moved: boolean };
@@ -29,6 +32,8 @@ export const QueueDrawer = memo(function QueueDrawer({
   onRemoveTrack,
   onClearQueue,
   onReorder,
+  radio = null,
+  onTuneRadio,
 }: QueueDrawerProps) {
   const listRef = useRef<HTMLDivElement | null>(null);
   const [drag, setDrag] = useState<DragState | null>(null);
@@ -168,6 +173,7 @@ export const QueueDrawer = memo(function QueueDrawer({
             </button>
           </div>
         </div>
+        {onTuneRadio && <RadioChips radio={radio} label={t.radioTune} onTune={onTuneRadio} />}
         {queue.length > 1 && onReorder && <p className="queue-drawer-hint">{t.queueDragHint}</p>}
         <div
           ref={setListRef}

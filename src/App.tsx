@@ -59,6 +59,8 @@ import {
   getUserPlaylists,
   getWatchRelated,
   getRadioTracks,
+  getRadioChips,
+  isGeneratedMixId,
   getHomeNextPage,
   homeFeedKey,
   type HomeChip,
@@ -116,6 +118,7 @@ import { UpNextItem } from './components/player/UpNextItem';
 import { CoverVideo } from './components/player/CoverVideo';
 import { WindowedList } from './components/ui/WindowedList';
 import { QueueDrawer } from './components/queue/QueueDrawer';
+import { RadioChips, type RadioState } from './components/queue/RadioChips';
 import { ToastHost, pushToast } from './components/Toast';
 import {
   browseIdFromMood,
@@ -281,6 +284,7 @@ import {
   pickPrevPosition,
   popPlayHistory,
   pushPlayHistory,
+  replaceUpcoming,
 } from './utils/playback';
 import { localizeLyricsReason } from './lyrics/reasons';
 import { enabledSources, lyricsSourcesKey, lyricsUpgrade, useLyricsPrefs } from './lyrics/prefs';
@@ -2460,6 +2464,59 @@ export default function App() {
   }, [adoptByIndexRef, queueRef]);
 
   const collectionReqRef = useRef(0);
+  // przełączniki należą do swojej kolejki; licznik odrzuca odpowiedź, która przyszła po jej zmianie
+  const [radio, setRadio] = useState<RadioState | null>(null);
+  const radioRef = useLatest(radio);
+  const radioGenRef = useRef(0);
+  const resetRadio = useCallback(() => {
+    ++radioGenRef.current;
+    setRadio(null);
+  }, []);
+  const loadRadioChips = useCallback(
+    (videoId: string, playlistId: string) => {
+      const gen = radioGenRef.current;
+      void getRadioChips(videoId, playlistId, langRef.current).then(
+        (chips) => {
+          if (!chips.length || gen !== radioGenRef.current) return;
+          const active = Math.max(
+            0,
+            chips.findIndex((c) => c.selected)
+          );
+          setRadio({ chips, active, busy: null, tuned: false });
+        },
+        () => undefined
+      );
+    },
+    [langRef]
+  );
+  const tuneRadio = useCallback(
+    (i: number) => {
+      const r = radioRef.current;
+      const chip = r?.chips[i];
+      const cur = queueRef.current[queueIndexRef.current];
+      if (!r || !chip || !cur || r.busy !== null || i === r.active) return;
+      const gen = radioGenRef.current;
+      setRadio({ ...r, busy: i });
+      void getRadioTracks(cur.id, langRef.current, false, chip)
+        .catch(() => [])
+        .then((list) => {
+          if (gen !== radioGenRef.current) return;
+          if (!list.length) {
+            setRadio((s) => s && { ...s, busy: null });
+            pushToast(translations[langRef.current].radioTuneFailed, 'error');
+            return;
+          }
+          // reszta miksu, która jeszcze się wczytuje, nie może dokleić się za dostrojonym radiem
+          ++collectionReqRef.current;
+          const next = replaceUpcoming(queueRef.current, queueIndexRef.current, list);
+          queueRef.current = next;
+          setQueue(next);
+          setRadio((s) => s && { ...s, active: i, busy: null, tuned: true });
+        });
+    },
+    [radioRef, queueRef, queueIndexRef, langRef]
+  );
+
   const handleCollectionClick = useCallback(
     async (collection: Track, opts?: { shuffle?: boolean; sourceId?: string }) => {
       if (toPlainPlaylistId(collection.id) === 'SE') {
@@ -2485,6 +2542,10 @@ export default function App() {
         originalQueueRef.current = opts?.shuffle ? itemsWithCover : null;
         setPlayingFrom(collection.title);
         playingFromIdRef.current = sourceId;
+        resetRadio();
+        if (isGeneratedMixId(collection.id) && list[0]) {
+          loadRadioChips(list[0].id, toPlainPlaylistId(collection.id));
+        }
         // lista utworów wykonawcy ma id OLAK5uy jak album, ale to składanka, więc bez gapless i z crossfade
         playingAlbumRef.current =
           !opts?.sourceId && (collection.type === 'album' || isAlbumCollectionId(collection.id));
@@ -2533,7 +2594,7 @@ export default function App() {
         window.clearTimeout(slowHint);
       }
     },
-    [lang, openPlayer, loadTrack, openCollectionPage, queueRef]
+    [lang, openPlayer, loadTrack, openCollectionPage, queueRef, resetRadio, loadRadioChips]
   );
 
   const handleItemClick = useCallback(
@@ -2551,6 +2612,7 @@ export default function App() {
       }
       // wybór użytkownika unieważnia playlistę, która jeszcze się wczytuje
       ++collectionReqRef.current;
+      resetRadio();
       openPlayer();
       const items = (sectionItems || []).filter(
         (i) => i.type === 'track' || /^[\w-]{11}$/.test(i.id)
@@ -2582,7 +2644,7 @@ export default function App() {
       playingAlbumRef.current = fromAlbum;
       await loadTrack(track);
     },
-    [openPlayer, loadTrack, handleCollectionClick, openBrowsePage, openCollectionPage]
+    [openPlayer, loadTrack, handleCollectionClick, openBrowsePage, openCollectionPage, resetRadio]
   );
 
   const playArtistFrom = useCallback(
@@ -2710,7 +2772,11 @@ export default function App() {
       if (!cur) return 0;
       const have = new Set(q.map((t) => t.id));
       const fresh = (list: Track[]) => list.filter((t) => t.type === 'track' && !have.has(t.id));
-      let more = fresh(await getRadioTracks(cur.id, radioLangRef.current).catch(() => []));
+      const r = radioRef.current;
+      const tune = r?.tuned ? r.chips[r.active] : undefined;
+      let more = fresh(
+        await getRadioTracks(cur.id, radioLangRef.current, false, tune).catch(() => [])
+      );
       if (more.length === 0) {
         const who = (cur.artist || '').split(' • ')[0];
         more = fresh(
@@ -2736,7 +2802,7 @@ export default function App() {
       radioBusyRef.current = null;
     });
     return job;
-  }, [queueIndexRef, queueRef, radioLangRef]);
+  }, [queueIndexRef, queueRef, radioLangRef, radioRef]);
   const extendRadioLatest = useLatest(extendQueueWithRadio);
   extendRadioRef.current = extendQueueWithRadio;
 
@@ -4500,7 +4566,11 @@ export default function App() {
     if (!pluginManager.isEnabled('zenith-links')) return;
     const list = await getRadioTracks(id, radioLangRef.current, true).catch(() => []);
     const seed = list.find((x) => x.id === id) ?? list[0];
-    if (seed) await handleItemClick(seed, undefined, list);
+    if (!seed) return;
+    // handleItemClick czyści przełączniki od razu, więc te ładowane po nim należą już do tego radia
+    const started = handleItemClick(seed, undefined, list);
+    loadRadioChips(seed.id, `RDAMVM${seed.id}`);
+    await started;
   });
 
   useEffect(() => {
@@ -6024,20 +6094,23 @@ export default function App() {
                         </button>
                       </div>
                       {panelTab === 'upnext' ? (
-                        <div className="up-next-list-full">
-                          {upNextTracks.length === 0 ? (
-                            <div className="up-next-empty">{t.upNextEmpty}</div>
-                          ) : (
-                            upNextTracks.map((track, i) => (
-                              <UpNextItem
-                                key={`${track.id}-${i}`}
-                                track={track}
-                                index={i}
-                                onPlay={playUpNext}
-                              />
-                            ))
-                          )}
-                        </div>
+                        <>
+                          <RadioChips radio={radio} label={t.radioTune} onTune={tuneRadio} />
+                          <div className="up-next-list-full">
+                            {upNextTracks.length === 0 ? (
+                              <div className="up-next-empty">{t.upNextEmpty}</div>
+                            ) : (
+                              upNextTracks.map((track, i) => (
+                                <UpNextItem
+                                  key={`${track.id}-${i}`}
+                                  track={track}
+                                  index={i}
+                                  onPlay={playUpNext}
+                                />
+                              ))
+                            )}
+                          </div>
+                        </>
                       ) : (
                         <div className="related-panel">
                           {relatedLoading ? (
@@ -6812,6 +6885,8 @@ export default function App() {
             onRemoveTrack={queueActions.remove}
             onReorder={queueActions.reorder}
             onClearQueue={queueActions.clear}
+            radio={radio}
+            onTuneRadio={tuneRadio}
           />
         </div>
       </div>

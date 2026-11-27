@@ -66,6 +66,17 @@ export function popPlayHistory(
   return { history: next, previousId };
 }
 
+// dostrojone radio jak w YouTube Music: zagrane i grany zostają, a nowe nie powtarza niczego z nich
+export function replaceUpcoming<T extends { id: string }>(
+  queue: T[],
+  index: number,
+  upcoming: T[]
+): T[] {
+  const kept = queue.slice(0, index + 1);
+  const have = new Set(kept.map((t) => t.id));
+  return [...kept, ...upcoming.filter((t) => !have.has(t.id))];
+}
+
 export function formatTime(time: number): string {
   if (isNaN(time) || !isFinite(time) || time < 0) return '0:00';
   const secs = Math.floor(time % 60)
