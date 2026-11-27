@@ -9,7 +9,14 @@ vi.mock('@tauri-apps/api/event', () => ({
 const fetchMock = vi.fn();
 vi.mock('@tauri-apps/plugin-http', () => ({ fetch: (...a: unknown[]) => fetchMock(...a) }));
 
-import { searchMusic } from '../api/youtube';
+import {
+  parseSearchChips,
+  parseSearchSuggestions,
+  searchFilterPage,
+  searchMusic,
+  searchMusicPage,
+} from '../api/youtube';
+import { addSearchHistory, loadSearchHistory, removeSearchHistory } from '../utils/searchHistory';
 
 const text = (t: string) => ({ runs: [{ text: t }] });
 const row = (videoId: string, title: string, sub: string[]) => ({
@@ -99,5 +106,117 @@ describe('searchMusic', () => {
     ]);
     expect(a).toBe(b);
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+});
+
+const chip = (title: string, params?: string) => ({
+  chipCloudChipRenderer: {
+    text: text(title),
+    navigationEndpoint: params ? { searchEndpoint: { query: 'q', params } } : {},
+  },
+});
+const withChips = (body: { contents: unknown }, chips: unknown[]) => ({
+  ...body,
+  header: { chipCloudRenderer: { chips } },
+});
+const shelf = (rows: unknown[], next?: string) => ({
+  musicShelfRenderer: {
+    contents: rows,
+    ...(next ? { continuations: [{ nextContinuationData: { continuation: next } }] } : {}),
+  },
+});
+
+describe('search filters and suggestions', () => {
+  beforeEach(() => fetchMock.mockReset());
+
+  it('reads filter chips with their params and drops the clear-filters chip', () => {
+    const data = withChips(page([]), [chip('Songs', 'P_SONGS'), chip('Albums', 'P_ALB'), chip('')]);
+    expect(parseSearchChips(data)).toEqual([
+      { title: 'Songs', params: 'P_SONGS' },
+      { title: 'Albums', params: 'P_ALB' },
+    ]);
+    expect(parseSearchChips({})).toEqual([]);
+  });
+
+  it('returns the chips of the unfiltered response with the results', async () => {
+    fetchMock.mockImplementation(async (_u: string, init?: { body?: string }) =>
+      json(isSongsFilter(init) ? songsFilter : withChips(songsFilter, [chip('Songs', 'P_SONGS')]))
+    );
+    const res = await searchMusicPage('chips query', 'en');
+    expect(res.chips).toEqual([{ title: 'Songs', params: 'P_SONGS' }]);
+    expect(res.sections.length).toBeGreaterThan(0);
+  });
+
+  it('splits suggestions into bold text runs and quick results', () => {
+    const data = {
+      contents: [
+        {
+          searchSuggestionsSectionRenderer: {
+            contents: [
+              {
+                searchSuggestionRenderer: {
+                  suggestion: { runs: [{ text: 'daft', bold: true }, { text: ' punk' }] },
+                  navigationEndpoint: { searchEndpoint: { query: 'daft punk' } },
+                },
+              },
+            ],
+          },
+        },
+        {
+          searchSuggestionsSectionRenderer: {
+            contents: [row('bbbbbbbbbbb', 'Get Lucky', ['Song', ' • ', 'Daft Punk'])],
+          },
+        },
+      ],
+    };
+    const res = parseSearchSuggestions(data, 'en');
+    expect(res.texts).toEqual([
+      {
+        query: 'daft punk',
+        runs: [
+          { text: 'daft', bold: true },
+          { text: ' punk', bold: false },
+        ],
+      },
+    ]);
+    expect(res.items.map((i) => i.id)).toEqual(['bbbbbbbbbbb']);
+    expect(parseSearchSuggestions({}, 'en')).toEqual({ texts: [], items: [] });
+  });
+
+  it('pages a filter with continuation tokens and stops at the last page', async () => {
+    fetchMock
+      .mockResolvedValueOnce(json(page([shelf([row('ccccccccccc', 'One', ['Song'])], 'TOK1')])))
+      .mockResolvedValueOnce(
+        json({
+          // nagłówek pierwszej strony wraca w `contents`; jego wiersze nie mogą trafić drugi raz na listę
+          ...page([shelf([row('ccccccccccc', 'One', ['Song'])], 'TOK1')]),
+          continuationContents: {
+            musicShelfContinuation: { contents: [row('ddddddddddd', 'Two', ['Song'])] },
+          },
+        })
+      );
+    const first = await searchFilterPage('q', 'P_SONGS', 'en');
+    expect(first).toMatchObject({ next: 'TOK1', items: [{ id: 'ccccccccccc' }] });
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({
+      query: 'q',
+      params: 'P_SONGS',
+    });
+    const second = await searchFilterPage('q', 'P_SONGS', 'en', first.next);
+    expect(second).toEqual({ next: null, items: [expect.objectContaining({ id: 'ddddddddddd' })] });
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toMatchObject({ continuation: 'TOK1' });
+  });
+});
+
+describe('search history', () => {
+  beforeEach(() => localStorage.removeItem('zenith_search_history'));
+
+  it('keeps the newest ten, without case duplicates, and removes one entry', () => {
+    for (let i = 0; i < 12; i++) addSearchHistory(`q${i}`);
+    expect(loadSearchHistory()).toHaveLength(10);
+    expect(addSearchHistory(' Q11 ')[0]).toBe('Q11');
+    expect(loadSearchHistory().filter((q) => q.toLowerCase() === 'q11')).toHaveLength(1);
+    expect(removeSearchHistory('Q11')).not.toContain('Q11');
+    localStorage.setItem('zenith_search_history', '{broken');
+    expect(loadSearchHistory()).toEqual([]);
   });
 });

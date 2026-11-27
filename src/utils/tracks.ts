@@ -67,6 +67,19 @@ export function hitsPlayIcon(e: { target: EventTarget | null }): boolean {
   return !!(e.target as Element | null)?.closest?.('.search-result-play-icon');
 }
 
+const TYPE_LABEL_KEYS: Record<Track['type'], string> = {
+  track: 'typeTrack',
+  album: 'typeAlbum',
+  playlist: 'typePlaylist',
+  artist: 'typeArtist',
+  profile: 'typeProfile',
+  podcast: 'typePodcast',
+};
+
+export function trackTypeLabel(type: Track['type'], t: Record<string, string>): string {
+  return t[TYPE_LABEL_KEYS[type]] ?? type;
+}
+
 export const BROWSE_MOOD_PREFIX = 'browse:';
 
 export type ItemClickKind = 'play-track' | 'browse-page' | 'play-collection';

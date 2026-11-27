@@ -67,6 +67,8 @@ import {
   preloadImage,
   resolveLoginState,
   searchMusic,
+  searchMusicPage,
+  type SearchChip,
   isLoggedIn,
   waitForLogin,
   lastSessionCheckWasInconclusive,
@@ -102,7 +104,8 @@ import {
   LibrarySkeleton,
   coverAttrs,
 } from './components/FeedUI';
-import { HeroSection } from './components/feed/HeroSection';
+import { SearchBox, MAX_SEARCH_LENGTH, type SearchBoxHandle } from './components/search/SearchBox';
+import { SearchResults } from './components/search/SearchResults';
 import { MoodChips } from './components/feed/MoodChips';
 import { LoadMoreSentinel } from './components/feed/LoadMoreSentinel';
 import { MoodsGenresView } from './components/feed/MoodsGenresView';
@@ -123,6 +126,7 @@ import {
   sidebarClickPlan,
   ctxTrackAttr,
   hitsPlayIcon,
+  trackTypeLabel,
   parseCtxTrackAttr,
   withCollectionMeta,
   isVideoTrackId,
@@ -145,7 +149,6 @@ import {
   PREFETCH_PAUSE_AFTER_FAIL_MS,
   UI_PROGRESS_MS,
 } from './constants/playback';
-import { useDebounce } from './hooks/useDebounce';
 import { useScrubBar } from './hooks/useScrubBar';
 import { contextMenuCoords, menuKeyIndex, PopoverMenu } from './components/ui/PopoverMenu';
 import { ModalOverlay, escapeTopModal, modalOpen } from './components/ui/ModalOverlay';
@@ -325,7 +328,6 @@ import {
   Repeat1,
   Plus,
   RefreshCw,
-  Search,
   Mic2,
   ListMusic,
   Settings2,
@@ -391,7 +393,6 @@ const artistSongsTrack = (p: ArtistPageState, id: string): Track => ({
   coverSmall: p.avatar.coverSmall,
   coverLarge: p.avatar.coverLarge,
 });
-const MAX_SEARCH_LENGTH = 200;
 const MANUAL_FADE_SECS = 0.35;
 const uiLang = () => (localStorage.getItem('zenith_lang') as Language) || 'en';
 
@@ -431,8 +432,12 @@ export default function App() {
   const trackSwitchingRef = useRef(false);
   const [feedLoading, setFeedLoading] =
     useState<Record<FeedLoadTab, boolean>>(FEED_LOADING_INITIAL);
+  // zatwierdzone zapytanie; wpisywany tekst trzyma SearchBox, żeby znaki nie renderowały App
   const [searchQuery, setSearchQuery] = useState('');
+  const [searchChips, setSearchChips] = useState<SearchChip[]>([]);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const searchBoxRef = useRef<SearchBoxHandle | null>(null);
+  useEffect(() => searchBoxRef.current?.setText(searchQuery), [searchQuery]);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [lyricsSourcesOpen, setLyricsSourcesOpen] = useState(false);
   const [isMaximized, setIsMaximized] = useState(false);
@@ -885,6 +890,8 @@ export default function App() {
       document
         .querySelector<HTMLElement>('.content-area .content-scrollable')
         ?.scrollTo({ top: 0, behavior: 'instant' });
+      // niewysłany tekst nie należy do nowej strony; zatwierdzone zapytanie czyszczą już wołający
+      if (tab !== 'search') searchBoxRef.current?.setText('');
     }
     setActiveTab(tab);
   }, []);
@@ -952,15 +959,12 @@ export default function App() {
     });
   }, [lang]);
 
-  const debouncedSearch = useDebounce(searchQuery, 400);
-  const lastSearchRef = useRef('');
-
   const handleSearch = useCallback(
     (rawQuery: string, language: Language = lang) => {
       const query = rawQuery.trim().slice(0, MAX_SEARCH_LENGTH).trim();
       if (!query) return;
-      lastSearchRef.current = `${query}
-${language}`;
+      setSearchQuery(query);
+      setSearchChips([]);
       const dataSeq = ++feedSeqRef.current.search;
       // wyszukiwanie i strony przeglądania piszą do tych samych `sections`, więc nowe unieważnia oba tory
       ++feedSeqRef.current.mood;
@@ -972,10 +976,11 @@ ${language}`;
       navigateTo('search');
       setActiveMood(null);
       setBrowseEmptyKind(null);
-      searchMusic(query, language)
+      searchMusicPage(query, language)
         .then((data) => {
           if (dataSeq !== feedSeqRef.current.search) return;
-          setSections(stableOrderSections(data));
+          setSections(stableOrderSections(data.sections));
+          setSearchChips(data.chips);
         })
         .catch(() => {
           if (dataSeq !== feedSeqRef.current.search) return;
@@ -1220,30 +1225,16 @@ ${language}`;
     });
   }, [homeSections, quickPicks, homeChips]);
 
+  // wyniki i chipy mają nazwy w języku zapytania, więc zmiana języka na stronie wyników szuka od nowa
   const searchLangRef = useRef(lang);
+  const searchQueryRef = useLatest(searchQuery);
   useEffect(() => {
-    const langChanged = searchLangRef.current !== lang;
+    if (searchLangRef.current === lang) return;
     searchLangRef.current = lang;
-    const query = debouncedSearch.trim().slice(0, MAX_SEARCH_LENGTH).trim();
-    if (!query) {
-      lastSearchRef.current = '';
-      return;
+    if (searchQueryRef.current && activeTabRef.current === 'search') {
+      handleSearch(searchQueryRef.current, lang);
     }
-    if (langChanged && activeTabRef.current !== 'search') return;
-    // Enter wysłał już to zapytanie; drugie odrzuciłoby gotową odpowiedź i wyczyściło listę
-    if (
-      lastSearchRef.current ===
-      `${query}
-${lang}`
-    )
-      return;
-    handleSearch(debouncedSearch, lang);
-  }, [debouncedSearch, lang, handleSearch, activeTabRef]);
-
-  useEffect(() => {
-    if (searchQuery.trim() !== '' || activeTab !== 'search') return;
-    loadHome(lang);
-  }, [searchQuery, activeTab, lang, loadHome]);
+  }, [lang, handleSearch, activeTabRef, searchQueryRef]);
 
   const loadExplore = useCallback(
     (language: Language = lang) => {
@@ -3665,6 +3656,7 @@ ${lang}`
     setArtistPage(ui.artistPage ?? null);
     setBrowseEmptyKind(ui.browseEmptyKind);
     setSearchQuery(ui.searchQuery);
+    setSearchChips(ui.searchChips ?? []);
     setLibCategory(ui.libCategory);
     setPanelTab(ui.panelTab);
     lastCollectionRef.current = ui.collection;
@@ -3955,6 +3947,7 @@ ${lang}`
     exploreSections,
     quickPicks,
     searchQuery,
+    searchChips,
     libCategory,
     panelTab,
   });
@@ -5228,14 +5221,6 @@ ${lang}`
     if (ok) window.setTimeout(() => setShareCardOk(false), 2000);
   }, [currentTrack, duration, isPlaying, t]);
 
-  const heroTrack = useMemo(
-    () =>
-      sections.length > 0 && sections[0].items.length > 0 && activeTab === 'search'
-        ? sections[0].items[0]
-        : null,
-    [sections, activeTab]
-  );
-
   // jak w szufladzie kolejki: pozycja zamiast id, bez gubienia losowania, trybu albumu i historii
   const playUpNext = useCallback(
     (i: number) => {
@@ -5249,24 +5234,7 @@ ${lang}`
     [queue, queueIndex]
   );
   const isContentTab = activeTab !== 'player';
-  const typeLabel = (type: Track['type']) => {
-    switch (type) {
-      case 'track':
-        return t.typeTrack;
-      case 'album':
-        return t.typeAlbum;
-      case 'playlist':
-        return t.typePlaylist;
-      case 'artist':
-        return t.typeArtist;
-      case 'profile':
-        return t.typeProfile;
-      case 'podcast':
-        return t.typePodcast;
-      default:
-        return type;
-    }
-  };
+  const typeLabel = (type: Track['type']) => trackTypeLabel(type, t);
   const homeHeroTrack = useMemo(
     () => (activeTab === 'home' ? (quickPicks[0] ?? homeSections[0]?.items[0] ?? null) : null),
     [activeTab, quickPicks, homeSections]
@@ -5382,6 +5350,10 @@ ${lang}`
       }
     },
     [lang]
+  );
+  const pickSuggestion = useCallback(
+    (item: Track) => void handleItemClick(item),
+    [handleItemClick]
   );
 
   // szuflada kolejki jest w memo; akcje czytają stan z refów, więc pisanie w wyszukiwarce jej nie renderuje
@@ -5576,40 +5548,14 @@ ${lang}`
       >
         <div className="titlebar-drag-spacer" aria-hidden="true" />
         <div className="titlebar-center">
-          <div className="titlebar-search no-window-drag" data-tour="search">
-            <Search size={15} className="search-icon" />
-            <input
-              ref={searchInputRef}
-              type="text"
-              placeholder={t.searchPlaceholder}
-              aria-label={t.searchPlaceholder}
-              className="search-input"
-              value={searchQuery}
-              maxLength={MAX_SEARCH_LENGTH}
-              spellCheck={false}
-              onChange={(e) => {
-                const v = e.target.value;
-                if (v.length >= MAX_SEARCH_LENGTH && searchQuery.length < MAX_SEARCH_LENGTH) {
-                  pushToast(t.searchTooLong, 'info');
-                }
-                setSearchQuery(v.slice(0, MAX_SEARCH_LENGTH));
-              }}
-              onPaste={(e) => {
-                const pasted = e.clipboardData.getData('text');
-                if (pasted.length + searchQuery.length > MAX_SEARCH_LENGTH) {
-                  pushToast(t.searchTooLong, 'info');
-                }
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') handleSearch(searchQuery);
-                else if (e.key === 'Escape') {
-                  e.stopPropagation();
-                  if (searchQuery) setSearchQuery('');
-                  else e.currentTarget.blur();
-                }
-              }}
-            />
-          </div>
+          <SearchBox
+            lang={lang}
+            t={t}
+            inputRef={searchInputRef}
+            handleRef={searchBoxRef}
+            onSearch={handleSearch}
+            onPick={pickSuggestion}
+          />
         </div>
         <div className="titlebar-actions">
           <button
@@ -6464,71 +6410,18 @@ ${lang}`
                       />
                     )}
 
-                    {activeTab === 'search' && heroTrack && (
-                      <HeroSection
-                        track={heroTrack}
-                        onOpen={() =>
-                          handleItemClick(heroTrack, sections[0]?.title, sections[0]?.items)
-                        }
-                        onPlay={(mode) =>
-                          heroTrack.type === 'artist'
-                            ? playArtistItem(heroTrack, mode)
-                            : handleItemClick(
-                                heroTrack,
-                                sections[0]?.title,
-                                sections[0]?.items,
-                                true
-                              )
-                        }
-                        onHover={prefetchItem}
-                        t={t}
-                      />
-                    )}
                     {activeTab === 'search' && (
-                      <div className="search-results-list">
-                        {sections
-                          .flatMap((s) => s.items)
-                          .filter((i) => i.id !== heroTrack?.id)
-                          .slice(0, 48)
-                          .map((item) => {
-                            const ownerSection = sections.find((s) =>
-                              s.items.some((i) => i.id === item.id)
-                            );
-                            return (
-                              <button
-                                key={item.id}
-                                data-ctx-track={ctxTrackAttr(item)}
-                                className={`search-result-row search-result-type-${item.type}`}
-                                onClick={(e) =>
-                                  handleItemClick(
-                                    item,
-                                    ownerSection?.title,
-                                    ownerSection?.items,
-                                    hitsPlayIcon(e)
-                                  )
-                                }
-                              >
-                                <div className="search-result-cover-wrap">
-                                  <img
-                                    alt=""
-                                    className="search-result-cover"
-                                    loading="lazy"
-                                    decoding="async"
-                                    {...coverAttrs(item, 'thumb')}
-                                  />
-                                  <div className="search-result-play-icon">
-                                    <Play size={14} fill="currentColor" />
-                                  </div>
-                                </div>
-                                <div className="search-result-meta">
-                                  <span className="search-result-title">{item.title}</span>
-                                  <span className="search-result-artist">{item.artist}</span>
-                                </div>
-                                <span className="search-result-badge">{typeLabel(item.type)}</span>
-                              </button>
-                            );
-                          })}
-                      </div>
+                      <SearchResults
+                        key={searchQuery}
+                        query={searchQuery}
+                        lang={lang}
+                        t={t}
+                        sections={sections}
+                        chips={searchChips}
+                        onItemClick={handleItemClick}
+                        onPlayArtist={playArtistItem}
+                        onHover={prefetchItem}
+                      />
                     )}
 
                     {activeTab === 'explore' && (
