@@ -154,7 +154,7 @@ pub fn backup_export(
     let prefs: HashMap<String, String> = prefs.into_iter().filter(|(k, _)| !is_secret(k)).collect();
     let favorites: Value =
         serde_json::from_str(&crate::prefs::favorites_load(app.clone())).unwrap_or(json!([]));
-    let db = crate::db::with(dump).unwrap_or(Value::Null);
+    let db = crate::db::with_read(dump).unwrap_or(Value::Null);
     let body = json!({
         "format": FORMAT,
         "version": 1,

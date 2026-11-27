@@ -156,7 +156,7 @@ pub fn overview(c: &Connection, days: i64, now: i64) -> rusqlite::Result<Overvie
 
 #[tauri::command(async)]
 pub fn stats_overview(days: i64) -> Result<Overview, String> {
-    crate::db::with(|c| overview(c, days.clamp(0, 36_500), crate::db::now_ms()))
+    crate::db::with_read(|c| overview(c, days.clamp(0, 36_500), crate::db::now_ms()))
 }
 
 #[derive(Serialize, Debug)]
@@ -175,7 +175,7 @@ pub fn stats_artist(name: String, days: i64) -> Result<Vec<ArtistTrack>, String>
         0
     };
     let key = crate::db::artist_key(&name);
-    crate::db::with(|c| {
+    crate::db::with_read(|c| {
         let mut q = c.prepare(
             "SELECT MAX(video_id), MIN(title), COUNT(*) FROM plays
              WHERE artist_key=?1 AND at >= ?2 AND skipped=0 GROUP BY title_key ORDER BY 3 DESC LIMIT 15",

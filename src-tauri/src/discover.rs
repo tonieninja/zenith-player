@@ -25,7 +25,7 @@ const TOP_ARTISTS: &str =
 /// Najczęściej słuchani wykonawcy z dwóch miesięcy i wszyscy kiedykolwiek grani (ich nie polecamy).
 fn taste() -> (Vec<String>, HashSet<String>) {
     let since = crate::db::now_ms() - 60 * 86_400_000;
-    crate::db::with(|c| {
+    crate::db::with_read(|c| {
         let mut q = c.prepare(TOP_ARTISTS)?;
         let top = q
             .query_map(params![since], |r| r.get::<_, String>(0))?

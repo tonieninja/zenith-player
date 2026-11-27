@@ -2,11 +2,12 @@ use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::sync::{Mutex, OnceLock};
 
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OpenFlags};
 use serde::Deserialize;
 use tauri::{AppHandle, Manager};
 
 static DB: OnceLock<Mutex<Connection>> = OnceLock::new();
+static READ: OnceLock<Mutex<Connection>> = OnceLock::new();
 
 pub const SCHEMA: &str = "
 CREATE TABLE IF NOT EXISTS plays(
@@ -40,8 +41,12 @@ pub fn init(app: &AppHandle) {
         return;
     };
     let _ = std::fs::create_dir_all(&dir);
-    if let Some(c) = open(&dir.join("zenith.db")) {
+    let path = dir.join("zenith.db");
+    if let Some(c) = open(&path) {
         let _ = DB.set(Mutex::new(c));
+        if let Ok(r) = open_read(&path) {
+            let _ = READ.set(Mutex::new(r));
+        }
         std::thread::spawn(|| {
             if let Err(e) = with(upgrade) {
                 crate::diag::log(format!("[db] upgrade failed: {e}"));
@@ -79,8 +84,22 @@ fn open(path: &Path) -> Option<Connection> {
     Some(c)
 }
 
+fn open_read(path: &Path) -> rusqlite::Result<Connection> {
+    Connection::open_with_flags(
+        path,
+        OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    )
+}
+
 pub fn with<R>(f: impl FnOnce(&Connection) -> rusqlite::Result<R>) -> Result<R, String> {
     let m = DB.get().ok_or("database unavailable")?;
+    let c = m.lock().unwrap_or_else(|p| p.into_inner());
+    f(&c).map_err(|e| e.to_string())
+}
+
+/// Statystyki i kopia czytają osobnym połączeniem, więc zapis odtworzenia i start utworu na nie nie czekają.
+pub fn with_read<R>(f: impl FnOnce(&Connection) -> rusqlite::Result<R>) -> Result<R, String> {
+    let Some(m) = READ.get() else { return with(f) };
     let c = m.lock().unwrap_or_else(|p| p.into_inner());
     f(&c).map_err(|e| e.to_string())
 }
@@ -258,13 +277,13 @@ fn import_into(c: &Connection, source: &str, rows: &[Scrobble]) -> rusqlite::Res
     Ok(n)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn db_log_play(play: PlayIn) -> Result<(), String> {
     log_play(&play)
 }
 
 /// Ocena utworu: 1 lubię, -1 nie lubię, 0 zdejmuje ocenę.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn db_rate(video_id: String, rating: i32, title: String, artist: String) -> Result<(), String> {
     with(|c| {
         if rating == 0 {
@@ -429,7 +448,7 @@ pub fn rank(
     out
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn smart_queue(
     seed: Cand,
     candidates: Vec<Cand>,
@@ -497,6 +516,32 @@ mod tests {
             plan.contains("INDEX plays_track (artist_key=? AND title_key=? AND at>? AND at<?)"),
             "{plan}"
         );
+    }
+
+    #[test]
+    fn reader_does_not_wait_for_an_open_write() {
+        let p = std::env::temp_dir().join(format!("zenith-read-{}.db", std::process::id()));
+        {
+            let w = open(&p).unwrap();
+            let r = open_read(&p).unwrap();
+            let tx = w.unchecked_transaction().unwrap();
+            tx.execute(
+                "INSERT INTO plays(title,artist,at,artist_key,title_key) VALUES('t','a',1,'a','t')",
+                [],
+            )
+            .unwrap();
+            let n = |r: &Connection| -> i64 {
+                r.query_row("SELECT COUNT(*) FROM plays", [], |x| x.get(0))
+                    .unwrap()
+            };
+            assert_eq!(n(&r), 0);
+            tx.commit().unwrap();
+            assert_eq!(n(&r), 1);
+            assert!(r.execute("DELETE FROM plays", []).is_err());
+        }
+        for ext in ["", "-wal", "-shm"] {
+            let _ = std::fs::remove_file(format!("{}{ext}", p.display()));
+        }
     }
 
     #[test]
