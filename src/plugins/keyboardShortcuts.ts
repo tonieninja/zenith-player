@@ -77,4 +77,5 @@ export const keyboardShortcutsPlugin: ZenithPlugin = {
   description:
     'Space = play/pause, ←/→ or P/N = prev/next, Shift+←/→ = seek ±10s, ↑/↓ = volume, M = mute, Ctrl+F or / = search.',
   defaultEnabled: true,
+  core: 'always',
 };

@@ -18,4 +18,5 @@ export const preloadNextPlugin: ZenithPlugin = {
   category: 'playback',
   description: 'Prefetches stream URLs for the next 1-3 tracks in the queue.',
   defaultEnabled: true,
+  core: 'always',
 };

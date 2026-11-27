@@ -27,7 +27,7 @@ import {
   Search,
 } from 'lucide-react';
 import { pluginManager, PLUGIN_CATEGORY_LABELS, PLUGIN_CATEGORY_ORDER } from '../plugins';
-import type { PluginCategory } from '../plugins/types';
+import type { PluginCategory, ZenithPlugin } from '../plugins/types';
 import { Select } from './ui/Select';
 import { ModalOverlay } from './ui/ModalOverlay';
 import { DownloadsSettings } from './plugins/DownloadsSettings';
@@ -145,6 +145,8 @@ interface PluginsPanelProps {
   audio: PlayerAudio;
   onPlayTrack?: (track: Track, list: Track[]) => void;
   currentTrack?: Track | null;
+  /** Same karty podanych wtyczek, bez okna i wyszukiwarki: wbudowane funkcje w ustawieniach. */
+  only?: string[];
 }
 
 function PluginCard({
@@ -155,8 +157,10 @@ function PluginCard({
   expanded,
   onExpand,
   settings,
+  locked,
   t,
 }: {
+  locked?: boolean;
   enabled: boolean;
   name: string;
   description: string;
@@ -189,19 +193,21 @@ function PluginCard({
           <span className="setting-label">{name}</span>
           <span className="plugin-desc">{description}</span>
         </div>
-        <button
-          role="switch"
-          aria-checked={enabled}
-          className={`plugin-toggle ${enabled ? 'on' : ''}`}
-          data-testid={`plugin-toggle-${name}`}
-          onClick={onToggle}
-          aria-label={name}
-        >
-          <span className="plugin-toggle-knob" />
-          <span className="plugin-toggle-tip" role="tooltip">
-            {enabled ? t.pluginEnabled : t.pluginDisabled}
-          </span>
-        </button>
+        {!locked && (
+          <button
+            role="switch"
+            aria-checked={enabled}
+            className={`plugin-toggle ${enabled ? 'on' : ''}`}
+            data-testid={`plugin-toggle-${name}`}
+            onClick={onToggle}
+            aria-label={name}
+          >
+            <span className="plugin-toggle-knob" />
+            <span className="plugin-toggle-tip" role="tooltip">
+              {enabled ? t.pluginEnabled : t.pluginDisabled}
+            </span>
+          </button>
+        )}
       </div>
       {expanded && settings && <div className="plugin-card-settings">{settings}</div>}
     </div>
@@ -218,6 +224,7 @@ export function PluginsPanel({
   audio,
   onPlayTrack,
   currentTrack,
+  only,
 }: PluginsPanelProps) {
   const t = translations[lang];
   const [crossfadeSecs, setCrossfadeSecs] = useState(getCrossfadeSeconds);
@@ -1434,6 +1441,44 @@ export function PluginsPanel({
       'listening-history',
     ].includes(id);
 
+  const card = (plugin: ZenithPlugin, text: { name: string; desc: string }) => (
+    <PluginCard
+      key={plugin.id}
+      enabled={Boolean(pluginStates[plugin.id])}
+      locked={plugin.core === 'always'}
+      name={text.name}
+      description={text.desc}
+      onToggle={() => togglePlugin(plugin.id)}
+      expanded={expandedId === plugin.id}
+      onExpand={() => setExpandedId((prev) => (prev === plugin.id ? null : plugin.id))}
+      settings={
+        expandedId !== plugin.id
+          ? undefined
+          : hasSettings(plugin.id)
+            ? renderSettings(plugin.id)
+            : plugin.core
+              ? undefined
+              : renderSettings('default')
+      }
+      t={t}
+    />
+  );
+
+  if (only) {
+    return (
+      <div className="plugin-category-list core-settings-list">
+        {only.map((id) => {
+          const plugin = pluginManager.plugins.find((p) => p.id === id);
+          if (!plugin) return null;
+          return card(
+            plugin,
+            pluginText(lang, plugin.id, { name: plugin.name, desc: plugin.description })
+          );
+        })}
+      </div>
+    );
+  }
+
   return (
     <ModalOverlay onClick={onClose} testId="plugins-overlay">
       <div className="glass-modal-container plugins-modal" onClick={(e) => e.stopPropagation()}>
@@ -1489,6 +1534,7 @@ export function PluginsPanel({
             let shown = 0;
             const blocks = PLUGIN_CATEGORY_ORDER.map((cat) => {
               const items = groups[cat]
+                .filter((plugin) => !plugin.core)
                 .map((plugin) => ({
                   plugin,
                   text: pluginText(lang, plugin.id, {
@@ -1522,27 +1568,7 @@ export function PluginsPanel({
                     </span>
                   </header>
                   <div className="plugin-category-list">
-                    {items.map(({ plugin, text }) => (
-                      <PluginCard
-                        key={plugin.id}
-                        enabled={Boolean(pluginStates[plugin.id])}
-                        name={text.name}
-                        description={text.desc}
-                        onToggle={() => togglePlugin(plugin.id)}
-                        expanded={expandedId === plugin.id}
-                        onExpand={() =>
-                          setExpandedId((prev) => (prev === plugin.id ? null : plugin.id))
-                        }
-                        settings={
-                          expandedId !== plugin.id
-                            ? undefined
-                            : hasSettings(plugin.id)
-                              ? renderSettings(plugin.id)
-                              : renderSettings('default')
-                        }
-                        t={t}
-                      />
-                    ))}
+                    {items.map(({ plugin, text }) => card(plugin, text))}
                   </div>
                 </section>
               );

@@ -52,7 +52,8 @@ describe('saved plugin choices after a storage restore', () => {
     );
     pluginManager.reloadFromStorage();
     expect(pluginManager.isEnabled('crossfade')).toBe(true);
-    expect(pluginManager.isEnabled('preload-next')).toBe(false);
+    // wbudowanej funkcji nie wyłącza nawet stary zapis z czasów, gdy była wtyczką
+    expect(pluginManager.isEnabled('preload-next')).toBe(true);
     expect(pluginManager.isEnabled('equalizer')).toBe(false);
     localStorage.removeItem('zenith_plugins_enabled');
     pluginManager.reloadFromStorage();

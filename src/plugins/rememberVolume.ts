@@ -41,4 +41,5 @@ export const rememberVolumePlugin: ZenithPlugin = {
   category: 'playback',
   description: 'Restores your last volume level between sessions.',
   defaultEnabled: true,
+  core: 'always',
 };

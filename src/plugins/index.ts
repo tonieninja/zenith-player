@@ -88,6 +88,17 @@ export const PLUGIN_ORDER = [
   'listening-history',
 ];
 
+/** Wbudowane funkcje w kolejności, w jakiej stoją w ustawieniach ogólnych. */
+export const CORE_SETTINGS_IDS = [
+  'queue-persist',
+  'remember-volume',
+  'preload-next',
+  'crossfade',
+  'media-session',
+  'keyboard-shortcuts',
+  'system-tray',
+];
+
 function pluginRank(id: string): number {
   const i = PLUGIN_ORDER.indexOf(id);
   return i < 0 ? PLUGIN_ORDER.length : i;
@@ -172,7 +183,8 @@ class PluginManager {
     // zapisane „null” albo liczba dałyby biały ekran przy starcie
     if (!stored || typeof stored !== 'object') stored = {};
     for (const plugin of this.plugins) {
-      this.enabled[plugin.id] = stored[plugin.id] ?? plugin.defaultEnabled;
+      this.enabled[plugin.id] =
+        plugin.core === 'always' || (stored[plugin.id] ?? plugin.defaultEnabled);
     }
   }
 
@@ -261,6 +273,7 @@ class PluginManager {
 
   setEnabled(id: string, on: boolean) {
     if (this.enabled[id] === on) return;
+    if (!on && this.plugins.find((p) => p.id === id)?.core === 'always') return;
     this.enabled[id] = on;
     if (on) this.enabledAt[id] = Date.now();
     this.persist();

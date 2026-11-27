@@ -94,7 +94,7 @@ describe('plugin manager', () => {
       pluginManager.setEnabled(p.id, true);
       expect(pluginManager.isEnabled(p.id), p.id).toBe(true);
       pluginManager.setEnabled(p.id, false);
-      expect(pluginManager.isEnabled(p.id), p.id).toBe(false);
+      expect(pluginManager.isEnabled(p.id), p.id).toBe(p.core === 'always');
     }
     const raw = JSON.parse(localStorage.getItem('zenith_plugins_enabled') || '{}');
     expect(Object.keys(raw).length).toBeGreaterThan(10);

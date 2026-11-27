@@ -7,6 +7,7 @@ export const crossfadePlugin: ZenithPlugin = {
   description:
     'Equal-power blends between tracks near the end and on manual skips. Albums can play gapless instead.',
   defaultEnabled: false,
+  core: 'toggle',
 };
 
 export const CROSSFADE_SECS_KEY = 'zenith_crossfade_secs';

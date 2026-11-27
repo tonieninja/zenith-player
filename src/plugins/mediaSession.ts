@@ -99,6 +99,7 @@ export const mediaSessionPlugin: ZenithPlugin = {
   category: 'control',
   description: 'OS Now Playing / lock-screen controls and media keys integration.',
   defaultEnabled: true,
+  core: 'always',
   onEnable() {
     wireActions();
   },

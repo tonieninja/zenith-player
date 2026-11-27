@@ -128,4 +128,5 @@ export const queuePersistPlugin: ZenithPlugin = {
   category: 'playback',
   description: 'Restores your queue, position and resumes playback when you reopen Zenith.',
   defaultEnabled: true,
+  core: 'always',
 };

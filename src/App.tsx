@@ -146,7 +146,12 @@ import {
   translations,
   type Language,
 } from './i18n';
-import { AUX_WINDOW_PLUGINS, pluginManager } from './plugins';
+import {
+  AUX_WINDOW_PLUGINS,
+  CORE_SETTINGS_IDS,
+  PLUGIN_CATEGORY_LABELS,
+  pluginManager,
+} from './plugins';
 import { syncCloseToTray } from './plugins/systemTray';
 import { linuxHotkeysOptOut, pushHotkeyBindings, syncGlobalHotkeys } from './plugins/globalHotkeys';
 import {
@@ -6469,6 +6474,17 @@ export default function App() {
                   {translateLyricsOn ? t.toggleOn : t.toggleOff}
                 </button>
               </div>
+              <PluginsPanel
+                lang={lang}
+                pluginStates={pluginStates}
+                togglePlugin={togglePlugin}
+                onClose={() => undefined}
+                discordClientId={discordClientId}
+                saveDiscordClientId={saveDiscordClientId}
+                audio={audio}
+                currentTrack={currentTrack}
+                only={['smart-lyrics']}
+              />
               <LyricsSourcesSettings lang={lang} />
             </div>
           </div>
@@ -6539,6 +6555,18 @@ export default function App() {
               </div>
               {isNativeAudio() && <AudioOutputSettings lang={lang} />}
               <PanelGapSetting lang={lang} />
+              <h3 className="settings-group-title">{PLUGIN_CATEGORY_LABELS.playback[lang]}</h3>
+              <PluginsPanel
+                lang={lang}
+                pluginStates={pluginStates}
+                togglePlugin={togglePlugin}
+                onClose={() => undefined}
+                discordClientId={discordClientId}
+                saveDiscordClientId={saveDiscordClientId}
+                audio={audio}
+                currentTrack={currentTrack}
+                only={CORE_SETTINGS_IDS}
+              />
               <div className="settings-row-item settings-toggle-row">
                 <div className="settings-account-info">
                   <span className="setting-label">{t.replayOnboarding}</span>

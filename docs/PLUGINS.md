@@ -1,20 +1,30 @@
 # Plugins
 
-Zenith ships 42 plugins. Toggle them in the Plugins panel, the enabled set is stored in
+Zenith ships 34 plugins. Toggle them in the Plugins panel, the enabled set is stored in
 `localStorage` key `zenith_plugins_enabled`.
 
-A fresh install turns on the ones marked below (preload, queue and volume memory, smart lyrics
-search, media keys, shortcuts, hotkeys and the tray), the rest is off. An existing install keeps
-whatever you had.
+A fresh install turns on global hotkeys, the rest is off. An existing install keeps whatever you had.
+
+### Built in
+
+These used to be plugins and are now part of the player, in Settings under Playback (smart lyrics
+search sits in the lyrics settings). The ones without a switch always run.
+
+| Name                | Id                   | Switch | What it does                                                                                                       |
+| ------------------- | -------------------- | ------ | ------------------------------------------------------------------------------------------------------------------ |
+| Remember queue      | `queue-persist`      | no     | Restores your queue and position when you reopen Zenith; you pick whether it plays right away or waits paused.     |
+| Remember volume     | `remember-volume`    | no     | Restores your last volume level, or starts at a fixed level if you set one.                                        |
+| Preload next        | `preload-next`       | no     | Prefetches stream URLs for the next 1-3 tracks in the queue.                                                       |
+| Crossfade           | `crossfade`          | yes    | Equal-power blends between tracks near the end and on manual skips (2 to 12 s). Albums play gapless even when off. |
+| Media session       | `media-session`      | no     | OS Now Playing / lock-screen controls and media keys integration.                                                  |
+| Keyboard shortcuts  | `keyboard-shortcuts` | no     | Space = play/pause, ←/→ or P/N = prev/next, Shift+←/→ = seek ±10s, ↑/↓ = volume, M = mute, Ctrl+F or / = search.   |
+| System tray         | `system-tray`        | yes    | Closing the window keeps Zenith playing in the tray, with play/pause, next and show controls.                      |
+| Smart lyrics search | `smart-lyrics`       | yes    | Cleans track titles before lyrics lookup (drops Artist - prefix and feat. credits). Turn off if a match is wrong.  |
 
 ### Playback
 
 | Name                 | Id                  | On by default | What it does                                                                                                                                                                                                                                                                                                                                            |
 | -------------------- | ------------------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Preload next         | `preload-next`      | yes           | Prefetches stream URLs for the next 1-3 tracks in the queue.                                                                                                                                                                                                                                                                                            |
-| Remember queue       | `queue-persist`     | yes           | Restores your queue, position and resumes playback when you reopen Zenith.                                                                                                                                                                                                                                                                              |
-| Remember volume      | `remember-volume`   | yes           | Restores your last volume level between sessions.                                                                                                                                                                                                                                                                                                       |
-| Crossfade            | `crossfade`         | no            | Equal-power blends between tracks near the end and on manual skips (2 to 12 s). Albums play gapless even when this is off (setting in the plugin).                                                                                                                                                                                                      |
 | Offline downloads    | `offline-downloads` | no            | Saves tracks to disk (local app data folder, `downloads/`; _Open downloads folder_ in the settings shows it) and plays them with no connection. Right-click a cover or a track to download; long mixes resume after a dropped connection. List, play and delete them in the plugin settings.                                                            |
 | Sleep timer          | `sleep-timer`       | no            | Automatically stops playback after a set number of minutes.                                                                                                                                                                                                                                                                                             |
 | Variable speed       | `playback-speed`    | no            | Play tracks faster or slower.                                                                                                                                                                                                                                                                                                                           |
@@ -36,24 +46,21 @@ whatever you had.
 
 ### Lyrics
 
-| Name                 | Id                     | On by default | What it does                                                                                                      |
-| -------------------- | ---------------------- | ------------- | ----------------------------------------------------------------------------------------------------------------- |
-| Smart lyrics search  | `smart-lyrics`         | yes           | Cleans track titles before lyrics lookup (drops Artist - prefix and feat. credits). Turn off if a match is wrong. |
-| Lyrics overlay       | `lyrics-overlay`       | no            | Always-on-top transparent overlay with synced lyrics and automatic font size.                                     |
-| Second screen lyrics | `second-screen-lyrics` | no            | Fullscreen lyrics on your second monitor with large, centered text.                                               |
+| Name                 | Id                     | On by default | What it does                                                                  |
+| -------------------- | ---------------------- | ------------- | ----------------------------------------------------------------------------- |
+| Lyrics overlay       | `lyrics-overlay`       | no            | Always-on-top transparent overlay with synced lyrics and automatic font size. |
+| Second screen lyrics | `second-screen-lyrics` | no            | Fullscreen lyrics on your second monitor with large, centered text.           |
 
 ### Control and remote
 
-| Name                        | Id                   | On by default | What it does                                                                                                                                                                   |
-| --------------------------- | -------------------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Media session               | `media-session`      | yes           | OS Now Playing / lock-screen controls and media keys integration.                                                                                                              |
-| Global hotkeys & media keys | `global-hotkeys`     | yes           | Play/pause, next, previous, volume and like from any app. Defaults Ctrl+Alt+Space and Ctrl+Alt+←/→, every combo can be changed in the plugin settings. Media keys always work. |
-| Keyboard shortcuts          | `keyboard-shortcuts` | yes           | Space = play/pause, ←/→ or P/N = prev/next, Shift+←/→ = seek ±10s, ↑/↓ = volume, M = mute, Ctrl+F or / = search.                                                               |
-| Phone remote                | `remote-control`     | no            | Control Zenith from your phone or any device on your network: volume, play/pause, skip, seek, queue, like and search in a browser.                                             |
-| DualSense pad               | `dualsense-pad`      | no            | Control Zenith with a DualSense: touchpad swipe (next/prev/play) + face buttons. LED follows cover art while playing.                                                          |
-| Webhook / Stream Deck       | `webhook`            | no            | POST JSON to a URL on every track change. Works with Stream Deck, Home Assistant and n8n.                                                                                      |
-| Taskbar buttons             | `taskbar-buttons`    | no            | Previous, play/pause and next under the window preview on the taskbar. Windows only.                                                                                           |
-| zenith:// links             | `zenith-links`       | no            | `zenith://play?v=<id>` from the browser or other apps opens in Zenith. The handler is registered only while the plugin is on. Windows and Linux.                               |
+| Name                        | Id                | On by default | What it does                                                                                                                                                                   |
+| --------------------------- | ----------------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Global hotkeys & media keys | `global-hotkeys`  | yes           | Play/pause, next, previous, volume and like from any app. Defaults Ctrl+Alt+Space and Ctrl+Alt+←/→, every combo can be changed in the plugin settings. Media keys always work. |
+| Phone remote                | `remote-control`  | no            | Control Zenith from your phone or any device on your network: volume, play/pause, skip, seek, queue, like and search in a browser.                                             |
+| DualSense pad               | `dualsense-pad`   | no            | Control Zenith with a DualSense: touchpad swipe (next/prev/play) + face buttons. LED follows cover art while playing.                                                          |
+| Webhook / Stream Deck       | `webhook`         | no            | POST JSON to a URL on every track change. Works with Stream Deck, Home Assistant and n8n.                                                                                      |
+| Taskbar buttons             | `taskbar-buttons` | no            | Previous, play/pause and next under the window preview on the taskbar. Windows only.                                                                                           |
+| zenith:// links             | `zenith-links`    | no            | `zenith://play?v=<id>` from the browser or other apps opens in Zenith. The handler is registered only while the plugin is on. Windows and Linux.                               |
 
 ### Sharing and services
 
@@ -71,7 +78,6 @@ whatever you had.
 
 | Name                 | Id                  | On by default | What it does                                                                                                                                                                                    |
 | -------------------- | ------------------- | ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| System tray          | `system-tray`       | yes           | Closing the window keeps Zenith playing in the tray, with play/pause, next and show controls.                                                                                                   |
 | Dynamic window title | `window-title`      | no            | Updates the window title to show the current artist and track name.                                                                                                                             |
 | Ambient cover glow   | `ambient-glow`      | no            | Tints the player backdrop with colors sampled from the current album art.                                                                                                                       |
 | Music video          | `music-video`       | no            | Plays the music video in place of the cover art. The sound stays the same.                                                                                                                      |

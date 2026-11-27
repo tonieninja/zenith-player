@@ -16,6 +16,7 @@ export const systemTrayPlugin: ZenithPlugin = {
   description:
     'Closing the window keeps Zenith playing in the tray, with play/pause, next and show controls.',
   defaultEnabled: true,
+  core: 'toggle',
   onEnable() {
     void syncCloseToTray(true);
   },

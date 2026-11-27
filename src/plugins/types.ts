@@ -28,6 +28,8 @@ export interface ZenithPlugin {
   description: string;
   category: PluginCategory;
   defaultEnabled: boolean;
+  /** Wbudowana funkcja odtwarzacza: 'always' zawsze działa, 'toggle' ma przełącznik w ustawieniach, nie we wtyczkach. */
+  core?: 'always' | 'toggle';
   onNowPlaying?(info: NowPlayingInfo | null): void;
   onTrackChange?(info: NowPlayingInfo | null, previousId: string | null): void;
   onPlayStateChange?(isPlaying: boolean): void;

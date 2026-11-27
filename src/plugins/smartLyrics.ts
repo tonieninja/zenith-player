@@ -13,6 +13,7 @@ export const smartLyricsPlugin: ZenithPlugin = {
   description:
     'Cleans track titles before lyrics lookup (drops Artist - prefix and feat. credits). Turn off if a match is wrong.',
   defaultEnabled: true,
+  core: 'toggle',
   onEnable() {
     setSmartLyricsEnabled(true);
   },
