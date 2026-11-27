@@ -4485,10 +4485,20 @@ ${lang}`
   );
 
   const openTrackAlbum = useCallback(
-    (picked?: Track) => {
+    async (picked?: Track) => {
       const track = picked ?? currentTrack;
-      const refs = picked ?? currentRefs;
-      if (!track || !refs?.albumId) return;
+      if (!track) return;
+      const known = picked ?? currentRefs;
+      // wiersze z playlist i półek często nie niosą albumu; podaje go dopiero odpowiedź next dla utworu
+      const refs: Pick<Track, 'albumId' | 'album'> = known?.albumId
+        ? known
+        : isVideoTrackId(track.id)
+          ? await getTrackRefs(track.id, radioLangRef.current).catch(() => ({}))
+          : {};
+      if (!refs.albumId) {
+        pushToast(t.ctxAlbumNotFound);
+        return;
+      }
       void openCollectionPage({
         id: refs.albumId,
         type: 'album',
@@ -4499,7 +4509,7 @@ ${lang}`
         coverLarge: track.coverLarge,
       });
     },
-    [currentTrack, currentRefs, openCollectionPage]
+    [currentTrack, currentRefs, openCollectionPage, radioLangRef, t]
   );
 
   // samo id z linku: radio zaczyna od tego utworu (dla teledysku od jego wersji audio), a dalej daje kolejkę
@@ -6022,7 +6032,7 @@ ${lang}`
                         <button
                           type="button"
                           className="player-view-album link-btn"
-                          onClick={() => openTrackAlbum()}
+                          onClick={() => void openTrackAlbum()}
                         >
                           {currentRefs.album}
                         </button>
@@ -7425,13 +7435,13 @@ ${lang}`
               >
                 {t.ctxGoToArtist}
               </button>
-              {ctxMenu.track.albumId && (
+              {(ctxMenu.track.albumId || isVideoTrackId(ctxMenu.track.id)) && (
                 <button
                   role="menuitem"
                   onClick={() => {
                     const track = ctxMenu.track;
                     setCtxMenu(null);
-                    openTrackAlbum(track);
+                    void openTrackAlbum(track);
                   }}
                 >
                   {t.ctxGoToAlbum}
