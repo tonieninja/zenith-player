@@ -25,7 +25,7 @@ import { getActiveLyricIndex, lyricLineEnd, secondsUntilLyricChange } from '../l
 import { useLyricsExtras } from '../lyrics/extras';
 import type { OverlayLyricsLine, OverlayPayload } from '../overlay/types';
 import { getLyricsSyncOffset } from '../plugins/lyricsOverlay';
-import { miniHidden, miniLyrics, type MiniPlayerPayload } from '../plugins/miniPlayer';
+import { miniHidden, miniLyrics, miniSize, type MiniPlayerPayload } from '../plugins/miniPlayer';
 import {
   headlessLyrics,
   headlessToggleLike,
@@ -77,13 +77,10 @@ type MiniLyricsState = {
   pending?: boolean;
 };
 
-const BASE_H = 96;
-const LYRICS_H = 152;
-
 // okno rośnie w dół: zaparkowane przy dolnej krawędzi wyjechałoby za ekran, więc wraca w obszar roboczy
-async function growOnScreen(height: number) {
+async function fitOnScreen(width: number, height: number) {
   const win = getCurrentWindow();
-  await win.setSize(new LogicalSize(window.innerWidth, height));
+  await win.setSize(new LogicalSize(width, height));
   const [mon, pos, size] = await Promise.all([
     currentMonitor(),
     win.outerPosition(),
@@ -437,11 +434,17 @@ function MiniApp() {
     };
   }, [headNow, showLyrics]);
 
+  const { w: wantW, h: wantH } = miniSize({
+    play: !hide.play,
+    seek: !hide.seek,
+    prev: !hide.prev,
+    next: !hide.next,
+    lyrics: showLyrics,
+  });
   useEffect(() => {
-    const want = showLyrics ? LYRICS_H : BASE_H;
-    if (Math.abs(window.innerHeight - want) < 8) return;
-    void growOnScreen(want).catch(() => undefined);
-  }, [showLyrics]);
+    if (Math.abs(window.innerWidth - wantW) < 2 && Math.abs(window.innerHeight - wantH) < 2) return;
+    void fitOnScreen(wantW, wantH).catch(() => undefined);
+  }, [wantW, wantH]);
 
   const [grad, setGrad] = useState<[string, string] | null>(null);
   const coverUrl = data?.coverUrl;

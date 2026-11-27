@@ -63,3 +63,14 @@ export const miniPlayerPlugin: ZenithPlugin = {
     await closeMini();
   },
 };
+
+export type MiniLayout = Record<'play' | 'seek' | 'prev' | 'next', boolean> & { lyrics: boolean };
+
+/** Rozmiar okna z widocznych części: przyciski i pasek dokładają tylko swoje miejsce, tytuł ma stałe 176 px. */
+export function miniSize(show: MiniLayout): { w: number; h: number } {
+  const btns = [show.prev && 34, show.play && 40, show.next && 34].filter(Boolean) as number[];
+  // padding okna 28, okładka z odstępem 68, tytuł 176; sterowanie: przyciski, odstępy 6, margines 14 i odstęp 12
+  const controls = btns.length ? btns.reduce((a, b) => a + b, 0) + (btns.length - 1) * 6 + 26 : 0;
+  const h = (show.seek ? 96 : 82) + (show.lyrics ? 56 : 0);
+  return { w: 28 + 68 + 176 + controls, h };
+}

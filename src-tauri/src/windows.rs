@@ -868,7 +868,8 @@ pub async fn open_mini_player(app: AppHandle) -> Result<(), String> {
         return show_without_focus(&existing);
     }
 
-    let (w, h) = (400.0, 96.0);
+    // pełny zestaw przycisków; okno samo dopasuje się do części włączonych w ustawieniach
+    let (w, h) = (418.0, 96.0);
     let (x, y) = saved_position(&app, "mini-player").unwrap_or_else(|| {
         main_monitor_rect(&app)
             .map(|(mx, my, mw, mh)| (mx + mw - w - 24.0, my + mh - h - 140.0))
@@ -880,7 +881,7 @@ pub async fn open_mini_player(app: AppHandle) -> Result<(), String> {
         .enable_clipboard_access()
         .title("Zenith Mini")
         .inner_size(w, h)
-        .min_inner_size(340.0, 84.0)
+        .min_inner_size(272.0, 82.0)
         .position(x, y)
         .resizable(true);
     let win = style_aux_window(builder)
