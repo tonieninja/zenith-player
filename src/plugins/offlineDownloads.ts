@@ -48,6 +48,10 @@ export function deleteDownload(id: string): Promise<void> {
   return invoke<void>('downloads_delete', { id });
 }
 
+export function openDownloadsFolder(): Promise<void> {
+  return invoke<void>('downloads_open_folder');
+}
+
 export function clearDownloads(): Promise<number> {
   return invoke<number>('downloads_clear');
 }

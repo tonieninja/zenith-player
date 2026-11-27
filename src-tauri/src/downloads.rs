@@ -233,6 +233,15 @@ pub fn is_downloaded(id: &str) -> bool {
 }
 
 #[tauri::command]
+pub fn downloads_open_folder(app: AppHandle) -> Result<(), String> {
+    use tauri_plugin_opener::OpenerExt;
+    let dir = DIR.get().ok_or("no downloads folder")?;
+    app.opener()
+        .open_path(dir.to_string_lossy(), None::<&str>)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub fn downloads_list() -> Vec<DownloadMeta> {
     let mut v: Vec<DownloadMeta> = index()
         .lock()

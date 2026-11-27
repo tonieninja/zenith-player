@@ -988,6 +988,7 @@ pub fn run() {
             stream::get_stream_url,
             stream::zvideo_stream,
             downloads::downloads_list,
+            downloads::downloads_open_folder,
             downloads::downloads_add,
             downloads::downloads_delete,
             downloads::downloads_clear,

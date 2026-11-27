@@ -361,6 +361,7 @@ const en = {
   dlPlay: 'Play',
   dlDelete: 'Delete',
   dlClearAll: 'Delete all downloads',
+  dlOpenFolder: 'Open downloads folder',
   dlClearConfirm: 'Click again to delete everything',
   dlHint: 'Downloaded tracks play from disk, so they work even with no connection.',
   baHint:
@@ -1027,6 +1028,7 @@ const pl: Record<keyof typeof en, string> = {
   dlPlay: 'Odtwórz',
   dlDelete: 'Usuń',
   dlClearAll: 'Usuń wszystkie pobrane',
+  dlOpenFolder: 'Otwórz folder z pobranymi',
   dlClearConfirm: 'Kliknij jeszcze raz, żeby usunąć wszystko',
   dlHint: 'Pobrane utwory lecą z dysku, więc działają nawet bez internetu.',
   baHint:

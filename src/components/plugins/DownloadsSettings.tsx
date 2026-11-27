@@ -12,6 +12,7 @@ import {
   formatBytes,
   listDownloads,
   onDownloadProgress,
+  openDownloadsFolder,
 } from '../../plugins/offlineDownloads';
 import { FlagRow } from './MiniPlayerSettings';
 
@@ -90,6 +91,14 @@ export function DownloadsSettings({
           onClick={() => void start()}
         >
           {label}
+        </button>{' '}
+        <button
+          type="button"
+          className="np-cancel-btn"
+          data-testid="dl-open-folder"
+          onClick={() => void openDownloadsFolder().catch((e) => setErr(errorText(t, e)))}
+        >
+          {t.dlOpenFolder}
         </button>
       </div>
       {err && <p className="plugin-desc">{err}</p>}
