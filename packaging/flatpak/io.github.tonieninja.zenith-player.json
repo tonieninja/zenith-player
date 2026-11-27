@@ -1,0 +1,66 @@
+{
+  "id": "io.github.tonieninja.zenith-player",
+  "runtime": "org.gnome.Platform",
+  "runtime-version": "51",
+  "sdk": "org.gnome.Sdk",
+  "sdk-extensions": [
+    "org.freedesktop.Sdk.Extension.node22",
+    "org.freedesktop.Sdk.Extension.rust-stable"
+  ],
+  "command": "zenith-player",
+  "finish-args": [
+    "--share=ipc",
+    "--share=network",
+    "--socket=wayland",
+    "--socket=fallback-x11",
+    "--socket=pulseaudio",
+    "--device=dri",
+    "--filesystem=xdg-music:ro",
+    "--filesystem=xdg-run/tray-icon:create",
+    "--talk-name=org.kde.StatusNotifierWatcher",
+    "--own-name=org.mpris.MediaPlayer2.zenith",
+    "--own-name=com.zenithplayer.desktop.SingleInstance"
+  ],
+  "modules": [
+    "shared-modules/libayatana-appindicator/libayatana-appindicator-gtk3.json",
+    {
+      "name": "zenith-player",
+      "buildsystem": "simple",
+      "build-options": {
+        "append-path": "/usr/lib/sdk/node22/bin:/usr/lib/sdk/rust-stable/bin:/run/build/zenith-player/pnpm/bin",
+        "env": {
+          "CARGO_HOME": "/run/build/zenith-player/cargo",
+          "CARGO_NET_OFFLINE": "true",
+          "XDG_CACHE_HOME": "/run/build/zenith-player/flatpak-node/cache"
+        }
+      },
+      "build-commands": [
+        "chmod +x pnpm/bin/pnpm.cjs && ln -sf pnpm.cjs pnpm/bin/pnpm",
+        "pnpm install --offline --frozen-lockfile",
+        "pnpm tauri build --no-bundle --config '{\"bundle\":{\"createUpdaterArtifacts\":false}}'",
+        "install -Dm755 src-tauri/target/release/zenith-player -t /app/bin",
+        "sed -e 's/{{name}}/Zenith/' -e 's/{{exec}}/zenith-player/' -e \"s/{{icon}}/$FLATPAK_ID/\" src-tauri/linux/zenith.desktop | install -Dm644 /dev/stdin /app/share/applications/$FLATPAK_ID.desktop",
+        "sed -e \"s/com\\.zenithplayer\\.desktop/$FLATPAK_ID/\" -e \"s/Zenith\\.desktop/$FLATPAK_ID.desktop/\" src-tauri/linux/zenith.metainfo.xml | install -Dm644 /dev/stdin /app/share/metainfo/$FLATPAK_ID.metainfo.xml",
+        "install -Dm644 src-tauri/icons/32x32.png /app/share/icons/hicolor/32x32/apps/$FLATPAK_ID.png",
+        "install -Dm644 src-tauri/icons/128x128.png /app/share/icons/hicolor/128x128/apps/$FLATPAK_ID.png",
+        "install -Dm644 src-tauri/icons/128x128@2x.png /app/share/icons/hicolor/256x256/apps/$FLATPAK_ID.png",
+        "install -Dm644 src-tauri/icons/icon.png /app/share/icons/hicolor/512x512/apps/$FLATPAK_ID.png"
+      ],
+      "sources": [
+        {
+          "type": "git",
+          "url": "https://github.com/tonieninja/zenith-player.git",
+          "tag": "v4.7.0"
+        },
+        {
+          "type": "archive",
+          "url": "https://registry.npmjs.org/pnpm/-/pnpm-10.18.3.tgz",
+          "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "dest": "pnpm"
+        },
+        "cargo-sources.json",
+        "node-sources.json"
+      ]
+    }
+  ]
+}

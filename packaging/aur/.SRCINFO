@@ -1,0 +1,22 @@
+pkgbase = zenith-player-bin
+	pkgdesc = Desktop music player with synced lyrics, crossfade and plugins (not affiliated with Google or YouTube)
+	pkgver = 4.7.0
+	pkgrel = 1
+	url = https://github.com/tonieninja/zenith-player
+	arch = x86_64
+	license = MIT
+	depends = alsa-lib
+	depends = gst-libav
+	depends = gst-plugins-base
+	depends = gst-plugins-good
+	depends = gtk3
+	depends = libayatana-appindicator
+	depends = webkit2gtk-4.1
+	optdepends = xdg-utils: open links in the browser
+	provides = zenith-player
+	conflicts = zenith-player
+	options = !debug
+	source_x86_64 = zenith-player-bin-4.7.0.deb::https://github.com/tonieninja/zenith-player/releases/download/v4.7.0/Zenith_4.7.0_amd64.deb
+	sha256sums_x86_64 = 0000000000000000000000000000000000000000000000000000000000000000
+
+pkgname = zenith-player-bin
