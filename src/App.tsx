@@ -122,6 +122,14 @@ import { SyncedLyricsRail } from './components/SyncedLyricsRail';
 import { LyricsSourceBar } from './components/LyricsSourceBar';
 import { LyricsSourcesSettings } from './components/LyricsSourcesSettings';
 import { BackupSetting } from './components/BackupSetting';
+import {
+  addToCollection,
+  CollectionDialog,
+  listCollections,
+  LocalLibrary,
+  TagsDialog,
+  type Collection,
+} from './components/LocalLibrary';
 import { PanelGapSetting } from './components/PanelGapSetting';
 import { AudioOutputSettings } from './components/AudioOutputSettings';
 import { PlainLyrics } from './components/PlainLyrics';
@@ -324,6 +332,7 @@ import {
   Loader2,
   Folder,
   FolderOpen,
+  Archive,
 } from 'lucide-react';
 import { useLatest } from './hooks/useLatest';
 import {
@@ -504,6 +513,13 @@ export default function App() {
     track: Track;
     at?: number;
   } | null>(null);
+  const [localLibOpen, setLocalLibOpen] = useState(false);
+  const [libCollections, setLibCollections] = useState<Collection[]>([]);
+  const [tagTrack, setTagTrack] = useState<Track | null>(null);
+  const [newCollectionFor, setNewCollectionFor] = useState<Track | null>(null);
+  useEffect(() => {
+    if (ctxMenu) void listCollections().then(setLibCollections);
+  }, [ctxMenu]);
   const [trackRating, setTrackRatingState] = useState<TrackLikeStatus>('INDIFFERENT');
   const [loginBusy, setLoginBusy] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
@@ -5309,6 +5325,19 @@ export default function App() {
               <Heart size={18} />
               <span>{t.favs}</span>
             </div>
+            <div
+              className="nav-item playlist-link"
+              role="button"
+              tabIndex={0}
+              aria-label={t.libMine}
+              title={t.libMine}
+              onKeyDown={clickOnKey}
+              onClick={() => setLocalLibOpen(true)}
+              data-testid="local-library-link"
+            >
+              <Archive size={18} />
+              <span>{t.libMine}</span>
+            </div>
             {(() => {
               const renderPl = (pl: Track) => (
                 <div
@@ -6768,6 +6797,31 @@ export default function App() {
         </ModalOverlay>
       )}
 
+      {localLibOpen && (
+        <LocalLibrary
+          lang={lang}
+          onClose={() => setLocalLibOpen(false)}
+          onPlay={(tracks, index, title) => {
+            setLocalLibOpen(false);
+            if (tracks[index]) void handleItemClick(tracks[index], title, tracks);
+          }}
+        />
+      )}
+      {tagTrack && <TagsDialog lang={lang} track={tagTrack} onClose={() => setTagTrack(null)} />}
+      {newCollectionFor && (
+        <CollectionDialog
+          lang={lang}
+          onClose={() => setNewCollectionFor(null)}
+          onDone={(id, name) => {
+            const track = newCollectionFor;
+            setNewCollectionFor(null);
+            void addToCollection(id, track).then(
+              () => pushToast(t.ctxAddedToCollection.replace('{name}', name), 'success'),
+              (e) => pushToast(errorText(t, e), 'error')
+            );
+          }}
+        />
+      )}
       {pmOpen && (
         <Suspense fallback={null}>
           <PlaylistManager
@@ -6847,6 +6901,46 @@ export default function App() {
                 >
                   {t.ctxDownload}
                 </button>
+              )}
+              {isVideoTrackId(ctxMenu.track.id) && (
+                <>
+                  <button
+                    role="menuitem"
+                    onClick={() => {
+                      setTagTrack(ctxMenu.track);
+                      setCtxMenu(null);
+                    }}
+                  >
+                    {t.ctxTags}
+                  </button>
+                  <div className="ctx-menu-label">{t.ctxCollections}</div>
+                  {libCollections.map((c) => (
+                    <button
+                      key={c.id}
+                      role="menuitem"
+                      onClick={() => {
+                        const track = ctxMenu.track;
+                        setCtxMenu(null);
+                        void addToCollection(c.id, track).then(
+                          () =>
+                            pushToast(t.ctxAddedToCollection.replace('{name}', c.name), 'success'),
+                          (e) => pushToast(errorText(t, e), 'error')
+                        );
+                      }}
+                    >
+                      {c.folder ? `${c.folder} / ${c.name}` : c.name}
+                    </button>
+                  ))}
+                  <button
+                    role="menuitem"
+                    onClick={() => {
+                      setNewCollectionFor(ctxMenu.track);
+                      setCtxMenu(null);
+                    }}
+                  >
+                    {t.libNewCollection}
+                  </button>
+                </>
               )}
               <div className="ctx-menu-label">{t.ctxAddToPlaylist}</div>
               {userPlaylists.filter((p) => isEditablePlaylist(p.id)).length === 0 ? (

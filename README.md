@@ -51,6 +51,7 @@ And the rest:
 
 - Home, Explore with charts, moods and genres, Search, and a Library with podcasts and history
 - Playlists you can edit, merge and reorder, synced back to YouTube Music, plus local folders for the sidebar
+- My library on your computer: collections in folders and tags for any song, searched and sorted by title, artist, plays or last played
 - Artist pages with Play all, which plays every song of the artist like a playlist
 - Queue with drag and drop, shuffle, loop, and a radio that keeps going after the last track. It skips remixes and sped-up copies of the song you just heard, tracks you skipped or disliked, and anything played in the last two days
 - Speed with the pitch kept, A-B loop, sleep timer, bass boost and a limiter so loud presets don't clip
