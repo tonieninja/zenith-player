@@ -231,6 +231,60 @@ fn crc32(data: &[u8]) -> u32 {
     })
 }
 
+pub fn tag_m4a(src: &Path, dst: &Path, tags: &Tags) -> Result<(), String> {
+    let bytes = std::fs::read(src).map_err(|e| e.to_string())?;
+    if absolute_fragment_offsets(&bytes) {
+        return Err("fragments with absolute offsets".into());
+    }
+    let mut ud = mp4ameta::Userdata::default();
+    if !tags.title.is_empty() {
+        ud.set_title(tags.title);
+    }
+    if !tags.artist.is_empty() {
+        ud.set_artist(tags.artist);
+    }
+    if !tags.album.is_empty() {
+        ud.set_album(tags.album);
+    }
+    if let Some(jpeg) = tags.cover_jpeg {
+        ud.set_artwork(mp4ameta::Img::jpeg(jpeg.to_vec()));
+    }
+    let mut file = std::io::Cursor::new(bytes);
+    ud.write_to(&mut file).map_err(|e| e.to_string())?;
+    std::fs::write(dst, file.into_inner()).map_err(|e| e.to_string())
+}
+
+// mp4ameta przesuwa dane za moov i poprawia stco/co64, ale nie bezwzględne base_data_offset w tfhd ani mfra
+fn absolute_fragment_offsets(file: &[u8]) -> bool {
+    fn any(b: &[u8], kind: &[u8; 4], f: &dyn Fn(&[u8]) -> bool) -> bool {
+        boxes(b).any(|(k, c)| &k == kind && f(c))
+    }
+    any(file, b"mfra", &|_| true)
+        || any(file, b"moof", &|m| {
+            any(m, b"traf", &|t| {
+                any(t, b"tfhd", &|h| h.get(3).is_some_and(|f| f & 1 != 0))
+            })
+        })
+}
+
+fn boxes(mut b: &[u8]) -> impl Iterator<Item = ([u8; 4], &[u8])> {
+    std::iter::from_fn(move || {
+        let size = u32::from_be_bytes(b.get(..4)?.try_into().ok()?) as usize;
+        let kind: [u8; 4] = b.get(4..8)?.try_into().ok()?;
+        let (head, len) = match size {
+            0 => (8, b.len()),
+            1 => (
+                16,
+                u64::from_be_bytes(b.get(8..16)?.try_into().ok()?) as usize,
+            ),
+            n => (8, n),
+        };
+        let content = b.get(head..len)?;
+        b = &b[len..];
+        Some((kind, content))
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -315,7 +369,102 @@ mod tests {
         );
     }
 
-    // ZENITH_WEBM=<plik z YouTube> cargo test --lib opus_tags -- --ignored; wynik obok jako .opus
+    fn atom(kind: &[u8; 4], body: &[u8]) -> Vec<u8> {
+        [&(body.len() as u32 + 8).to_be_bytes()[..], kind, body].concat()
+    }
+
+    fn full(kind: &[u8; 4], flags: u32, body: &[u8]) -> Vec<u8> {
+        atom(kind, &[&flags.to_be_bytes()[..], body].concat())
+    }
+
+    fn find<'a>(b: &'a [u8], path: &[&[u8; 4]]) -> &'a [u8] {
+        path.iter().fold(b, |b, k| {
+            boxes(b)
+                .find(|(kind, _)| &kind == k)
+                .map(|(_, c)| c)
+                .unwrap()
+        })
+    }
+
+    // moov przed danymi, jak w pobraniach z YouTube; tfhd None = plik zwykły z mdat i stco
+    fn mp4(tfhd: Option<u32>, audio: &[u8]) -> Vec<u8> {
+        // nagłówek z timescale 44100 na pozycji 8; zerowy timescale wywraca mp4ameta przy czytaniu długości
+        let hd = |len: usize| [&[0; 8][..], &44100u32.to_be_bytes(), &vec![0; len - 12]].concat();
+        let moov = |chunk: u32| {
+            let stco = full(
+                b"stco",
+                0,
+                &[1u32.to_be_bytes(), chunk.to_be_bytes()].concat(),
+            );
+            let stbl = atom(b"stbl", &stco);
+            let minf = atom(b"minf", &[full(b"smhd", 0, &[0; 4]), stbl].concat());
+            let hdlr = full(b"hdlr", 0, &[&[0; 4][..], b"soun", &[0; 13]].concat());
+            let mdia = atom(b"mdia", &[full(b"mdhd", 0, &hd(20)), hdlr, minf].concat());
+            let trak = atom(b"trak", &[full(b"tkhd", 0, &[0; 80]), mdia].concat());
+            atom(b"moov", &[full(b"mvhd", 0, &hd(96)), trak].concat())
+        };
+        let mut out = atom(b"ftyp", b"M4A \0\0\0\0M4A isom");
+        let at = (out.len() + moov(0).len() + 8) as u32;
+        out.extend(moov(if tfhd.is_some() { 0 } else { at }));
+        if let Some(flags) = tfhd {
+            let traf = atom(b"traf", &full(b"tfhd", flags, &[0; 12]));
+            out.extend(atom(b"moof", &[full(b"mfhd", 0, &[0; 4]), traf].concat()));
+        }
+        out.extend(atom(b"mdat", audio));
+        out
+    }
+
+    fn tag_tmp(name: &str, src: &[u8], jpeg: &[u8]) -> Result<Vec<u8>, String> {
+        let dir = std::env::temp_dir();
+        let (a, b) = (
+            dir.join(format!("zenith-{name}-{}.m4a", std::process::id())),
+            dir.join(format!("zenith-{name}-{}.tag.m4a", std::process::id())),
+        );
+        std::fs::write(&a, src).unwrap();
+        let tags = Tags {
+            title: "Feel Good Inc",
+            artist: "Gorillaz",
+            album: "",
+            cover_jpeg: Some(jpeg),
+        };
+        let r = tag_m4a(&a, &b, &tags).map(|()| std::fs::read(&b).unwrap());
+        let _ = (std::fs::remove_file(a), std::fs::remove_file(b));
+        r
+    }
+
+    #[test]
+    fn m4a_gets_tags_and_cover_while_audio_stays_byte_identical() {
+        let audio: Vec<u8> = (0..4000u32).map(|i| (i * 7) as u8).collect();
+        let jpeg = vec![0xFF, 0xD8, 0xFF, 0xE0, 1, 2, 3];
+        let src = mp4(None, &audio);
+        let out = tag_tmp("plain", &src, &jpeg).unwrap();
+        assert!(out.len() > src.len());
+        assert_eq!(find(&out, &[b"mdat"]), &audio[..]);
+        let stco = find(
+            &out,
+            &[b"moov", b"trak", b"mdia", b"minf", b"stbl", b"stco"],
+        );
+        let at = u32::from_be_bytes(stco[8..12].try_into().unwrap()) as usize;
+        assert_eq!(&out[at..at + audio.len()], &audio[..]);
+        let tag = mp4ameta::Tag::read_from(&mut std::io::Cursor::new(&out)).unwrap();
+        assert_eq!(tag.title(), Some("Feel Good Inc"));
+        assert_eq!(tag.artist(), Some("Gorillaz"));
+        assert_eq!(tag.album(), None);
+        assert_eq!(tag.artwork().map(|a| a.data), Some(&jpeg[..]));
+
+        // fragmenty z offsetami względem moof (default-base-is-moof) przesuwają się w całości
+        let src = mp4(Some(0x02_0000), &audio);
+        let out = tag_tmp("frag", &src, &jpeg).unwrap();
+        let frags = find(&src, &[b"moof"]).len() + 8 + audio.len() + 8;
+        assert_eq!(out[out.len() - frags..], src[src.len() - frags..]);
+        let tag = mp4ameta::Tag::read_from(&mut std::io::Cursor::new(&out)).unwrap();
+        assert_eq!(tag.title(), Some("Feel Good Inc"));
+
+        // bezwzględny base_data_offset wskazywałby po przesunięciu w złe miejsce, więc plik zostaje bez tagów
+        assert!(tag_tmp("abs", &mp4(Some(1), &audio), &jpeg).is_err());
+    }
+
+    // ZENITH_WEBM=<plik .webm albo .m4a z YouTube> cargo test --lib opus_tags -- --ignored; wynik obok z tagami
     #[test]
     #[ignore]
     fn converts_a_real_youtube_webm() {
@@ -333,7 +482,32 @@ mod tests {
             album: "Demon Days",
             cover_jpeg: Some(&jpeg),
         };
-        webm_to_ogg(&src, &src.with_extension("opus"), &tags).unwrap();
+        if src.extension().is_some_and(|e| e == "m4a") {
+            let dst = src.with_extension("tagged.m4a");
+            tag_m4a(&src, &dst, &tags).unwrap();
+            // silnik natywny gra pobrane przez symphonię, więc pakiety po tagowaniu muszą wyjść te same
+            let packets = |p: &Path| {
+                let mss = MediaSourceStream::new(
+                    Box::new(std::fs::File::open(p).unwrap()),
+                    MediaSourceStreamOptions::default(),
+                );
+                let mut fmt = symphonia::default::get_probe()
+                    .format(
+                        Hint::new().with_extension("m4a"),
+                        mss,
+                        &FormatOptions::default(),
+                        &MetadataOptions::default(),
+                    )
+                    .unwrap()
+                    .format;
+                std::iter::from_fn(|| fmt.next_packet().ok().map(|p| p.data)).collect::<Vec<_>>()
+            };
+            let (a, b) = (packets(&src), packets(&dst));
+            assert!(!a.is_empty());
+            assert_eq!(a, b);
+        } else {
+            webm_to_ogg(&src, &src.with_extension("opus"), &tags).unwrap();
+        }
     }
 
     #[test]

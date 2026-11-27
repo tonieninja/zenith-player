@@ -1177,6 +1177,14 @@ pub mod headless {
         }
         LAST_NOW_MS.store(now, Ordering::SeqCst);
         let s = snapshot();
+        #[cfg(windows)]
+        {
+            crate::thumbbar::headless_playing(!s.paused);
+            let art = track["coverLarge"]
+                .as_str()
+                .or_else(|| track["cover"].as_str());
+            crate::thumbbar::headless_cover(art.unwrap_or(""));
+        }
         let rate = with(|st| st.rate).unwrap_or(1.0);
         let _ = app.emit(
             "zenith-headless-now",

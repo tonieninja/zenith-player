@@ -11,7 +11,8 @@ use crate::now_secs;
 
 pub const LABEL: &str = "zenith-pot";
 const REPLY_HOST: &str = "zenith-pot.invalid";
-const START_URL: &str = "https://www.youtube.com/?themeRefresh=1";
+// pusty odtwarzacz osadzony ma tego samego klienta WebPO (ten sam requestKey) przy 1/3 sterty JS strony głównej
+const START_URL: &str = "https://www.youtube.com/embed/";
 const TOKEN_TTL: Duration = Duration::from_secs(2 * 3600);
 const IDLE_CLOSE_SECS: u64 = 45;
 const CLOSE_AFTER_MINT: Duration = Duration::from_secs(3);
@@ -206,8 +207,57 @@ fn build(app: &AppHandle) -> Result<(), String> {
         })
         .additional_browser_args(&crate::windows::merged_webview_args())
         .build()
-        .map(|_| ())
+        .map(|_w| {
+            #[cfg(windows)]
+            let _ = _w.with_webview(skip_heavy);
+        })
         .map_err(|e| e.to_string())
+}
+
+// do tokenu wystarczy JS; obrazy, czcionki i media tylko zajmują pamięć i CPU renderera
+#[cfg(windows)]
+fn skip_heavy(wv: tauri::webview::PlatformWebview) {
+    use webview2_com::Microsoft::Web::WebView2::Win32::{
+        ICoreWebView2_22, COREWEBVIEW2_WEB_RESOURCE_CONTEXT_FONT,
+        COREWEBVIEW2_WEB_RESOURCE_CONTEXT_IMAGE, COREWEBVIEW2_WEB_RESOURCE_CONTEXT_MEDIA,
+        COREWEBVIEW2_WEB_RESOURCE_REQUEST_SOURCE_KINDS_ALL,
+    };
+    use webview2_com::WebResourceRequestedEventHandler;
+    use windows_core::{w, Interface};
+    unsafe {
+        let Ok(core) = wv.controller().CoreWebView2() else {
+            return;
+        };
+        for ctx in [
+            COREWEBVIEW2_WEB_RESOURCE_CONTEXT_IMAGE,
+            COREWEBVIEW2_WEB_RESOURCE_CONTEXT_FONT,
+            COREWEBVIEW2_WEB_RESOURCE_CONTEXT_MEDIA,
+        ] {
+            // starsze API filtruje tylko dokument główny, bez ramek
+            let _ = match core.cast::<ICoreWebView2_22>() {
+                Ok(c) => c.AddWebResourceRequestedFilterWithRequestSourceKinds(
+                    w!("*"),
+                    ctx,
+                    COREWEBVIEW2_WEB_RESOURCE_REQUEST_SOURCE_KINDS_ALL,
+                ),
+                Err(_) => core.AddWebResourceRequestedFilter(w!("*"), ctx),
+            };
+        }
+        let env = wv.environment();
+        let block = WebResourceRequestedEventHandler::create(Box::new(move |_, args| {
+            if let Some(args) = args {
+                args.SetResponse(&env.CreateWebResourceResponse(
+                    None,
+                    403,
+                    w!("Blocked"),
+                    w!(""),
+                )?)?;
+            }
+            Ok(())
+        }));
+        let mut token = 0;
+        let _ = core.add_WebResourceRequested(&block, &mut token);
+    }
 }
 
 pub fn allowed_host(h: &str) -> bool {

@@ -382,7 +382,7 @@ const en = {
   baRemove: 'Remove',
   dlTags: 'Title, artist and cover in the file',
   dlTagsDesc:
-    'New downloads are saved as .opus with tags, so other players show them properly. Files already on disk stay as they are.',
+    'New downloads are saved as .opus or .m4a with tags, so other players show them properly. Files already on disk stay as they are.',
   loudnessHint:
     'Starts from the loudness YouTube reports for the track, checks it in the first few seconds and turns loud masters down to the same level. Quiet tracks never get boosted, so nothing clips.',
   remoteUrl: 'Open on your phone',
@@ -1153,7 +1153,7 @@ const pl: Record<keyof typeof en, string> = {
   baRemove: 'Usuń',
   dlTags: 'Tytuł, wykonawca i okładka w pliku',
   dlTagsDesc:
-    'Nowe pobrania zapisują się jako .opus z tagami, więc inne odtwarzacze pokazują je poprawnie. Pliki już pobrane zostają bez zmian.',
+    'Nowe pobrania zapisują się jako .opus lub .m4a z tagami, więc inne odtwarzacze pokazują je poprawnie. Pliki już pobrane zostają bez zmian.',
   loudnessHint:
     'Zaczyna od głośności, którą podaje YouTube, sprawdza ją w pierwszych sekundach i ścisza za głośno zmasterowane do wspólnego poziomu. Cichych nie podgłaśnia, więc nic nie przesteruje.',
   remoteUrl: 'Otwórz na telefonie',
