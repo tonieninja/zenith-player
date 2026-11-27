@@ -628,15 +628,13 @@ pub async fn ytm_browse(
 
     let client = crate::player::client("", 12, true).ok_or("http client")?;
     let base = format!("{YTM_BROWSE}?prettyPrint=false&key={}", innertube_api_key());
+    // bez visitorData z pierwszej odpowiedzi gość dostaje pustą kontynuację i puste podstrony wykonawcy
+    if let Some(v) = visitor.filter(|v| valid_token(v)) {
+        body["context"]["client"]["visitorData"] = json!(v);
+    }
     // kolejne półki strony głównej (miksy, albumy dla ciebie, teledyski) przychodzą w kontynuacjach
     let url = match continuation.as_deref() {
-        Some(t) if valid_token(t) => {
-            // bez visitorData z pierwszej odpowiedzi gość dostaje pustą kontynuację
-            if let Some(v) = visitor.filter(|v| valid_token(v)) {
-                body["context"]["client"]["visitorData"] = json!(v);
-            }
-            format!("{base}&ctoken={t}&continuation={t}")
-        }
+        Some(t) if valid_token(t) => format!("{base}&ctoken={t}&continuation={t}"),
         Some(_) => return Err("bad continuation".into()),
         None => base,
     };

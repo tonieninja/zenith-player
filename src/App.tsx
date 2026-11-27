@@ -1278,7 +1278,8 @@ ${lang}`
       setSections([]);
       navigateTo('mood');
       const safety = window.setTimeout(() => setFeedTabLoading('mood', false), 12000);
-      const isArtist = item.id.startsWith('UC');
+      // kanał z params („Występy na żywo”, „Playlisty”) to zwykła siatka browse, nie strona wykonawcy
+      const isArtist = item.id.startsWith('UC') && !item.id.includes('::');
       // „Ponów” podaje pustą okładkę, więc zostawiamy awatar z pierwszego wejścia na ten sam kanał
       setArtistPage((prev) =>
         isArtist
@@ -5350,9 +5351,12 @@ ${lang}`
         openMoodsGenres();
         return;
       }
-      const id = moreBrowseId(section.more);
+      const { browseId } = section.more;
+      // playlista z „Więcej” (np. „Teledyski”) ładuje się bez params, które dotyczą widoku kanału
+      const isList = browseId.startsWith('VL');
+      const id = isList ? browseId : moreBrowseId(section.more);
       const target: Track = { id, type: 'playlist', title: section.title, artist: '', cover: '' };
-      if (id.startsWith('VL')) void openCollectionPage(target);
+      if (isList) void openCollectionPage(target);
       else openBrowsePage(target);
     },
     [openMoodsGenres, openCollectionPage, openBrowsePage]
