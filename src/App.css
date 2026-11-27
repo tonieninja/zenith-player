@@ -1991,7 +1991,8 @@ button.nav-item {
   flex-direction: column;
   align-items: center;
   width: 40%;
-  min-width: 0;
+  /* przy długim tytule albo wtyczkach w pasku przyciski wchodziły na „Lubię to”; ustępuje tytuł */
+  min-width: min-content;
   gap: 10px;
 }
 
@@ -2158,6 +2159,23 @@ button.control-icon-btn {
   }
   .player-extra-controls-group .volume-pct {
     display: none;
+  }
+}
+
+/* Obok rozwiniętego paska bocznego brakuje miejsca; głośność zostaje pod kółkiem myszy i wyciszeniem. */
+@media (min-width: 769px) and (max-width: 960px) {
+  .playback-buttons-group {
+    gap: 14px;
+  }
+  .player-extra-controls-group {
+    gap: 8px;
+  }
+  .player-extra-controls-group .volume-bar-track {
+    display: none;
+  }
+  .player-mini-cover {
+    width: 44px;
+    height: 44px;
   }
 }
 
@@ -5324,7 +5342,6 @@ html.has-cover-theme .main-play-pause-circle {
 
 @media (max-width: 768px) {
   .player-core-controls {
-    min-width: 0;
     flex: 1 1 auto;
   }
   .progress-bar-wrapper {
