@@ -20,7 +20,11 @@ function applyVars(accent: string, accent2: string, glow: string, mesh1: string,
   root.classList.add('has-cover-theme');
 }
 
+let themeJob = 0;
+
 export function resetCoverTheme() {
+  // okładka, która doczyta się po wyłączeniu poświaty, nie może jej z powrotem nałożyć
+  themeJob += 1;
   const d = themeVars();
   applyVars(d.accent, d.accent2, d.glow, d.mesh1, d.mesh2);
   document.documentElement.classList.remove('has-cover-theme');
@@ -95,8 +99,6 @@ export function coverLedColor(coverUrl: string): Promise<Rgb | null> {
     img.src = cachedCoverUrl(coverUrl, 120);
   });
 }
-
-let themeJob = 0;
 
 export function applyCoverTheme(coverUrl: string | undefined | null) {
   if (!coverUrl) {

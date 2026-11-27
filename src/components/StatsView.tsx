@@ -3,7 +3,8 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { X } from 'lucide-react';
 import type { Track } from '../api/youtube';
-import { translations, type Language } from '../i18n';
+import { errorText, translations, type Language } from '../i18n';
+import { lastfmErrorText } from '../plugins/lastfm';
 import { ModalOverlay } from './ui/ModalOverlay';
 import { pushToast } from './Toast';
 
@@ -152,7 +153,7 @@ export function StatsView({
   const weekdays = t.statsWeekdays.split(',');
 
   return (
-    <ModalOverlay onClick={onClose} testId="stats-view">
+    <ModalOverlay onClick={onClose} onEscape={onClose} testId="stats-view">
       <div className="glass-modal-container stats-modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <h2>{t.statsTitle}</h2>
@@ -317,12 +318,13 @@ export function StatsView({
               e.preventDefault();
               void invoke('lastfm_import', { user: lfmUser || null }).then(
                 () => setImp({ page: 0, pages: 1, added: 0 }),
-                (err) => pushToast(String(err), 'error', 6000)
+                (err) => pushToast(`${t.statsImportFailed}: ${errorText(t, err)}`, 'error', 6000)
               );
             }}
           >
             <input
               className="lib-input"
+              aria-label={t.statsImportUser}
               placeholder={t.statsImportUser}
               value={lfmUser}
               maxLength={64}
@@ -336,7 +338,7 @@ export function StatsView({
             <p className="plugin-desc" aria-live="polite">
               {imp.done
                 ? imp.error
-                  ? `${t.statsImportFailed}: ${imp.error}`
+                  ? `${t.statsImportFailed}: ${lastfmErrorText(imp.error, t)}`
                   : t.statsImportDone.replace('{n}', String(imp.added ?? 0))
                 : t.statsImportProgress
                     .replace('{page}', String(imp.page ?? 0))

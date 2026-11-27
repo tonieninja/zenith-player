@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { memo, useEffect, useState } from 'react';
 import { X } from 'lucide-react';
 import { translations, type Language } from '../i18n';
 
@@ -109,7 +109,7 @@ function actionLabel(action: ToastAction, lang: Language): string {
 }
 
 // region aria-live stoi cały czas; dodany razem z pierwszym komunikatem czytniki ekranu często pomijają
-export function ToastHost({ lang = 'en' }: { lang?: Language }) {
+export const ToastHost = memo(function ToastHost({ lang = 'en' }: { lang?: Language }) {
   const list = useToasts();
   return (
     <div className="toast-host" aria-live="polite">
@@ -153,4 +153,4 @@ export function ToastHost({ lang = 'en' }: { lang?: Language }) {
       ))}
     </div>
   );
-}
+});

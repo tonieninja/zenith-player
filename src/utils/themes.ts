@@ -95,9 +95,11 @@ export function applyTheme(id?: string) {
   if (id) localStorage.setItem(KEY, id);
   const v = themeVars();
   const root = document.documentElement.style;
+  root.setProperty('--accent-3', v.accent3);
+  // przy poświacie akcent daje okładka; motyw wróci, gdy poświata się wyłączy (resetCoverTheme)
+  if (document.documentElement.classList.contains('has-cover-theme')) return;
   root.setProperty('--accent-1', v.accent);
   root.setProperty('--accent-2', v.accent2);
-  root.setProperty('--accent-3', v.accent3);
   root.setProperty('--accent-glow', v.glow);
   root.setProperty('--theme-mesh-1', v.mesh1);
   root.setProperty('--theme-mesh-2', v.mesh2);

@@ -50,6 +50,7 @@ import {
   getLyrics,
   getMoodPlaylist,
   loadPlaylistItems,
+  prefetchPlaylist,
   AlreadyInPlaylistError,
   SessionExpiredError,
   getUserPlaylists,
@@ -140,7 +141,7 @@ import {
 import { useDebounce } from './hooks/useDebounce';
 import { useScrubBar } from './hooks/useScrubBar';
 import { PopoverMenu } from './components/ui/PopoverMenu';
-import { ModalOverlay } from './components/ui/ModalOverlay';
+import { ModalOverlay, escapeTopModal, modalOpen } from './components/ui/ModalOverlay';
 import { clickOnKey, sliderKeyValue } from './components/ui/keyboard';
 import { YtmRatingButtons } from './components/player/YtmRatingButtons';
 import {
@@ -168,7 +169,7 @@ import {
 } from './plugins/abLoop';
 import { sponsorBlockJump } from './plugins/sponsorBlock';
 import { downloadTrack } from './plugins/offlineDownloads';
-import { playLogSwitch, playLogTick } from './utils/playLog';
+import { playLogRepeat, playLogSwitch, playLogTick } from './utils/playLog';
 import { discoverSection } from './plugins/discover';
 import { registerAutoPauseCallback } from './plugins/autoPauseBlur';
 import { Select } from './components/ui/Select';
@@ -432,6 +433,7 @@ export default function App() {
   const [browseTitle, setBrowseTitle] = useState<string | null>(null);
   const [artistPage, setArtistPage] = useState<ArtistPageState | null>(null);
   const [browseEmptyKind, setBrowseEmptyKind] = useState<'episodes' | 'collection' | null>(null);
+  const [searchFailed, setSearchFailed] = useState(false);
   const [showSplash, setShowSplash] = useState(() => !isRestoredUi());
   const [splashLeaving, setSplashLeaving] = useState(false);
 
@@ -960,13 +962,20 @@ export default function App() {
   }, [lang]);
 
   const debouncedSearch = useDebounce(searchQuery, 400);
+  const lastSearchRef = useRef('');
 
   const handleSearch = useCallback(
     (rawQuery: string, language: Language = lang) => {
       const query = rawQuery.trim().slice(0, MAX_SEARCH_LENGTH).trim();
       if (!query) return;
+      lastSearchRef.current = `${query}
+${language}`;
       const dataSeq = ++feedSeqRef.current.search;
+      // wyszukiwanie i strony przeglądania piszą do tych samych `sections`, więc nowe unieważnia oba tory
+      ++feedSeqRef.current.mood;
+      setFeedTabLoading('mood', false);
       setFeedTabLoading('search', true);
+      setSearchFailed(false);
       setSections([]);
       const safety = window.setTimeout(() => setFeedTabLoading('search', false), 15000);
       navigateTo('search');
@@ -980,7 +989,7 @@ export default function App() {
         .catch(() => {
           if (dataSeq !== feedSeqRef.current.search) return;
           setSections(stableOrderSections([]));
-          pushToast(translations[language].searchFailed, 'error');
+          setSearchFailed(true);
         })
         .finally(() => {
           window.clearTimeout(safety);
@@ -1069,8 +1078,19 @@ export default function App() {
   useEffect(() => {
     const langChanged = searchLangRef.current !== lang;
     searchLangRef.current = lang;
-    if (!debouncedSearch.trim()) return;
+    const query = debouncedSearch.trim().slice(0, MAX_SEARCH_LENGTH).trim();
+    if (!query) {
+      lastSearchRef.current = '';
+      return;
+    }
     if (langChanged && activeTabRef.current !== 'search') return;
+    // Enter wysłał już to zapytanie; drugie odrzuciłoby gotową odpowiedź i wyczyściło listę
+    if (
+      lastSearchRef.current ===
+      `${query}
+${lang}`
+    )
+      return;
     handleSearch(debouncedSearch, lang);
   }, [debouncedSearch, lang, handleSearch, activeTabRef]);
 
@@ -1106,6 +1126,8 @@ export default function App() {
   const loadMood = useCallback(
     (categoryId: string, browseId: string, language: Language = lang) => {
       const dataSeq = ++feedSeqRef.current.mood;
+      ++feedSeqRef.current.search;
+      setFeedTabLoading('search', false);
       setFeedTabLoading('mood', true);
       navigateTo('mood');
       setSearchQuery('');
@@ -1133,6 +1155,8 @@ export default function App() {
   const openBrowsePage = useCallback(
     (item: Track) => {
       const dataSeq = ++feedSeqRef.current.mood;
+      ++feedSeqRef.current.search;
+      setFeedTabLoading('search', false);
       setFeedTabLoading('mood', true);
       setSearchQuery('');
       setActiveMood(browseMoodId(item.id));
@@ -1182,6 +1206,8 @@ export default function App() {
   const openCollectionPage = useCallback(
     async (collection: Track) => {
       const dataSeq = ++feedSeqRef.current.mood;
+      ++feedSeqRef.current.search;
+      setFeedTabLoading('search', false);
       lastCollectionRef.current = collection;
       const plain = toPlainPlaylistId(collection.id);
       const emptyKind = plain === 'SE' ? 'episodes' : 'collection';
@@ -1234,6 +1260,8 @@ export default function App() {
   const likesAtRef = useRef(0);
   const openFavorites = useCallback(() => {
     const seq = ++feedSeqRef.current.mood;
+    ++feedSeqRef.current.search;
+    setFeedTabLoading('search', false);
     navigateTo('mood');
     setSearchQuery('');
     setBrowseTitle(t.favs);
@@ -3207,6 +3235,7 @@ export default function App() {
       }
       const advance = () => {
         if (loopMode === 'one') {
+          playLogRepeat();
           audio.currentTime = 0;
           audio.play().catch(() => setIsPlaying(false));
           return;
@@ -3786,7 +3815,11 @@ export default function App() {
       .then((fn) => {
         unlisten = fn;
       });
-    listen('zenith-app-quitting', () => persistQueueNow()).then((fn) => {
+    listen('zenith-app-quitting', () => {
+      // przy chowaniu do zasobnika i zwalnianiu okna gra dalej Rust i to on zapisze ten utwór
+      playLogSwitch(null);
+      persistQueueNow();
+    }).then((fn) => {
       unlistenQuit = fn;
     });
     let unlistenHidden: (() => void) | undefined;
@@ -4099,6 +4132,12 @@ export default function App() {
       const typing = isTypingEvent(e);
       if (e.key === 'Escape') {
         if (document.querySelector('.zen-select.open')) return;
+        // pola w tych oknach nie obsługują Escape same, a nazwa kolekcji jest wypełniona od razu
+        if (escapeTopModal()) {
+          e.preventDefault();
+          e.stopPropagation();
+          return;
+        }
         if (typing && (e.target as HTMLInputElement | null)?.value) return;
         const open = overlayStackRef.current;
         if (open.np) setNpOpen(false);
@@ -4117,7 +4156,7 @@ export default function App() {
       const slash = e.key === '/' && !e.ctrlKey && !e.metaKey && !e.altKey && !typing;
       if (findCombo || slash) {
         const open = overlayStackRef.current;
-        if (open.np || open.plugins || open.settings) return;
+        if (open.np || open.plugins || open.settings || modalOpen()) return;
         e.preventDefault();
         const input = searchInputRef.current;
         if (input) {
@@ -4997,6 +5036,12 @@ export default function App() {
     () => (activeTab === 'home' ? (quickPicks[0] ?? homeSections[0]?.items[0] ?? null) : null),
     [activeTab, quickPicks, homeSections]
   );
+  // FeedHero jest w memo; lambda w JSX psułaby je przy każdym znaku wpisanym w wyszukiwarkę
+  const playHomeHero = useCallback(() => {
+    if (homeHeroTrack) {
+      void handleItemClick(homeHeroTrack, t.quickPicks, quickPicks.length ? quickPicks : undefined);
+    }
+  }, [homeHeroTrack, handleItemClick, t.quickPicks, quickPicks]);
 
   useEffect(() => {
     if (showSplash) return;
@@ -5087,6 +5132,101 @@ export default function App() {
     [collectionPage, handleItemClick]
   );
 
+  // tylko strony z cache (album, playlista, wykonawca); strumień utworu po samym najechaniu zjadałby limit
+  const prefetchItem = useCallback(
+    (item: Track) => {
+      if (item.type === 'artist' && item.id.startsWith('UC')) {
+        void getArtistPage(item.id, lang).catch(() => undefined);
+      } else if (item.type === 'album' || itemClickPlan(item).kind === 'play-collection') {
+        prefetchPlaylist(item.id, lang);
+      }
+    },
+    [lang]
+  );
+
+  // szuflada kolejki jest w memo; akcje czytają stan z refów, więc pisanie w wyszukiwarce jej nie renderuje
+  const queueActions = useMemo(
+    () => ({
+      close: () => setQueueOpen(false),
+      select: (idx: number) => {
+        ++collectionReqRef.current;
+        if (idx !== queueIndexRef.current) void playByIndexRef.current(idx);
+      },
+      remove: (idx: number) => {
+        const prev = queueRef.current;
+        if (idx < 0 || idx >= prev.length) return;
+        const wasCurrent = idx === queueIndexRef.current;
+        const next = prev.filter((_, i) => i !== idx);
+        let newIndex = queueIndexRef.current;
+        if (idx < newIndex) newIndex -= 1;
+        else if (idx === newIndex) {
+          newIndex = Math.min(newIndex, Math.max(0, next.length - 1));
+        }
+        queueRef.current = next;
+        queueIndexRef.current = newIndex;
+        setQueue(next);
+        setQueueIndex(newIndex);
+        if (next.length === 0) {
+          ++loadGenRef.current;
+          playLogSwitch(null);
+          audio.pause();
+          audio.src = '';
+          setCurrentTrack(null);
+          setIsPlaying(false);
+          setBuffering(false);
+        } else if (wasCurrent && next[newIndex]) {
+          // usunięty był ostatni: poprzedni zostaje wybrany, ale nie gra od nowa
+          void loadTrackRef.current(next[newIndex], idx < next.length && isPlayingRef.current);
+        }
+      },
+      reorder: (from: number, to: number) => {
+        const prev = queueRef.current;
+        if (from === to || from < 0 || to < 0 || from >= prev.length || to >= prev.length) return;
+        const next = prev.slice();
+        const [moved] = next.splice(from, 1);
+        next.splice(to, 0, moved);
+        const cur = queueIndexRef.current;
+        let newIndex = cur;
+        if (from === cur) newIndex = to;
+        else if (from < cur && to >= cur) newIndex = cur - 1;
+        else if (from > cur && to <= cur) newIndex = cur + 1;
+        queueRef.current = next;
+        queueIndexRef.current = newIndex;
+        setQueue(next);
+        setQueueIndex(newIndex);
+      },
+      clear: () => {
+        const before = queueRef.current;
+        const beforeIndex = queueIndexRef.current;
+        const current = queueRef.current[queueIndexRef.current];
+        if (current) {
+          setQueue([current]);
+          queueRef.current = [current];
+          setQueueIndex(0);
+          queueIndexRef.current = 0;
+        } else {
+          setQueue([]);
+          queueRef.current = [];
+          setQueueIndex(0);
+        }
+        pushToast(t.queueCleared, 'success', 6000, {
+          label: t.undo,
+          labelKey: 'undo',
+          onClick: () => {
+            // cofamy tylko, gdy od wyczyszczenia nikt nie ruszył kolejki
+            const now = queueRef.current;
+            if (now.length > 1 || now[0] !== current) return;
+            queueRef.current = before;
+            queueIndexRef.current = beforeIndex;
+            setQueue(before);
+            setQueueIndex(beforeIndex);
+          },
+        });
+      },
+    }),
+    [audio, t, queueRef, queueIndexRef, loadTrackRef, isPlayingRef]
+  );
+
   const sectionRows = useMemo(
     () =>
       stableOrderSections(activeTab === 'home' ? homeSections : sections).map((section, idx) => (
@@ -5095,9 +5235,10 @@ export default function App() {
           section={section}
           sectionIndex={idx}
           onItemClick={handleItemClick}
+          onItemHover={prefetchItem}
         />
       )),
-    [activeTab, homeSections, sections, handleItemClick]
+    [activeTab, homeSections, sections, handleItemClick, prefetchItem]
   );
 
   return (
@@ -5950,7 +6091,7 @@ export default function App() {
                       <h2>{t.collectionEmptyTitle}</h2>
                       <p>{t.collectionEmptyDesc}</p>
                     </div>
-                  ) : activeTab === 'search' ? (
+                  ) : activeTab === 'search' && !searchFailed ? (
                     <div className="empty-state-message">
                       <h2>{t.noResults}</h2>
                       <p>{t.noResultsDesc}</p>
@@ -5958,13 +6099,14 @@ export default function App() {
                   ) : (
                     <div className="empty-state-message">
                       <h2>{t.feedLoadFailedTitle}</h2>
-                      <p>{t.feedLoadFailedDesc}</p>
+                      <p>{activeTab === 'search' ? t.searchFailed : t.feedLoadFailedDesc}</p>
                       <button
                         type="button"
                         className="primary-action-btn empty-state-retry"
                         onClick={() => {
                           const lastCollection = lastCollectionRef.current;
-                          if (activeTab === 'explore') loadExplore(lang);
+                          if (activeTab === 'search') handleSearch(searchQuery);
+                          else if (activeTab === 'explore') loadExplore(lang);
                           else if (
                             activeTab === 'mood' &&
                             lastCollection &&
@@ -6017,13 +6159,7 @@ export default function App() {
                         track={homeHeroTrack}
                         eyebrow={t.featured}
                         playLabel={t.play}
-                        onPlay={() =>
-                          handleItemClick(
-                            homeHeroTrack,
-                            t.quickPicks,
-                            quickPicks.length ? quickPicks : undefined
-                          )
-                        }
+                        onPlay={playHomeHero}
                       />
                     )}
 
@@ -6095,6 +6231,7 @@ export default function App() {
                             section={section}
                             sectionIndex={idx}
                             onItemClick={handleItemClick}
+                            onItemHover={prefetchItem}
                           />
                         )}
                       />
@@ -6436,82 +6573,11 @@ export default function App() {
             queue={queue}
             queueIndex={queueIndex}
             t={t}
-            onClose={() => setQueueOpen(false)}
-            onSelectTrack={(idx) => {
-              ++collectionReqRef.current;
-              if (idx !== queueIndex) void playByIndex(idx);
-            }}
-            onRemoveTrack={(idx) => {
-              const prev = queueRef.current;
-              if (idx < 0 || idx >= prev.length) return;
-              const wasCurrent = idx === queueIndexRef.current;
-              const next = prev.filter((_, i) => i !== idx);
-              let newIndex = queueIndexRef.current;
-              if (idx < newIndex) newIndex -= 1;
-              else if (idx === newIndex) {
-                newIndex = Math.min(newIndex, Math.max(0, next.length - 1));
-              }
-              queueRef.current = next;
-              queueIndexRef.current = newIndex;
-              setQueue(next);
-              setQueueIndex(newIndex);
-              if (next.length === 0) {
-                ++loadGenRef.current;
-                audio.pause();
-                audio.src = '';
-                setCurrentTrack(null);
-                setIsPlaying(false);
-                setBuffering(false);
-              } else if (wasCurrent && next[newIndex]) {
-                // usunięty był ostatni: poprzedni zostaje wybrany, ale nie gra od nowa
-                void loadTrack(next[newIndex], idx < next.length && isPlayingRef.current);
-              }
-            }}
-            onReorder={(from, to) => {
-              const prev = queueRef.current;
-              if (from === to || from < 0 || to < 0 || from >= prev.length || to >= prev.length)
-                return;
-              const next = prev.slice();
-              const [moved] = next.splice(from, 1);
-              next.splice(to, 0, moved);
-              const cur = queueIndexRef.current;
-              let newIndex = cur;
-              if (from === cur) newIndex = to;
-              else if (from < cur && to >= cur) newIndex = cur - 1;
-              else if (from > cur && to <= cur) newIndex = cur + 1;
-              queueRef.current = next;
-              queueIndexRef.current = newIndex;
-              setQueue(next);
-              setQueueIndex(newIndex);
-            }}
-            onClearQueue={() => {
-              const before = queueRef.current;
-              const beforeIndex = queueIndexRef.current;
-              const current = queueRef.current[queueIndexRef.current];
-              if (current) {
-                setQueue([current]);
-                queueRef.current = [current];
-                setQueueIndex(0);
-                queueIndexRef.current = 0;
-              } else {
-                setQueue([]);
-                queueRef.current = [];
-                setQueueIndex(0);
-              }
-              pushToast(t.queueCleared, 'success', 6000, {
-                label: t.undo,
-                labelKey: 'undo',
-                onClick: () => {
-                  // cofamy tylko, gdy od wyczyszczenia nikt nie ruszył kolejki
-                  const now = queueRef.current;
-                  if (now.length > 1 || now[0] !== current) return;
-                  queueRef.current = before;
-                  queueIndexRef.current = beforeIndex;
-                  setQueue(before);
-                  setQueueIndex(beforeIndex);
-                },
-              });
-            }}
+            onClose={queueActions.close}
+            onSelectTrack={queueActions.select}
+            onRemoveTrack={queueActions.remove}
+            onReorder={queueActions.reorder}
+            onClearQueue={queueActions.clear}
           />
         </div>
       </div>

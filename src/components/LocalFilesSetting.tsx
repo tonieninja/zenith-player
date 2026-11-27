@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { X } from 'lucide-react';
-import { translations, type Language } from '../i18n';
+import { errorText, translations, type Language } from '../i18n';
 import { pushToast } from './Toast';
 
 const KEY = 'zenith_local_folders';
@@ -16,10 +16,23 @@ function readFolders(): string[] {
   }
 }
 
+let retryTimer = 0;
+
+// Rust skanuje jeden zestaw naraz; lista zmieniona w trakcie skanu czeka na jego koniec, a nie na restart
+function scanFolders(): Promise<void> {
+  window.clearTimeout(retryTimer);
+  return invoke('local_scan', { folders: readFolders() }).then(
+    () => undefined,
+    (e) => {
+      if (!/already running/i.test(String(e))) throw e;
+      retryTimer = window.setTimeout(() => void scanFolders().catch(() => undefined), 1000);
+    }
+  );
+}
+
 /** Przy starcie dopisuje nowe pliki; niezmienione Rust pomija po dacie modyfikacji. */
 export function rescanLocalFolders() {
-  const folders = readFolders();
-  if (folders.length) void invoke('local_scan', { folders }).catch(() => undefined);
+  if (readFolders().length) void scanFolders().catch(() => undefined);
 }
 
 export function LocalFilesSetting({ lang }: { lang: Language }) {
@@ -49,10 +62,12 @@ export function LocalFilesSetting({ lang }: { lang: Language }) {
   const save = (next: string[]) => {
     setFolders(next);
     localStorage.setItem(KEY, JSON.stringify(next));
-    void invoke('local_scan', { folders: next }).then(
-      () => setScan({ seen: 0, total: 0 }),
-      (e) => pushToast(String(e), 'error')
-    );
+    // zdarzenie końca pustego skanu potrafi przyjść przed odpowiedzią komendy, więc stan ustawiamy wcześniej
+    setScan({ seen: 0, total: 0 });
+    scanFolders().catch((e) => {
+      setScan(null);
+      pushToast(errorText(t, e), 'error');
+    });
   };
 
   return (
@@ -95,6 +110,7 @@ export function LocalFilesSetting({ lang }: { lang: Language }) {
         {/* shortcut: ścieżka wpisywana ręcznie, okno wyboru folderu wymagałoby wtyczki dialog */}
         <input
           className="lib-input"
+          aria-label={t.localPathPlaceholder}
           placeholder={t.localPathPlaceholder}
           value={path}
           onChange={(e) => setPath(e.target.value)}

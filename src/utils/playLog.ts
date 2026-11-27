@@ -7,6 +7,14 @@ export function playLogTick(id: string, t: number) {
   if (cur && cur.track.id === id && t > cur.t) cur.t = t;
 }
 
+/** Powtórka w trybie „jeden utwór” to nowe odtworzenie, choć id się nie zmienia. */
+export function playLogRepeat() {
+  const track = cur?.track;
+  if (!track) return;
+  playLogSwitch(null);
+  playLogSwitch(track);
+}
+
 /** Zapisuje w bazie poprzedni utwór, gdy zaczyna się następny; Rust liczy z tego gust i pomijane. */
 export function playLogSwitch(next: Track | null, duration?: number) {
   const prev = cur;

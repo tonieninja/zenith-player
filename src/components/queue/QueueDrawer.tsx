@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import { GripVertical, Trash2, X } from 'lucide-react';
 import type { Track } from '../../api/youtube';
@@ -19,7 +19,7 @@ type QueueDrawerProps = {
 
 type DragState = { from: number; over: number; pointerId: number; startY: number; moved: boolean };
 
-export function QueueDrawer({
+export const QueueDrawer = memo(function QueueDrawer({
   open,
   queue,
   queueIndex,
@@ -292,4 +292,4 @@ export function QueueDrawer({
       </aside>
     </>
   );
-}
+});
