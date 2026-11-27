@@ -11,9 +11,11 @@ import { initPrefsMirror } from './utils/prefsMirror';
 import { initSpotifyToken } from './api/spotify';
 import { pluginManager } from './plugins';
 import { rescanLocalFolders } from './components/LocalFilesSetting';
+import { applyTheme } from './utils/themes';
 import { applyPanelGap } from './components/PanelGapSetting';
 
 applyPanelGap();
+applyTheme();
 rescanLocalFolders();
 
 void initCoverCache();

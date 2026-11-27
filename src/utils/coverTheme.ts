@@ -1,10 +1,4 @@
-const DEFAULT = {
-  accent: '#7eb4ff',
-  accent2: '#4d8cff',
-  glow: 'rgba(77, 140, 255, 0.28)',
-  mesh1: 'rgba(77, 140, 255, 0.12)',
-  mesh2: 'rgba(126, 180, 255, 0.06)',
-};
+import { themeVars } from './themes';
 
 function rgbToHex(r: number, g: number, b: number) {
   return `#${[r, g, b].map((v) => Math.max(0, Math.min(255, v)).toString(16).padStart(2, '0')).join('')}`;
@@ -27,7 +21,8 @@ function applyVars(accent: string, accent2: string, glow: string, mesh1: string,
 }
 
 export function resetCoverTheme() {
-  applyVars(DEFAULT.accent, DEFAULT.accent2, DEFAULT.glow, DEFAULT.mesh1, DEFAULT.mesh2);
+  const d = themeVars();
+  applyVars(d.accent, d.accent2, d.glow, d.mesh1, d.mesh2);
   document.documentElement.classList.remove('has-cover-theme');
   (document.querySelector('.zenith-app') as HTMLElement | null)?.style.removeProperty(
     '--ambient-color'

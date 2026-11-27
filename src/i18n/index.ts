@@ -641,6 +641,9 @@ const en = {
   localPathPlaceholder: 'Folder path, for example D:\\Music or ~/Music',
   localAdd: 'Add folder',
   localRemove: 'Remove folder',
+  themeTitle: 'Theme',
+  themeDesc:
+    'The accent color for buttons, the progress bar and highlights. With ambient cover glow on, the cover sets it while a song plays.',
   backupTitle: 'Backup',
   discoverRow: 'Outside your usual',
   backupDesc:
@@ -1388,6 +1391,9 @@ const pl: Record<keyof typeof en, string> = {
   localPathPlaceholder: 'Ścieżka folderu, np. D:\\Muzyka albo ~/Muzyka',
   localAdd: 'Dodaj folder',
   localRemove: 'Usuń folder',
+  themeTitle: 'Motyw',
+  themeDesc:
+    'Kolor przycisków, paska postępu i wyróżnień. Przy włączonej poświacie z okładki ustawia go okładka grającego utworu.',
   backupTitle: 'Kopia zapasowa',
   discoverRow: 'Spoza twojej bańki',
   backupDesc:

@@ -122,6 +122,7 @@ import { SyncedLyricsRail } from './components/SyncedLyricsRail';
 import { LyricsSourceBar } from './components/LyricsSourceBar';
 import { LyricsSourcesSettings } from './components/LyricsSourcesSettings';
 import { BackupSetting } from './components/BackupSetting';
+import { ThemeSetting } from './components/ThemeSetting';
 import { LocalFilesSetting } from './components/LocalFilesSetting';
 import { StatsView } from './components/StatsView';
 import {
@@ -6641,6 +6642,7 @@ export default function App() {
                 </button>
               </div>
               {isNativeAudio() && <AudioOutputSettings lang={lang} />}
+              <ThemeSetting lang={lang} />
               <PanelGapSetting lang={lang} />
               <LocalFilesSetting lang={lang} />
               <BackupSetting lang={lang} />
