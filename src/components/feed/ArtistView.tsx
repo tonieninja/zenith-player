@@ -153,7 +153,7 @@ export const ArtistView = memo(function ArtistView({
               {top.title}
             </h2>
             {header.songsId && (
-              <button type="button" className="artist-show-all" onClick={onShowAll}>
+              <button type="button" className="yt-section-more" onClick={onShowAll}>
                 {t.artistShowAll}
               </button>
             )}
