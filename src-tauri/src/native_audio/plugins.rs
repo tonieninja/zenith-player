@@ -138,7 +138,13 @@ fn scrobble_json(c: &Listen) -> Value {
 
 fn maybe_scrobble(s: &mut St) {
     let Some(c) = s.cur.as_mut() else { return };
-    if c.done || c.duration <= 30.0 || c.listened < scrobble_threshold(c.duration) {
+    // jak w JS: odsłuch bez wykonawcy lub tytułu serwisy odrzucają na stałe
+    if c.done
+        || c.duration <= 30.0
+        || c.listened < scrobble_threshold(c.duration)
+        || c.artist.trim().is_empty()
+        || c.title.trim().is_empty()
+    {
         return;
     }
     c.done = true;
@@ -529,6 +535,22 @@ mod tests {
     fn threshold_is_half_capped_at_four_minutes() {
         assert_eq!(scrobble_threshold(200.0), 100.0);
         assert_eq!(scrobble_threshold(1200.0), 240.0);
+    }
+
+    #[test]
+    fn listen_without_artist_is_never_scrobbled() {
+        let mut s = St {
+            cur: Some(Listen {
+                title: "Song".into(),
+                artist: " ".into(),
+                duration: 200.0,
+                listened: 150.0,
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        maybe_scrobble(&mut s);
+        assert!(!s.cur.as_ref().unwrap().done);
     }
 
     #[test]

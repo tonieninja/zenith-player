@@ -92,6 +92,25 @@ describe('scrobbler', () => {
     expect(submit).toHaveBeenCalledTimes(2);
   });
 
+  it('does not send or queue a listen without an artist', async () => {
+    localStorage.removeItem('test.q4');
+    const submit = vi.fn().mockRejectedValue(new Error('last.fm 6: artist missing'));
+    const p = createScrobbler({
+      id: 'x',
+      name: 'x',
+      description: 'x',
+      queueKey: 'test.q4',
+      nowPlaying: () => Promise.resolve(),
+      submit,
+    });
+    p.onTrackChange?.({ ...info(0), artist: ' ' }, null);
+    listen(150);
+    p.onTrackChange?.(null, 'abcdefghijk');
+    await Promise.resolve();
+    expect(submit).not.toHaveBeenCalled();
+    expect(localStorage.getItem('test.q4')).toBeNull();
+  });
+
   it('keeps a listen queued during a flush even when the queue is full', async () => {
     const key = 'test.q3';
     const old = Array.from({ length: 50 }, (_, i) => ({
