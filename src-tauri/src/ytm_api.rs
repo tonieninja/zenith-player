@@ -625,10 +625,72 @@ pub async fn ytm_browse(
     }
 
     let client = crate::player::client("", 12, true).ok_or("http client")?;
+    let base = format!("{YTM_BROWSE}?prettyPrint=false&key={}", innertube_api_key());
+    let text = browse_post(&client, &base, &body, &cookie, &hl).await?;
+    browse_error(&text)?;
+    if browse_id != "FEmusic_home" || body.get("params").is_some() {
+        return Ok(text);
+    }
+    // pierwsza odpowiedź ma kilka półek; miksy, albumy dla ciebie i teledyski przychodzą w kontynuacjach
+    let mut page: Value = serde_json::from_str(&text).map_err(|e| e.to_string())?;
+    let mut token = home_token(&page[HOME_LIST]);
+    // bez visitorData z pierwszej odpowiedzi gość dostaje pustą kontynuację
+    let mut next_body = body.clone();
+    if let Some(v) = page["responseContext"]["visitorData"].as_str() {
+        next_body["context"]["client"]["visitorData"] = json!(v);
+    }
+    for _ in 0..HOME_PAGES {
+        let Some(t) = token.take() else { break };
+        let url = format!("{base}&ctoken={t}&continuation={t}");
+        let Ok(more) = browse_post(&client, &url, &next_body, &cookie, &hl).await else {
+            break;
+        };
+        let Ok(more) = serde_json::from_str::<Value>(&more) else {
+            break;
+        };
+        let part = &more["continuationContents"]["sectionListContinuation"];
+        token = home_token(part);
+        if let (Some(dst), Some(src)) = (
+            page.pointer_mut(HOME_PTR).and_then(Value::as_array_mut),
+            part["contents"].as_array(),
+        ) {
+            dst.extend(src.iter().cloned());
+        }
+    }
+    Ok(page.to_string())
+}
 
-    let url = format!("{YTM_BROWSE}?prettyPrint=false&key={}", innertube_api_key());
+const HOME_PAGES: usize = 4;
+const HOME_LIST: &str = "contents";
+const HOME_PTR: &str =
+    "/contents/singleColumnBrowseResultsRenderer/tabs/0/tabRenderer/content/sectionListRenderer/contents";
+
+fn home_token(list: &Value) -> Option<String> {
+    let list = if list.get("continuations").is_some() {
+        list
+    } else {
+        &list["singleColumnBrowseResultsRenderer"]["tabs"][0]["tabRenderer"]["content"]
+            ["sectionListRenderer"]
+    };
+    list["continuations"][0]["nextContinuationData"]["continuation"]
+        .as_str()
+        .filter(|t| {
+            !t.is_empty()
+                && t.chars()
+                    .all(|c| c.is_ascii_alphanumeric() || "-_%=".contains(c))
+        })
+        .map(String::from)
+}
+
+async fn browse_post(
+    client: &crate::player::Http,
+    url: &str,
+    body: &Value,
+    cookie: &str,
+    hl: &str,
+) -> Result<String, String> {
     let mut req = client
-        .post(&url)
+        .post(url)
         .header("Content-Type", "application/json")
         .header("Origin", "https://music.youtube.com")
         .header("X-Origin", "https://music.youtube.com")
@@ -644,11 +706,11 @@ pub async fn ytm_browse(
                 "en-US,en;q=0.9,pl;q=0.7"
             },
         )
-        .json(&body);
+        .json(body);
 
     if !cookie.is_empty() {
-        req = req.header("Cookie", &cookie);
-        let auth = sapisid_authorization(&cookie, MUSIC_ORIGIN, now_secs());
+        req = req.header("Cookie", cookie);
+        let auth = sapisid_authorization(cookie, MUSIC_ORIGIN, now_secs());
         if !auth.is_empty() {
             req = req
                 .header("Authorization", auth)
@@ -675,9 +737,6 @@ pub async fn ytm_browse(
             text.chars().take(240).collect::<String>()
         ));
     }
-
-    browse_error(&text)?;
-    // surową odpowiedź parsuje JS: uproszczona kopia parsera gubiła karty radia, odcinki i typy
     Ok(text)
 }
 
@@ -701,6 +760,16 @@ fn browse_error(text: &str) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn home_token_reads_first_page_and_continuations() {
+        let first = json!({"singleColumnBrowseResultsRenderer":{"tabs":[{"tabRenderer":{"content":{"sectionListRenderer":{
+            "continuations":[{"nextContinuationData":{"continuation":"4qmFsgK_A%3D"}}]}}}}]}});
+        assert_eq!(home_token(&first).as_deref(), Some("4qmFsgK_A%3D"));
+        let next = json!({"continuations":[{"nextContinuationData":{"continuation":"a&b=c"}}]});
+        assert_eq!(home_token(&next), None);
+        assert_eq!(home_token(&json!({"contents":[]})), None);
+    }
 
     #[test]
     fn browse_error_finds_only_the_error_key() {
