@@ -5036,6 +5036,12 @@ ${lang}`
     () => (activeTab === 'home' ? (quickPicks[0] ?? homeSections[0]?.items[0] ?? null) : null),
     [activeTab, quickPicks, homeSections]
   );
+  // FeedHero jest w memo; lambda w JSX psułaby je przy każdym znaku wpisanym w wyszukiwarkę
+  const playHomeHero = useCallback(() => {
+    if (homeHeroTrack) {
+      void handleItemClick(homeHeroTrack, t.quickPicks, quickPicks.length ? quickPicks : undefined);
+    }
+  }, [homeHeroTrack, handleItemClick, t.quickPicks, quickPicks]);
 
   useEffect(() => {
     if (showSplash) return;
@@ -5136,6 +5142,89 @@ ${lang}`
       }
     },
     [lang]
+  );
+
+  // szuflada kolejki jest w memo; akcje czytają stan z refów, więc pisanie w wyszukiwarce jej nie renderuje
+  const queueActions = useMemo(
+    () => ({
+      close: () => setQueueOpen(false),
+      select: (idx: number) => {
+        ++collectionReqRef.current;
+        if (idx !== queueIndexRef.current) void playByIndexRef.current(idx);
+      },
+      remove: (idx: number) => {
+        const prev = queueRef.current;
+        if (idx < 0 || idx >= prev.length) return;
+        const wasCurrent = idx === queueIndexRef.current;
+        const next = prev.filter((_, i) => i !== idx);
+        let newIndex = queueIndexRef.current;
+        if (idx < newIndex) newIndex -= 1;
+        else if (idx === newIndex) {
+          newIndex = Math.min(newIndex, Math.max(0, next.length - 1));
+        }
+        queueRef.current = next;
+        queueIndexRef.current = newIndex;
+        setQueue(next);
+        setQueueIndex(newIndex);
+        if (next.length === 0) {
+          ++loadGenRef.current;
+          playLogSwitch(null);
+          audio.pause();
+          audio.src = '';
+          setCurrentTrack(null);
+          setIsPlaying(false);
+          setBuffering(false);
+        } else if (wasCurrent && next[newIndex]) {
+          // usunięty był ostatni: poprzedni zostaje wybrany, ale nie gra od nowa
+          void loadTrackRef.current(next[newIndex], idx < next.length && isPlayingRef.current);
+        }
+      },
+      reorder: (from: number, to: number) => {
+        const prev = queueRef.current;
+        if (from === to || from < 0 || to < 0 || from >= prev.length || to >= prev.length) return;
+        const next = prev.slice();
+        const [moved] = next.splice(from, 1);
+        next.splice(to, 0, moved);
+        const cur = queueIndexRef.current;
+        let newIndex = cur;
+        if (from === cur) newIndex = to;
+        else if (from < cur && to >= cur) newIndex = cur - 1;
+        else if (from > cur && to <= cur) newIndex = cur + 1;
+        queueRef.current = next;
+        queueIndexRef.current = newIndex;
+        setQueue(next);
+        setQueueIndex(newIndex);
+      },
+      clear: () => {
+        const before = queueRef.current;
+        const beforeIndex = queueIndexRef.current;
+        const current = queueRef.current[queueIndexRef.current];
+        if (current) {
+          setQueue([current]);
+          queueRef.current = [current];
+          setQueueIndex(0);
+          queueIndexRef.current = 0;
+        } else {
+          setQueue([]);
+          queueRef.current = [];
+          setQueueIndex(0);
+        }
+        pushToast(t.queueCleared, 'success', 6000, {
+          label: t.undo,
+          labelKey: 'undo',
+          onClick: () => {
+            // cofamy tylko, gdy od wyczyszczenia nikt nie ruszył kolejki
+            const now = queueRef.current;
+            if (now.length > 1 || now[0] !== current) return;
+            queueRef.current = before;
+            queueIndexRef.current = beforeIndex;
+            setQueue(before);
+            setQueueIndex(beforeIndex);
+          },
+        });
+      },
+    }),
+    [audio, t, queueRef, queueIndexRef, loadTrackRef, isPlayingRef]
   );
 
   const sectionRows = useMemo(
@@ -6059,13 +6148,7 @@ ${lang}`
                         track={homeHeroTrack}
                         eyebrow={t.featured}
                         playLabel={t.play}
-                        onPlay={() =>
-                          handleItemClick(
-                            homeHeroTrack,
-                            t.quickPicks,
-                            quickPicks.length ? quickPicks : undefined
-                          )
-                        }
+                        onPlay={playHomeHero}
                       />
                     )}
 
@@ -6478,83 +6561,11 @@ ${lang}`
             queue={queue}
             queueIndex={queueIndex}
             t={t}
-            onClose={() => setQueueOpen(false)}
-            onSelectTrack={(idx) => {
-              ++collectionReqRef.current;
-              if (idx !== queueIndex) void playByIndex(idx);
-            }}
-            onRemoveTrack={(idx) => {
-              const prev = queueRef.current;
-              if (idx < 0 || idx >= prev.length) return;
-              const wasCurrent = idx === queueIndexRef.current;
-              const next = prev.filter((_, i) => i !== idx);
-              let newIndex = queueIndexRef.current;
-              if (idx < newIndex) newIndex -= 1;
-              else if (idx === newIndex) {
-                newIndex = Math.min(newIndex, Math.max(0, next.length - 1));
-              }
-              queueRef.current = next;
-              queueIndexRef.current = newIndex;
-              setQueue(next);
-              setQueueIndex(newIndex);
-              if (next.length === 0) {
-                ++loadGenRef.current;
-                playLogSwitch(null);
-                audio.pause();
-                audio.src = '';
-                setCurrentTrack(null);
-                setIsPlaying(false);
-                setBuffering(false);
-              } else if (wasCurrent && next[newIndex]) {
-                // usunięty był ostatni: poprzedni zostaje wybrany, ale nie gra od nowa
-                void loadTrack(next[newIndex], idx < next.length && isPlayingRef.current);
-              }
-            }}
-            onReorder={(from, to) => {
-              const prev = queueRef.current;
-              if (from === to || from < 0 || to < 0 || from >= prev.length || to >= prev.length)
-                return;
-              const next = prev.slice();
-              const [moved] = next.splice(from, 1);
-              next.splice(to, 0, moved);
-              const cur = queueIndexRef.current;
-              let newIndex = cur;
-              if (from === cur) newIndex = to;
-              else if (from < cur && to >= cur) newIndex = cur - 1;
-              else if (from > cur && to <= cur) newIndex = cur + 1;
-              queueRef.current = next;
-              queueIndexRef.current = newIndex;
-              setQueue(next);
-              setQueueIndex(newIndex);
-            }}
-            onClearQueue={() => {
-              const before = queueRef.current;
-              const beforeIndex = queueIndexRef.current;
-              const current = queueRef.current[queueIndexRef.current];
-              if (current) {
-                setQueue([current]);
-                queueRef.current = [current];
-                setQueueIndex(0);
-                queueIndexRef.current = 0;
-              } else {
-                setQueue([]);
-                queueRef.current = [];
-                setQueueIndex(0);
-              }
-              pushToast(t.queueCleared, 'success', 6000, {
-                label: t.undo,
-                labelKey: 'undo',
-                onClick: () => {
-                  // cofamy tylko, gdy od wyczyszczenia nikt nie ruszył kolejki
-                  const now = queueRef.current;
-                  if (now.length > 1 || now[0] !== current) return;
-                  queueRef.current = before;
-                  queueIndexRef.current = beforeIndex;
-                  setQueue(before);
-                  setQueueIndex(beforeIndex);
-                },
-              });
-            }}
+            onClose={queueActions.close}
+            onSelectTrack={queueActions.select}
+            onRemoveTrack={queueActions.remove}
+            onReorder={queueActions.reorder}
+            onClearQueue={queueActions.clear}
           />
         </div>
       </div>
