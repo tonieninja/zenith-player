@@ -7,6 +7,8 @@ import {
   upsertSections,
   shelfKey,
   QUICK_PICKS_SHELF,
+  hiddenShelfEntry,
+  isShelfHidden,
   loadHiddenShelves,
   saveHiddenShelves,
   saveHomeSnapshot,
@@ -291,13 +293,41 @@ describe('hidden home shelves', () => {
 
   it('moves a quick picks key saved under the translated title', () => {
     localStorage.setItem('zenith_home_hidden', JSON.stringify({ 'szybki wybór': 'Szybki wybór' }));
-    expect(loadHiddenShelves()).toEqual({ [QUICK_PICKS_SHELF]: 'Szybki wybór' });
+    expect(loadHiddenShelves()).toEqual({ [QUICK_PICKS_SHELF]: { title: 'Szybki wybór' } });
     localStorage.removeItem('zenith_home_hidden');
   });
 
+  it('remembers the first items of a title-keyed shelf and finds it again in another language', () => {
+    const en = shelf('Party music', 8);
+    const entry = hiddenShelfEntry(en);
+    expect(entry.ids).toHaveLength(6);
+    expect(hiddenShelfEntry(shelf('x', 3, { more: { browseId: 'FEmusic_x' } }))).toEqual({
+      title: 'x',
+    });
+    const hidden = { [shelfKey(en)]: entry };
+    const pl = { ...en, title: 'Muzyka na imprezę', items: [...en.items].reverse() };
+    expect(isShelfHidden(hidden, en)).toBe(true);
+    expect(isShelfHidden(hidden, pl)).toBe(true);
+    // połowa wspólnych utworów to jeszcze nie ta sama półka
+    const mixed = { ...pl, items: [...en.items.slice(0, 3), ...shelf('Other', 5).items] };
+    expect(isShelfHidden(hidden, mixed)).toBe(false);
+    expect(isShelfHidden(hidden, shelf('Other', 8))).toBe(false);
+    // półka z celem „Więcej” ma już stały klucz, więc wspólne utwory jej nie ukrywają
+    expect(isShelfHidden(hidden, { ...pl, more: { browseId: 'FEmusic_y' } })).toBe(false);
+  });
+
   it('survives a restart and clears the key when empty', () => {
-    saveHiddenShelves({ 'party music': 'Party music' });
-    expect(loadHiddenShelves()).toEqual({ 'party music': 'Party music' });
+    const party = { title: 'Party music', ids: ['a', 'b'] };
+    saveHiddenShelves({ 'party music': party });
+    expect(loadHiddenShelves()).toEqual({ 'party music': party });
+    localStorage.setItem(
+      'zenith_home_hidden',
+      JSON.stringify({ old: 'Old', bad: 1, junk: { title: 'J', ids: ['a', 2] } })
+    );
+    expect(loadHiddenShelves()).toEqual({
+      old: { title: 'Old' },
+      junk: { title: 'J', ids: ['a'] },
+    });
     saveHiddenShelves({});
     expect(localStorage.getItem('zenith_home_hidden')).toBeNull();
     localStorage.setItem('zenith_home_hidden', '[1]');

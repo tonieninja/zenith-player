@@ -168,8 +168,7 @@ export function upsertSections(cur: Section[], incoming: Section[]): Section[] {
 
 export const QUICK_PICKS_SHELF = 'quick-picks';
 
-// shortcut: półka bez „Więcej” ma klucz z tytułu, bo shelfId YTM jest losowy, więc po zmianie języka wraca;
-// zmienić, gdy YTM da stały identyfikator półki
+// półka bez „Więcej” ma klucz z tytułu, bo shelfId YTM jest losowy; po zmianie języka poznaje ją isShelfHidden
 export const shelfKey = (s: Section) =>
   s.id ??
   // params odróżniają półki z jednym celem, np. kategorie nastrojów
@@ -177,26 +176,52 @@ export const shelfKey = (s: Section) =>
     ? `${s.more.browseId}${s.more.params ? `::${s.more.params}` : ''}`
     : s.title.toLowerCase().trim());
 
+export type HiddenShelf = { title: string; ids?: string[] };
+
+const SHELF_IDS = 6;
+
+/** Wpis ukrytej półki; ta z kluczem z tytułu zapamiętuje też pierwsze utwory, które nie zależą od języka. */
+export const hiddenShelfEntry = (s: Section): HiddenShelf =>
+  s.id || s.more
+    ? { title: s.title }
+    : { title: s.title, ids: s.items.slice(0, SHELF_IDS).map((t) => t.id) };
+
+// shortcut: półkę o tytule w innym języku poznajemy po utworach, więc wraca, gdy YTM wymieni ich większość;
+// zmienić, gdy YTM da stały identyfikator półki
+export function isShelfHidden(hidden: Record<string, HiddenShelf>, s: Section): boolean {
+  if (hidden[shelfKey(s)]) return true;
+  if (s.id || s.more) return false;
+  const ids = new Set(s.items.map((t) => t.id));
+  return Object.values(hidden).some(
+    (h) => !!h.ids?.length && h.ids.filter((id) => ids.has(id)).length * 2 > h.ids.length
+  );
+}
+
 const HIDDEN_SHELVES_KEY = 'zenith_home_hidden';
 // Szybki wybór miał kiedyś klucz z przetłumaczonego tytułu
 const OLD_QUICK_PICKS_KEYS = ['quick picks', 'szybki wybór'];
 
-export function loadHiddenShelves(): Record<string, string> {
+export function loadHiddenShelves(): Record<string, HiddenShelf> {
   try {
     const v = JSON.parse(localStorage.getItem(HIDDEN_SHELVES_KEY) || '{}');
     if (!v || typeof v !== 'object' || Array.isArray(v)) return {};
-    for (const old of OLD_QUICK_PICKS_KEYS) {
-      if (!(old in v)) continue;
-      v[QUICK_PICKS_SHELF] = v[old];
-      delete v[old];
+    const out: Record<string, HiddenShelf> = {};
+    for (const [key, raw] of Object.entries(v)) {
+      // dawniej wartością był sam tytuł
+      const h = (typeof raw === 'string' ? { title: raw } : raw) as HiddenShelf | null;
+      if (typeof h?.title !== 'string') continue;
+      const ids = Array.isArray(h.ids) ? h.ids.filter((id) => typeof id === 'string') : undefined;
+      out[OLD_QUICK_PICKS_KEYS.includes(key) ? QUICK_PICKS_SHELF : key] = ids
+        ? { title: h.title, ids }
+        : { title: h.title };
     }
-    return v;
+    return out;
   } catch {
     return {};
   }
 }
 
-export function saveHiddenShelves(hidden: Record<string, string>) {
+export function saveHiddenShelves(hidden: Record<string, HiddenShelf>) {
   try {
     if (Object.keys(hidden).length)
       localStorage.setItem(HIDDEN_SHELVES_KEY, JSON.stringify(hidden));

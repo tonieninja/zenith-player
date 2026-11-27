@@ -295,6 +295,8 @@ import {
 import { resetOnboarding, shouldShowOnboarding } from './utils/onboarding';
 import { smartShuffle } from './utils/smartShuffle';
 import {
+  hiddenShelfEntry,
+  isShelfHidden,
   loadHiddenShelves,
   loadHomeSnapshot,
   QUICK_PICKS_SHELF,
@@ -1196,7 +1198,7 @@ ${language}`;
   const hideShelf = useCallback(
     (s: Section) => {
       const key = shelfKey(s);
-      setHiddenShelves((prev) => ({ ...prev, [key]: s.title }));
+      setHiddenShelves((prev) => ({ ...prev, [key]: hiddenShelfEntry(s) }));
       // oko stoi tuż przy strzałce „dalej”, więc przypadkowe ukrycie musi dać się cofnąć od razu
       pushToast(
         t.shelfHidden.replace('{name}', () => s.title),
@@ -5498,7 +5500,7 @@ ${lang}`
 
   const sectionRows = useMemo(() => {
     const home = activeTab === 'home';
-    const shown = home ? homeSections.filter((s) => !hiddenShelves[shelfKey(s)]) : sections;
+    const shown = home ? homeSections.filter((s) => !isShelfHidden(hiddenShelves, s)) : sections;
     return stableOrderSections(shown).map((section, idx) => (
       <SectionRow
         key={`${section.title}-${idx}`}
@@ -7095,7 +7097,7 @@ ${lang}`
               {Object.keys(hiddenShelves).length > 0 && (
                 <div className="settings-row-item local-files-row">
                   <span className="setting-label">{t.hiddenShelves}</span>
-                  {Object.entries(hiddenShelves).map(([key, title]) => {
+                  {Object.entries(hiddenShelves).map(([key, { title }]) => {
                     const name = key === QUICK_PICKS_SHELF ? t.quickPicks : title;
                     return (
                       <div key={key} className="local-files-folder">
