@@ -1179,45 +1179,57 @@ export async function findSongTwins(track: Track, lang: Language): Promise<strin
   }
 }
 
+// Enter i debounce potrafią zapytać o to samo w tej samej chwili; drugie wywołanie czeka na pierwsze
+const searchInflight = new Map<string, Promise<Section[]>>();
+
 export async function searchMusic(query: string, lang: Language): Promise<Section[]> {
   const q = query.trim();
   if (!q) return [];
   const cacheKey = `${q.toLowerCase()}:${lang}`;
   const cached = searchCache.get(cacheKey);
   if (cached && Date.now() - cached.ts < 60000) return cached.data;
-
-  const t = translations[lang];
-  const run = (params?: string) => searchRequest(q, lang, params).catch(() => [] as Section[]);
-
-  try {
-    const [mixed, songs] = await Promise.all([run(), run(SONGS_PARAMS)]);
-    const merged = mergeSearchSections(mixed, songs, t);
-    if (merged.length > 0) {
-      searchCache.set(cacheKey, { data: merged, ts: Date.now() });
-      pruneOldest(searchCache, SEARCH_CACHE_LIMIT);
-      return merged;
-    }
-    const fallback = await searchFallback(q, t);
-    if (fallback.length > 0) {
-      searchCache.set(cacheKey, { data: fallback, ts: Date.now() });
-      pruneOldest(searchCache, SEARCH_CACHE_LIMIT);
-    }
-    return fallback;
-  } catch {
-    return await searchFallback(q, t);
+  let task = searchInflight.get(cacheKey);
+  if (!task) {
+    task = runSearch(q, lang, cacheKey).finally(() => searchInflight.delete(cacheKey));
+    searchInflight.set(cacheKey, task);
   }
+  return task;
+}
+
+async function runSearch(q: string, lang: Language, cacheKey: string): Promise<Section[]> {
+  const t = translations[lang];
+  let failed = 0;
+  const run = (params?: string) =>
+    searchRequest(q, lang, params).catch(() => {
+      failed += 1;
+      return [] as Section[];
+    });
+  const [mixed, songs] = await Promise.all([run(), run(SONGS_PARAMS)]);
+  const merged = mergeSearchSections(mixed, songs, t);
+  const data = merged.length > 0 ? merged : await searchFallback(q, t);
+  // bez sieci oba zapytania padają i lista jest pusta; „brak wyników” wmówiłby, że utworu nie ma
+  if (!data.length && failed === 2) throw new Error('search failed');
+  if (data.length > 0) {
+    searchCache.set(cacheKey, { data, ts: Date.now() });
+    pruneOldest(searchCache, SEARCH_CACHE_LIMIT);
+  }
+  return data;
 }
 
 function mergeSearchSections(a: Section[], b: Section[], t: TranslationBundle): Section[] {
   const out: Section[] = [];
   const seenTitles = new Set<string>();
   const seenIds = new Set<string>();
+  // karta najlepszego wyniku poza kartą wykonawcy nie podaje wykonawcy, a filtr utworów go zna
+  const songs = new Map(b.flatMap((s) => s.items).map((i) => [i.id, i.artist]));
   const push = (section: Section) => {
-    const items = section.items.filter((item) => {
-      if (seenIds.has(item.id)) return false;
-      seenIds.add(item.id);
-      return true;
-    });
+    const items = section.items
+      .filter((item) => {
+        if (seenIds.has(item.id)) return false;
+        seenIds.add(item.id);
+        return true;
+      })
+      .map((item) => (item.artist ? item : { ...item, artist: songs.get(item.id) ?? '' }));
     if (!items.length) return;
     const title = section.title || t.searchResults;
     if (seenTitles.has(title)) {
@@ -3388,6 +3400,9 @@ function parseShelves(data: any, t: TranslationBundle): Section[] {
           },
         ]);
         const more = extractItems(card.contents || []);
+        // utwory w karcie wykonawcy mają podpis „Utwór • 1:36”, więc parser brał czas za wykonawcę
+        const owner = self[0]?.type === 'artist' ? self[0].title : '';
+        for (const m of more) if (parseClockDuration(m.artist) !== undefined) m.artist = owner;
         const all = [...self, ...more];
         if (all.length > 0) sections.push({ title, items: all });
       } else {

@@ -432,6 +432,7 @@ export default function App() {
   const [browseTitle, setBrowseTitle] = useState<string | null>(null);
   const [artistPage, setArtistPage] = useState<ArtistPageState | null>(null);
   const [browseEmptyKind, setBrowseEmptyKind] = useState<'episodes' | 'collection' | null>(null);
+  const [searchFailed, setSearchFailed] = useState(false);
   const [showSplash, setShowSplash] = useState(() => !isRestoredUi());
   const [splashLeaving, setSplashLeaving] = useState(false);
 
@@ -960,13 +961,20 @@ export default function App() {
   }, [lang]);
 
   const debouncedSearch = useDebounce(searchQuery, 400);
+  const lastSearchRef = useRef('');
 
   const handleSearch = useCallback(
     (rawQuery: string, language: Language = lang) => {
       const query = rawQuery.trim().slice(0, MAX_SEARCH_LENGTH).trim();
       if (!query) return;
+      lastSearchRef.current = `${query}
+${language}`;
       const dataSeq = ++feedSeqRef.current.search;
+      // wyszukiwanie i strony przeglądania piszą do tych samych `sections`, więc nowe unieważnia oba tory
+      ++feedSeqRef.current.mood;
+      setFeedTabLoading('mood', false);
       setFeedTabLoading('search', true);
+      setSearchFailed(false);
       setSections([]);
       const safety = window.setTimeout(() => setFeedTabLoading('search', false), 15000);
       navigateTo('search');
@@ -980,7 +988,7 @@ export default function App() {
         .catch(() => {
           if (dataSeq !== feedSeqRef.current.search) return;
           setSections(stableOrderSections([]));
-          pushToast(translations[language].searchFailed, 'error');
+          setSearchFailed(true);
         })
         .finally(() => {
           window.clearTimeout(safety);
@@ -1069,8 +1077,19 @@ export default function App() {
   useEffect(() => {
     const langChanged = searchLangRef.current !== lang;
     searchLangRef.current = lang;
-    if (!debouncedSearch.trim()) return;
+    const query = debouncedSearch.trim().slice(0, MAX_SEARCH_LENGTH).trim();
+    if (!query) {
+      lastSearchRef.current = '';
+      return;
+    }
     if (langChanged && activeTabRef.current !== 'search') return;
+    // Enter wysłał już to zapytanie; drugie odrzuciłoby gotową odpowiedź i wyczyściło listę
+    if (
+      lastSearchRef.current ===
+      `${query}
+${lang}`
+    )
+      return;
     handleSearch(debouncedSearch, lang);
   }, [debouncedSearch, lang, handleSearch, activeTabRef]);
 
@@ -1106,6 +1125,8 @@ export default function App() {
   const loadMood = useCallback(
     (categoryId: string, browseId: string, language: Language = lang) => {
       const dataSeq = ++feedSeqRef.current.mood;
+      ++feedSeqRef.current.search;
+      setFeedTabLoading('search', false);
       setFeedTabLoading('mood', true);
       navigateTo('mood');
       setSearchQuery('');
@@ -1133,6 +1154,8 @@ export default function App() {
   const openBrowsePage = useCallback(
     (item: Track) => {
       const dataSeq = ++feedSeqRef.current.mood;
+      ++feedSeqRef.current.search;
+      setFeedTabLoading('search', false);
       setFeedTabLoading('mood', true);
       setSearchQuery('');
       setActiveMood(browseMoodId(item.id));
@@ -1182,6 +1205,8 @@ export default function App() {
   const openCollectionPage = useCallback(
     async (collection: Track) => {
       const dataSeq = ++feedSeqRef.current.mood;
+      ++feedSeqRef.current.search;
+      setFeedTabLoading('search', false);
       lastCollectionRef.current = collection;
       const plain = toPlainPlaylistId(collection.id);
       const emptyKind = plain === 'SE' ? 'episodes' : 'collection';
@@ -1234,6 +1259,8 @@ export default function App() {
   const likesAtRef = useRef(0);
   const openFavorites = useCallback(() => {
     const seq = ++feedSeqRef.current.mood;
+    ++feedSeqRef.current.search;
+    setFeedTabLoading('search', false);
     navigateTo('mood');
     setSearchQuery('');
     setBrowseTitle(t.favs);
@@ -5944,7 +5971,7 @@ export default function App() {
                       <h2>{t.collectionEmptyTitle}</h2>
                       <p>{t.collectionEmptyDesc}</p>
                     </div>
-                  ) : activeTab === 'search' ? (
+                  ) : activeTab === 'search' && !searchFailed ? (
                     <div className="empty-state-message">
                       <h2>{t.noResults}</h2>
                       <p>{t.noResultsDesc}</p>
@@ -5952,13 +5979,14 @@ export default function App() {
                   ) : (
                     <div className="empty-state-message">
                       <h2>{t.feedLoadFailedTitle}</h2>
-                      <p>{t.feedLoadFailedDesc}</p>
+                      <p>{activeTab === 'search' ? t.searchFailed : t.feedLoadFailedDesc}</p>
                       <button
                         type="button"
                         className="primary-action-btn empty-state-retry"
                         onClick={() => {
                           const lastCollection = lastCollectionRef.current;
-                          if (activeTab === 'explore') loadExplore(lang);
+                          if (activeTab === 'search') handleSearch(searchQuery);
+                          else if (activeTab === 'explore') loadExplore(lang);
                           else if (
                             activeTab === 'mood' &&
                             lastCollection &&
