@@ -1,5 +1,9 @@
 #[cfg(windows)]
 pub fn set_low(win: &tauri::WebviewWindow, low: bool) {
+    // ukryty WebView2 oddaje fokus oknu i Focused(true) od razu by je odsłonił; zasłonięte odsłania occlusion::watch
+    if !low && occlusion::OCCLUDED.load(std::sync::atomic::Ordering::SeqCst) {
+        return;
+    }
     apply(win, if low { 2 } else { 1 });
 }
 
@@ -104,7 +108,10 @@ pub fn start_watch(app: &tauri::AppHandle) {
                     || occlusion::OCCLUDED.load(Ordering::SeqCst)
                 {
                     background = 0;
-                } else if w.is_focused().unwrap_or(true) {
+                // is_focused zostaje true po przejściu do innej aplikacji, rozstrzyga okno na pierwszym planie
+                } else if w.hwnd().map_or(true, |h| unsafe {
+                    windows::Win32::UI::WindowsAndMessaging::GetForegroundWindow() == h
+                }) {
                     background = 0;
                     if STATE.load(Ordering::SeqCst) == 3 {
                         apply(&w, 1);
