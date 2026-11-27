@@ -49,6 +49,7 @@ symphonia = { version = "0.5.5", default-features = false, features = ["aac", "i
 opusic-sys = "0.7.7"
 base64 = "0.22"
 cpal = "0.15.3"
+rusqlite = { version = "0.43.0", features = ["bundled"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 webkit2gtk = "=2.0.2"

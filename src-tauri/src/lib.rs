@@ -1,5 +1,6 @@
 mod auth_store;
 mod cover_cache;
+mod db;
 mod deeplink;
 mod deps;
 mod diag;
@@ -9,6 +10,7 @@ mod dualsense;
 mod export_file;
 mod jsc;
 mod lastfm;
+mod library;
 mod listenbrainz;
 mod login_nav;
 #[cfg(target_os = "linux")]
@@ -778,6 +780,7 @@ pub fn run() {
                 native_audio::set_spool_dir(dir.join("audio"));
             }
             downloads::init(app.handle());
+            db::init(app.handle());
             #[cfg(windows)]
             if let Err(e) = install_edit_menu(app.handle()) {
                 eprintln!("[zenith] edit menu unavailable: {e}");
@@ -917,6 +920,9 @@ pub fn run() {
             deeplink::deeplink_register,
             native_audio::zaudio_plan,
             native_audio::zaudio_manual,
+            db::db_log_play,
+            db::db_rate,
+            db::smart_queue,
             native_audio::zaudio_attach,
             native_audio::zaudio_snapshot,
             windows::ui_ready,

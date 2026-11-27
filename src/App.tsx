@@ -163,6 +163,7 @@ import {
 } from './plugins/abLoop';
 import { sponsorBlockJump } from './plugins/sponsorBlock';
 import { downloadTrack } from './plugins/offlineDownloads';
+import { playLogSwitch, playLogTick } from './utils/playLog';
 import { registerAutoPauseCallback } from './plugins/autoPauseBlur';
 import { Select } from './components/ui/Select';
 import {
@@ -1884,6 +1885,7 @@ export default function App() {
       cancelRamps();
       const switchingTrack = currentTrackIdRef.current !== track.id;
       currentTrackIdRef.current = track.id;
+      playLogSwitch(track, durationRef.current);
       setCurrentTrack(track);
       setBuffering(true);
       const stale = () => gen !== loadGenRef.current;
@@ -2448,6 +2450,20 @@ export default function App() {
   const radioLangRef = useLatest(lang);
   const radioBusyRef = useRef<Promise<number> | null>(null);
   const extendQueueWithRadio = useCallback((): Promise<number> => {
+    // Rust odsiewa remiksy tej samej piosenki, świeżo grane i pomijane; bez niego zostaje surowe radio
+    const smartPick = async (seed: Track, list: Track[], q: Track[]) => {
+      const pick = (t: Track) => ({ id: t.id, title: t.title, artist: t.artist });
+      const ids = await invoke<string[]>('smart_queue', {
+        seed: pick(seed),
+        candidates: list.map(pick),
+        exclude: q.slice(-200).map((t) => t.id),
+        blockedArtists: readBlocked(),
+        limit: 25,
+      }).catch(() => null);
+      if (!ids) return list;
+      const byId = new Map(list.map((t) => [t.id, t]));
+      return ids.flatMap((id) => byId.get(id) ?? []);
+    };
     if (radioBusyRef.current) return radioBusyRef.current;
     const job = (async () => {
       const q = queueRef.current;
@@ -2464,6 +2480,7 @@ export default function App() {
           )
         );
       }
+      more = await smartPick(cur, more, q);
       const latest = queueRef.current;
       // w trakcie pobierania włączono inną kolejkę; radio starego utworu nie może się do niej dokleić
       if (more.length === 0 || !latest.some((t) => t.id === cur.id)) return 0;
@@ -2617,6 +2634,12 @@ export default function App() {
       const wasSaved = savedTracks.some((x) => x.id === track.id);
       ratingReqRef.current += 1;
       setTrackRatingState(next);
+      void invoke('db_rate', {
+        videoId: track.id,
+        rating: next === 'LIKE' ? 1 : next === 'DISLIKE' ? -1 : 0,
+        title: track.title,
+        artist: track.artist,
+      }).catch(() => undefined);
       if (next !== 'LIKE') {
         setAccountLikes((prev) =>
           prev.some((x) => x.id === track.id) ? prev.filter((x) => x.id !== track.id) : prev
@@ -2922,6 +2945,7 @@ export default function App() {
       const d = barDurationForTrack(durationRef.current, audio.duration, trusted);
       progressRef.current = t;
       if (d > 0) durationRef.current = d;
+      playLogTick(currentTrackIdRef.current ?? '', t);
 
       const synced = lyricsRef.current?.synced;
       const lyricIdx = synced?.length
@@ -3458,6 +3482,7 @@ export default function App() {
         );
       }
       currentTrackIdRef.current = track.id;
+      playLogSwitch(track);
       setCurrentTrack(track);
       hydratePanelsRef.current(track);
       if (snap.muted) setIsMuted(true);

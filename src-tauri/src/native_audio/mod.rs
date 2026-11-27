@@ -1087,6 +1087,8 @@ pub mod headless {
         busy: bool,
         // (indeks, koniec słyszalnego dźwięku): cisza na końcu pliku nie wydłuża crossfade
         tail: Option<(usize, Option<f64>)>,
+        // pozycja z ostatniego tyknięcia: tyle przesłuchano utworu, który właśnie się zmienia
+        cur_t: f64,
     }
     static H_: Mutex<Option<H>> = Mutex::new(None);
 
@@ -1224,7 +1226,7 @@ pub mod headless {
             .flatten()
     }
 
-    fn mark_started(i: usize) {
+    fn mark_started(i: usize, listened: f64) {
         if !is_headless() {
             let (track, offset) = h(|h| {
                 h.plan["index"] = Value::from(i as u64);
@@ -1253,6 +1255,7 @@ pub mod headless {
             return;
         }
         eprintln!("[zaudio] headless: started queue index {i}");
+        log_current(listened);
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_millis() as u64)
@@ -1277,6 +1280,8 @@ pub mod headless {
             return;
         };
         let headless_at_start = is_headless();
+        // crossfade przestawia zegar na nowy utwór, zanim dojdziemy do zapisu poprzedniego
+        let listened = h(|h| h.cur_t);
         let manual_at_start = MANUAL.load(Ordering::SeqCst);
         let mut url = resolve(&id).await;
         if url.is_none() {
@@ -1313,7 +1318,7 @@ pub mod headless {
         };
         if started {
             ERR_STREAK.store(0, Ordering::SeqCst);
-            mark_started(i);
+            mark_started(i, listened);
             return;
         }
         // bez sieci padnie i następny; po trzech porażkach z rzędu stajemy, zamiast przewijać kolejkę
@@ -1343,6 +1348,7 @@ pub mod headless {
     }
 
     pub fn on_tick(s: &Snapshot) {
+        h(|h| h.cur_t = s.t);
         // przy otwartym oknie wyłącznik czasowy, SponsorBlock i reszta wtyczek działają w JS
         if is_headless() {
             now_playing(false);
@@ -1449,8 +1455,27 @@ pub mod headless {
         }
     }
 
+    /// Bez okna historię słuchania zapisuje Rust; przy oknie robi to JS przy zmianie utworu.
+    fn log_current(listened: f64) {
+        let track = h(|h| h.plan["queue"][index(&h.plan)].clone());
+        let s = |k: &str| track[k].as_str().unwrap_or("").to_string();
+        let _ = crate::db::log_play(&crate::db::PlayIn {
+            video_id: s("id"),
+            title: s("title"),
+            artist: s("artist"),
+            album: track["album"].as_str().map(String::from),
+            duration: track["durationSec"].as_f64(),
+            listened,
+            at: None,
+        });
+        h(|h| h.cur_t = 0.0);
+    }
+
     pub fn on_ended() {
         ERR_STREAK.store(0, Ordering::SeqCst);
+        if is_headless() {
+            log_current(h(|h| h.cur_t));
+        }
         let (loop_one, next) = h(|h| (loop_mode(&h.plan) == "one", next_index(&h.plan)));
         if loop_one {
             run_cmd(Cmd::Seek { t: 0.0 });
