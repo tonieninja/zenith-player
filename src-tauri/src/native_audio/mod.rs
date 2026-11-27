@@ -431,7 +431,7 @@ fn watch_decks(e: &Engine) {
     for k in out {
         emit(e, k, snap.clone());
     }
-    if ended && HEADLESS.load(Ordering::SeqCst) {
+    if ended && headless::driving() {
         std::thread::spawn(headless::on_ended);
     }
 }
@@ -533,7 +533,7 @@ fn tick_loop() {
             snap.t = to;
         }
         emit(e, "timeupdate", snap.clone());
-        if HEADLESS.load(Ordering::SeqCst) {
+        if headless::driving() {
             headless::on_tick(&snap);
         }
     }
@@ -1047,6 +1047,11 @@ pub fn zaudio_plan(plan: Value) {
 }
 
 #[tauri::command]
+pub fn zaudio_manual() {
+    headless::manual();
+}
+
+#[tauri::command]
 pub fn zaudio_attach(app: AppHandle) -> Value {
     HEADLESS.store(false, Ordering::SeqCst);
     let _ = app;
@@ -1080,12 +1085,26 @@ pub mod headless {
         fade_started_for: Option<usize>,
         prefetched_for: Option<usize>,
         busy: bool,
+        // (indeks, koniec słyszalnego dźwięku): cisza na końcu pliku nie wydłuża crossfade
+        tail: Option<(usize, Option<f64>)>,
     }
     static H_: Mutex<Option<H>> = Mutex::new(None);
 
     fn h<R>(f: impl FnOnce(&mut H) -> R) -> R {
         let mut g = H_.lock().unwrap_or_else(|p| p.into_inner());
         f(g.get_or_insert_with(H::default))
+    }
+
+    /// Przejścia między utworami robi Rust także przy otwartym oknie: zminimalizowany webview potrafi zamarznąć.
+    pub fn driving() -> bool {
+        is_headless() || h(|h| h.plan["drive"].as_bool() == Some(true))
+    }
+
+    static MANUAL: AtomicU64 = AtomicU64::new(0);
+
+    /// JS zaczyna ręczną zmianę utworu; trwające automatyczne przejście ma ustąpić.
+    pub fn manual() {
+        MANUAL.fetch_add(1, Ordering::SeqCst);
     }
 
     pub fn set_plan(plan: Value) {
@@ -1206,6 +1225,33 @@ pub mod headless {
     }
 
     fn mark_started(i: usize) {
+        if !is_headless() {
+            let (track, offset) = h(|h| {
+                h.plan["index"] = Value::from(i as u64);
+                h.fade_started_for = None;
+                h.prefetched_for = None;
+                h.tail = None;
+                (
+                    h.plan["queue"][i].clone(),
+                    h.plan["offset"].as_u64().unwrap_or(0),
+                )
+            });
+            // scrobble i resztę wtyczek robi okno; Rust mówi tylko, który utwór już gra
+            if let Some(app) = engine().and_then(|e| e.app.clone()) {
+                let s = snapshot();
+                let rate = with(|st| st.rate).unwrap_or(1.0);
+                // mini odtwarzacz nie czeka na zamrożone okno, żeby nie pokazywać poprzedniego utworu
+                let _ = app.emit(
+                    "zenith-headless-now",
+                    serde_json::json!({ "track": track, "t": s.t, "d": s.d, "playing": !s.paused, "rate": rate }),
+                );
+                let _ = app.emit(
+                    "zaudio-advanced",
+                    serde_json::json!({ "index": offset + i as u64, "track": track }),
+                );
+            }
+            return;
+        }
         eprintln!("[zaudio] headless: started queue index {i}");
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -1219,6 +1265,7 @@ pub mod headless {
                 .push(serde_json::json!({ "index": i, "id": id, "at": now }));
             h.fade_started_for = None;
             h.prefetched_for = None;
+            h.tail = None;
         });
         plugins::track_started(&h(|h| h.plan["queue"][i].clone()));
         save_state();
@@ -1229,12 +1276,28 @@ pub mod headless {
         let Some(id) = h(|h| track_id(&h.plan, i)) else {
             return;
         };
+        let headless_at_start = is_headless();
+        let manual_at_start = MANUAL.load(Ordering::SeqCst);
         let mut url = resolve(&id).await;
         if url.is_none() {
             url = resolve(&id).await;
         }
-        // okno wróciło w trakcie pobierania adresu: kolejką rządzi już JS, start tutaj grałby inny utwór niż UI
-        if !is_headless() {
+        // okno wróciło albo człowiek wybrał inny utwór w trakcie pobierania adresu: start grałby nie to, co UI
+        if (headless_at_start && !is_headless())
+            || !driving()
+            || MANUAL.load(Ordering::SeqCst) != manual_at_start
+        {
+            return;
+        }
+        if url.is_none() && !is_headless() {
+            // okno ma zapasowe źródła (inne wydania utworu), więc porażkę oddajemy jemu
+            let offset = h(|h| h.plan["offset"].as_u64().unwrap_or(0));
+            if let Some(app) = engine().and_then(|e| e.app.clone()) {
+                let _ = app.emit(
+                    "zaudio-advance-failed",
+                    serde_json::json!({ "index": offset + i as u64, "id": id }),
+                );
+            }
             return;
         }
         let started = match url {
@@ -1280,34 +1343,65 @@ pub mod headless {
     }
 
     pub fn on_tick(s: &Snapshot) {
-        now_playing(false);
-        match plugins::tick(s) {
-            Some(plugins::Act::Seek(t)) => return seek_to(t),
-            Some(plugins::Act::Next) => return action("next"),
-            Some(plugins::Act::Pause) => {
-                run_cmd(Cmd::Pause);
-                save_state();
-                announce(false);
-                return;
+        // przy otwartym oknie wyłącznik czasowy, SponsorBlock i reszta wtyczek działają w JS
+        if is_headless() {
+            now_playing(false);
+            match plugins::tick(s) {
+                Some(plugins::Act::Seek(t)) => return seek_to(t),
+                Some(plugins::Act::Next) => return action("next"),
+                Some(plugins::Act::Pause) => {
+                    run_cmd(Cmd::Pause);
+                    save_state();
+                    announce(false);
+                    return;
+                }
+                None => {}
             }
-            None => {}
+        }
+        // pętla A-B przy końcu utworu nie może zostać przerwana przejściem do następnego
+        if s.paused || with(|st| st.ab.is_some()).unwrap_or(false) {
+            return;
         }
         let Some(d) = s.d else { return };
-        let remaining = d - s.t;
-        let (cf, loop_one, next, fade_for, pre_for) = h(|h| {
+        let (cf, gapless, loop_one, cur, next, fade_for, pre_for, tail) = h(|h| {
             (
                 h.plan["crossfade"].as_f64().unwrap_or(0.0),
+                h.plan["gapless"].as_bool().unwrap_or(false),
                 loop_mode(&h.plan) == "one",
+                index(&h.plan),
                 next_index(&h.plan),
                 h.fade_started_for,
                 h.prefetched_for,
+                h.tail,
             )
         });
         let Some(next) = next else { return };
         if loop_one {
             return;
         }
-        if remaining < cf + 20.0 && pre_for != Some(next) {
+        let tail_end = tail.filter(|t| t.0 == cur).and_then(|t| t.1);
+        let remaining = match tail_end {
+            Some(end) if !gapless && end > 0.0 => end.min(d) - s.t,
+            _ => d - s.t,
+        };
+        if cf > 0.0 && !gapless && remaining < cf + 25.0 && tail.map(|t| t.0) != Some(cur) {
+            h(|h| h.tail = Some((cur, None)));
+            let src = s.src.clone();
+            tauri::async_runtime::spawn(async move {
+                let end = zaudio_tail(src, d).await;
+                h(|h| {
+                    if h.tail.is_some_and(|t| t.0 == cur) {
+                        h.tail = Some((cur, end));
+                    }
+                });
+            });
+        }
+        let lead = if gapless || cf <= 0.0 {
+            12.0
+        } else {
+            cf + 20.0
+        };
+        if remaining < lead && pre_for != Some(next) {
             h(|h| h.prefetched_for = Some(next));
             if let Some(id) = h(|h| track_id(&h.plan, next)) {
                 tauri::async_runtime::spawn(async move {
@@ -1318,15 +1412,24 @@ pub mod headless {
                 });
             }
         }
-        if cf > 0.0
-            && !s.crossfading
-            && remaining <= cf
-            && remaining > 0.35
-            && fade_for != Some(next)
-        {
-            h(|h| h.fade_started_for = Some(next));
-            spawn_once(start_index(next, remaining.max(1.0)));
+        let fade = auto_fade(cf, gapless, remaining);
+        if let Some(fade) = fade {
+            if !s.crossfading && fade_for != Some(next) {
+                h(|h| h.fade_started_for = Some(next));
+                spawn_once(start_index(next, fade));
+            }
         }
+    }
+
+    /// Kiedy i jak długo przenikać: album bez przerw zszywa utwory w 80 ms, crossfade bierze resztę utworu.
+    pub fn auto_fade(cf: f64, gapless: bool, remaining: f64) -> Option<f64> {
+        if remaining.is_nan() || remaining <= 0.0 {
+            return None;
+        }
+        if gapless {
+            return (remaining <= 0.6 && remaining > 0.03).then_some(0.08);
+        }
+        (cf > 0.0 && remaining <= cf && remaining > 0.35).then_some(remaining.max(1.0))
     }
 
     static ERR_STREAK: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
@@ -1601,6 +1704,27 @@ pub mod headless {
                 "ext": ext,
             })
         })
+    }
+}
+
+#[cfg(test)]
+mod fade_tests {
+    use super::headless::auto_fade;
+
+    #[test]
+    fn crossfade_starts_inside_the_window_and_takes_the_rest() {
+        assert_eq!(auto_fade(6.0, false, 7.0), None);
+        assert_eq!(auto_fade(6.0, false, 5.0), Some(5.0));
+        assert_eq!(auto_fade(6.0, false, 0.6), Some(1.0));
+        assert_eq!(auto_fade(6.0, false, 0.3), None);
+        assert_eq!(auto_fade(0.0, false, 2.0), None);
+    }
+
+    #[test]
+    fn gapless_album_stitches_at_the_very_end() {
+        assert_eq!(auto_fade(6.0, true, 5.0), None);
+        assert_eq!(auto_fade(0.0, true, 0.5), Some(0.08));
+        assert_eq!(auto_fade(0.0, true, 0.01), None);
     }
 }
 

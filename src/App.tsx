@@ -1872,8 +1872,10 @@ export default function App() {
   const extendRadioRef = useRef<() => Promise<number>>(() => Promise.resolve(0));
 
   const loadTrack = useCallback(
-    async (track: Track, autoPlay = true, fadeSeconds?: number, startAt = 0) => {
+    async (track: Track, autoPlay = true, fadeSeconds?: number, startAt = 0, adopt = false) => {
       const gen = ++loadGenRef.current;
+      // ręczny wybór wygrywa z przejściem, które Rust właśnie zaczyna
+      if (!adopt && isNativeAudio()) void invoke('zaudio_manual').catch(() => undefined);
       cancelRamps();
       const switchingTrack = currentTrackIdRef.current !== track.id;
       currentTrackIdRef.current = track.id;
@@ -1912,6 +1914,17 @@ export default function App() {
       if (switchingTrack || startAt > 0 || knownDuration > 0) {
         progressRef.current = startAt > 0 ? startAt : switchingTrack ? 0 : progressRef.current;
         paintKnown(progressRef.current);
+      }
+      if (adopt) {
+        // silnik już gra ten utwór (przejście zrobił Rust), więc zostaje tylko stan okna
+        trackSwitchingRef.current = false;
+        setIsPlaying(true);
+        setBuffering(false);
+        streamFailStreakRef.current = 0;
+        streamErrorRetryRef.current = null;
+        autoFadePendingRef.current = false;
+        syncDurationFromAudioRef.current();
+        return;
       }
       try {
         await loadTrackInner();
@@ -2176,6 +2189,46 @@ export default function App() {
     [loadTrack, crossfadeEnabled, currentTrackIdRef, queueIndexRef, queueRef]
   );
   playByIndexRef.current = playByIndex;
+
+  const adoptByIndex = useCallback(
+    (index: number, track: Track) => {
+      let i = index;
+      const q = queueRef.current;
+      // plan w Ruście mógł być sprzed zmiany kolejki; szukamy utworu po id w pobliżu
+      if (q[i]?.id !== track.id) {
+        const near = q.findIndex((t, k) => t.id === track.id && Math.abs(k - index) <= 200);
+        if (near < 0) return;
+        i = near;
+      }
+      if (i === queueIndexRef.current && currentTrackIdRef.current === track.id) return;
+      playHistoryRef.current = pushPlayHistory(playHistoryRef.current, currentTrackIdRef.current);
+      queueIndexRef.current = i;
+      setQueueIndex(i);
+      void loadTrack(q[i], true, undefined, 0, true);
+    },
+    [loadTrack, currentTrackIdRef, queueIndexRef, queueRef]
+  );
+  const adoptByIndexRef = useLatest(adoptByIndex);
+
+  useEffect(() => {
+    if (!isNativeAudio()) return;
+    const advanced = listen<{ index: number; track: Track }>('zaudio-advanced', (e) => {
+      if (e.payload?.track?.id) adoptByIndexRef.current(e.payload.index, e.payload.track);
+    });
+    // Rust nie dostał adresu; okno spróbuje innych wydań utworu i pominie go dopiero po nich
+    const failed = listen<{ index: number; id: string }>('zaudio-advance-failed', (e) => {
+      const q = queueRef.current;
+      const i =
+        q[e.payload.index]?.id === e.payload.id
+          ? e.payload.index
+          : q.findIndex((t) => t.id === e.payload.id);
+      if (i >= 0) void playByIndexRef.current(i);
+    });
+    return () => {
+      void advanced.then((off) => off());
+      void failed.then((off) => off());
+    };
+  }, [adoptByIndexRef, queueRef]);
 
   const collectionReqRef = useRef(0);
   const handleCollectionClick = useCallback(
@@ -2926,8 +2979,21 @@ export default function App() {
         }
       }
 
-      if (
-        (crossfadeEnabledRef.current || playingAlbumRef.current || isNativeAudio()) &&
+      // przejścia silnika natywnego prowadzi Rust (zaudio-advanced); tu zostaje tylko tekst następnego utworu
+      if (isNativeAudio() && d > 0 && isPlayingRef.current) {
+        const trackId = currentTrackIdRef.current;
+        const q = queueRef.current;
+        const qi = queueIndexRef.current;
+        const ni = qi < q.length - 1 ? qi + 1 : loopModeRef.current === 'all' ? 0 : -1;
+        const next = ni >= 0 && ni !== qi ? q[ni] : null;
+        if (trackId && next && prerollForRef.current !== trackId && d - t <= GAPLESS_PREROLL_SECS) {
+          prerollForRef.current = trackId;
+          if (next.durationSec) {
+            void getLyrics(next, langRef.current, lyricsProviderRef.current).catch(() => null);
+          }
+        }
+      } else if (
+        (crossfadeEnabledRef.current || playingAlbumRef.current) &&
         !audio.isCrossfading &&
         loopModeRef.current !== 'one' &&
         // pętla A-B przy końcu utworu nie może zostać przerwana przez przejście do następnego
@@ -2953,10 +3019,9 @@ export default function App() {
           gapless,
           remaining,
         });
-        // silnik natywny bierze wczytany zawczasu deck także bez crossfade, więc przejście nie czeka na sieć
         const early = gapless || !crossfadeEnabledRef.current;
         if (
-          (gapless || crossfadeEnabledRef.current || isNativeAudio()) &&
+          (gapless || crossfadeEnabledRef.current) &&
           trackId &&
           prerollForRef.current !== trackId &&
           remaining <= (early ? GAPLESS_PREROLL_SECS : cfs + 8) &&
@@ -3062,21 +3127,38 @@ export default function App() {
         autoFadePendingRef.current = false;
         return;
       }
-      if (loopMode === 'one') {
-        audio.currentTime = 0;
-        audio.play().catch(() => setIsPlaying(false));
+      const advance = () => {
+        if (loopMode === 'one') {
+          audio.currentTime = 0;
+          audio.play().catch(() => setIsPlaying(false));
+          return;
+        }
+        if (queueIndex < queue.length - 1) playNext(true);
+        else if (loopMode === 'all' && queue.length > 0) playByIndex(0);
+        else if (queue.length > 0) {
+          const at = queueRef.current.length;
+          const idx = queueIndexRef.current;
+          void extendQueueWithRadio().then((added) => {
+            if (added > 0 && queueIndexRef.current === idx) void playByIndexRef.current(at);
+            else if (added === 0) setIsPlaying(false);
+          });
+        } else setIsPlaying(false);
+      };
+      // powtórkę i następny utwór zaczyna Rust; okno dokłada radio na końcu kolejki,
+      // a gdy Rust miał nieaktualny plan i stoi, po chwili kończy przejście samo
+      if (isNativeAudio() && (loopMode !== 'off' || queueIndex < queue.length - 1)) {
+        const id = currentTrackIdRef.current;
+        window.setTimeout(() => {
+          if (
+            currentTrackIdRef.current === id &&
+            !isPlayingRef.current &&
+            !trackSwitchingRef.current
+          )
+            advance();
+        }, 2500);
         return;
       }
-      if (queueIndex < queue.length - 1) playNext(true);
-      else if (loopMode === 'all' && queue.length > 0) playByIndex(0);
-      else if (queue.length > 0) {
-        const at = queueRef.current.length;
-        const idx = queueIndexRef.current;
-        void extendQueueWithRadio().then((added) => {
-          if (added > 0 && queueIndexRef.current === idx) void playByIndexRef.current(at);
-          else if (added === 0) setIsPlaying(false);
-        });
-      } else setIsPlaying(false);
+      advance();
     };
     const onPlay = () => setIsPlaying(true);
     let startTicker = 0;
@@ -3425,6 +3507,9 @@ export default function App() {
     const skipAi = pluginManager.isEnabled('skip-ai-music');
     return invoke('zaudio_plan', {
       plan: {
+        drive: true,
+        offset: start,
+        gapless: playingAlbumRef.current && getGaplessAlbums(),
         queue: sent,
         index: safeIndex - start,
         loopMode,

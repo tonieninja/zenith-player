@@ -916,6 +916,7 @@ pub fn run() {
             thumbbar::thumbbar_update,
             deeplink::deeplink_register,
             native_audio::zaudio_plan,
+            native_audio::zaudio_manual,
             native_audio::zaudio_attach,
             native_audio::zaudio_snapshot,
             windows::ui_ready,
