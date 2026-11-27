@@ -166,15 +166,31 @@ export function upsertSections(cur: Section[], incoming: Section[]): Section[] {
   return changed ? next : cur;
 }
 
-// browseId „Więcej” nie zależy od języka, więc ukryta półka zostaje ukryta po zmianie języka
-export const shelfKey = (s: Section) => s.more?.browseId ?? s.title.toLowerCase().trim();
+export const QUICK_PICKS_SHELF = 'quick-picks';
+
+// shortcut: półka bez „Więcej” ma klucz z tytułu, bo shelfId YTM jest losowy, więc po zmianie języka wraca;
+// zmienić, gdy YTM da stały identyfikator półki
+export const shelfKey = (s: Section) =>
+  s.id ??
+  // params odróżniają półki z jednym celem, np. kategorie nastrojów
+  (s.more
+    ? `${s.more.browseId}${s.more.params ? `::${s.more.params}` : ''}`
+    : s.title.toLowerCase().trim());
 
 const HIDDEN_SHELVES_KEY = 'zenith_home_hidden';
+// Szybki wybór miał kiedyś klucz z przetłumaczonego tytułu
+const OLD_QUICK_PICKS_KEYS = ['quick picks', 'szybki wybór'];
 
 export function loadHiddenShelves(): Record<string, string> {
   try {
     const v = JSON.parse(localStorage.getItem(HIDDEN_SHELVES_KEY) || '{}');
-    return v && typeof v === 'object' && !Array.isArray(v) ? v : {};
+    if (!v || typeof v !== 'object' || Array.isArray(v)) return {};
+    for (const old of OLD_QUICK_PICKS_KEYS) {
+      if (!(old in v)) continue;
+      v[QUICK_PICKS_SHELF] = v[old];
+      delete v[old];
+    }
+    return v;
   } catch {
     return {};
   }

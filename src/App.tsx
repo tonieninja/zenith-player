@@ -295,6 +295,7 @@ import { smartShuffle } from './utils/smartShuffle';
 import {
   loadHiddenShelves,
   loadHomeSnapshot,
+  QUICK_PICKS_SHELF,
   saveHiddenShelves,
   saveHomeSnapshot,
   shelfKey,
@@ -445,6 +446,8 @@ export default function App() {
   const [homeChips, setHomeChips] = useState<HomeChip[]>([]);
   const [homeHasMore, setHomeHasMore] = useState(false);
   const [homeMoreTick, setHomeMoreTick] = useState(0);
+  // bez wskaźnika pod listą koniec Głównej offline wygląda jak koniec treści
+  const [homeMore, setHomeMore] = useState<'idle' | 'loading' | 'error'>('idle');
   const [hiddenShelves, setHiddenShelves] = useState(loadHiddenShelves);
   const [activeMood, setActiveMood] = useState<string | null>(null);
   const [browseTitle, setBrowseTitle] = useState<string | null>(null);
@@ -1008,7 +1011,8 @@ ${language}`;
         setPrefetchComplete(true);
         return;
       }
-      covers.forEach((p) => p.finally(() => setPrefetchDone((prev) => prev + 1)));
+      const bump = () => setPrefetchDone((prev) => prev + 1);
+      covers.forEach((p) => p.then(bump, bump));
       Promise.allSettled(covers).then(() => {
         if (mountedRef.current) setPrefetchComplete(true);
       });
@@ -1034,6 +1038,55 @@ ${language}`;
     },
     [startBackgroundPrefetch]
   );
+
+  const homeMoreBusyRef = useRef(false);
+  const homeMoreFailsRef = useRef(0);
+  const loadHomeNext = useCallback(() => {
+    if (homeMoreBusyRef.current) return;
+    homeMoreBusyRef.current = true;
+    setHomeMore('loading');
+    getHomeNextPage(lang)
+      .then((page) => {
+        homeMoreFailsRef.current = 0;
+        if (page.key !== homeKeyRef.current) return;
+        if (page.quickPicks.length) {
+          const stale = quickFromCacheRef.current;
+          quickFromCacheRef.current = false;
+          const box = document.querySelector<HTMLElement>('.content-area .sections-container');
+          const scroller = box?.closest<HTMLElement>('.content-scrollable');
+          const before = box?.getBoundingClientRect().top ?? 0;
+          flushSync(() =>
+            setQuickPicks((prev) => (prev.length && !stale ? prev : page.quickPicks))
+          );
+          // wiersz wstawiony nad widokiem; Chromium sam trzyma treść w miejscu, WebKit nie ma zakotwiczenia
+          const shift = (box?.getBoundingClientRect().top ?? 0) - before;
+          if (scroller && shift && before < scroller.getBoundingClientRect().top) {
+            scroller.scrollBy(0, shift);
+          }
+        }
+        if (page.sections.length) {
+          setHomeSections((cur) => upsertSections(cur, stableOrderSections(page.sections)));
+        }
+        setHomeHasMore(page.more);
+      })
+      .then(
+        () => {
+          homeMoreBusyRef.current = false;
+          setHomeMore('idle');
+          setHomeMoreTick((n) => n + 1);
+        },
+        () => {
+          homeMoreBusyRef.current = false;
+          setHomeMore('error');
+          const fails = ++homeMoreFailsRef.current;
+          // obserwator ponowiłby od razu, a sieci po błędzie zwykle trzeba chwili
+          window.setTimeout(
+            () => setHomeMoreTick((n) => n + 1),
+            Math.min(30_000, 1000 * 2 ** fails)
+          );
+        }
+      );
+  }, [lang]);
 
   const loadHome = useCallback(
     (language: Language = lang, navigate = true) => {
@@ -1074,6 +1127,9 @@ ${language}`;
           if (feed.quickPicks.length || !quickFromCacheRef.current) {
             quickFromCacheRef.current = false;
             setQuickPicks((prev) => (feed.quickPicks.length || fresh ? feed.quickPicks : prev));
+          } else if (feed.more) {
+            // Szybki wybór gościa przychodzi z kontynuacją, a wysoki wiersz z migawki odsuwa strażnika z widoku
+            loadHomeNext();
           }
           setHomeChips(feed.chips);
           setHomeHasMore(feed.more);
@@ -1098,54 +1154,9 @@ ${language}`;
       startBackgroundPrefetch,
       showCachedHome,
       homeEmptyRef,
+      loadHomeNext,
     ]
   );
-
-  const homeMoreBusyRef = useRef(false);
-  const homeMoreFailsRef = useRef(0);
-  const loadHomeNext = useCallback(() => {
-    if (homeMoreBusyRef.current) return;
-    homeMoreBusyRef.current = true;
-    getHomeNextPage(lang)
-      .then((page) => {
-        homeMoreFailsRef.current = 0;
-        if (page.key !== homeKeyRef.current) return;
-        if (page.quickPicks.length) {
-          const stale = quickFromCacheRef.current;
-          quickFromCacheRef.current = false;
-          const box = document.querySelector<HTMLElement>('.content-area .sections-container');
-          const scroller = box?.closest<HTMLElement>('.content-scrollable');
-          const before = box?.getBoundingClientRect().top ?? 0;
-          flushSync(() =>
-            setQuickPicks((prev) => (prev.length && !stale ? prev : page.quickPicks))
-          );
-          // wiersz wstawiony nad widokiem; Chromium sam trzyma treść w miejscu, WebKit nie ma zakotwiczenia
-          const shift = (box?.getBoundingClientRect().top ?? 0) - before;
-          if (scroller && shift && before < scroller.getBoundingClientRect().top) {
-            scroller.scrollBy(0, shift);
-          }
-        }
-        if (page.sections.length) {
-          setHomeSections((cur) => upsertSections(cur, stableOrderSections(page.sections)));
-        }
-        setHomeHasMore(page.more);
-      })
-      .then(
-        () => {
-          homeMoreBusyRef.current = false;
-          setHomeMoreTick((n) => n + 1);
-        },
-        () => {
-          homeMoreBusyRef.current = false;
-          const fails = ++homeMoreFailsRef.current;
-          // obserwator ponowiłby od razu, a sieci po błędzie zwykle trzeba chwili
-          window.setTimeout(
-            () => setHomeMoreTick((n) => n + 1),
-            Math.min(30_000, 1000 * 2 ** fails)
-          );
-        }
-      );
-  }, [lang]);
 
   const changeLanguage = useCallback(
     (newLang: Language) => {
@@ -1171,9 +1182,28 @@ ${language}`;
   );
 
   useEffect(() => saveHiddenShelves(hiddenShelves), [hiddenShelves]);
-  const hideShelf = useCallback(
-    (s: Section) => setHiddenShelves((prev) => ({ ...prev, [shelfKey(s)]: s.title })),
+  const showShelf = useCallback(
+    (key: string) =>
+      setHiddenShelves((prev) => {
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      }),
     []
+  );
+  const hideShelf = useCallback(
+    (s: Section) => {
+      const key = shelfKey(s);
+      setHiddenShelves((prev) => ({ ...prev, [key]: s.title }));
+      // oko stoi tuż przy strzałce „dalej”, więc przypadkowe ukrycie musi dać się cofnąć od razu
+      pushToast(
+        t.shelfHidden.replace('{name}', () => s.title),
+        'info',
+        5000,
+        { label: t.undo, labelKey: 'undo', onClick: () => showShelf(key) }
+      );
+    },
+    [t, showShelf]
   );
 
   useEffect(() => {
@@ -1182,7 +1212,8 @@ ${language}`;
     saveHomeSnapshot({
       key: homeKeyRef.current,
       sections: homeSections,
-      quickPicks,
+      // stare picks z migawki pod świeżym kluczem żyłyby bez końca, gdy kontynuacja nie dojdzie
+      quickPicks: quickFromCacheRef.current ? [] : quickPicks,
       chips: homeChips,
     });
   }, [homeSections, quickPicks, homeChips]);
@@ -1244,9 +1275,10 @@ ${lang}`
       setFeedTabLoading('mood', true);
       navigateTo('mood');
       setSearchQuery('');
-      setBrowseTitle(null);
+      setBrowseTitle(title ?? null);
       setBrowseEmptyKind(null);
       setActiveMood(categoryId);
+      setSections([]);
       const safety = window.setTimeout(() => setFeedTabLoading('mood', false), 8000);
       getMoodPage(browseId, title, language)
         .then((data) => {
@@ -1278,7 +1310,8 @@ ${lang}`
       setSections([]);
       navigateTo('mood');
       const safety = window.setTimeout(() => setFeedTabLoading('mood', false), 12000);
-      const isArtist = item.id.startsWith('UC');
+      // kanał z params („Występy na żywo”, „Playlisty”) to zwykła siatka browse, nie strona wykonawcy
+      const isArtist = item.id.startsWith('UC') && !item.id.includes('::');
       // „Ponów” podaje pustą okładkę, więc zostawiamy awatar z pierwszego wejścia na ten sam kanał
       setArtistPage((prev) =>
         isArtist
@@ -1414,9 +1447,9 @@ ${lang}`
   }, [navigateTo, savedTracks.length, setFeedTabLoading, t.favs, lang, accountLikes.length]);
 
   const openMoodById = useCallback(
-    (categoryId: string) => {
+    (categoryId: string, title?: string) => {
       const browseId = moodBrowseIdFor(categoryId) ?? moodBrowseIdFor('focus');
-      if (browseId) loadMood(categoryId, browseId);
+      if (browseId) loadMood(categoryId, browseId, title);
     },
     [loadMood]
   );
@@ -1693,6 +1726,10 @@ ${lang}`
     clearAuthCache();
     clearCaches();
     streamCacheRef.current.clear();
+    // bez tego pusta Główna po wylogowaniu offline nie wczytałaby się po powrocie sieci
+    homeKeyRef.current = '';
+    setHomeChips([]);
+    setHomeHasMore(false);
     setSections([]);
     setHomeSections([]);
     setExploreSections([]);
@@ -3348,9 +3385,10 @@ ${lang}`
         autoFadePendingRef.current = false;
         return;
       }
+      // natywny silnik powtarza utwór sam, więc advance() dla „jeden utwór” biegnie tylko awaryjnie
+      if (loopMode === 'one') playLogRepeat();
       const advance = () => {
         if (loopMode === 'one') {
-          playLogRepeat();
           audio.currentTime = 0;
           audio.play().catch(() => setIsPlaying(false));
           return;
@@ -5350,9 +5388,12 @@ ${lang}`
         openMoodsGenres();
         return;
       }
-      const id = moreBrowseId(section.more);
+      const { browseId } = section.more;
+      // playlista z „Więcej” (np. „Teledyski”) ładuje się bez params, które dotyczą widoku kanału
+      const isList = browseId.startsWith('VL');
+      const id = isList ? browseId : moreBrowseId(section.more);
       const target: Track = { id, type: 'playlist', title: section.title, artist: '', cover: '' };
-      if (id.startsWith('VL')) void openCollectionPage(target);
+      if (isList) void openCollectionPage(target);
       else openBrowsePage(target);
     },
     [openMoodsGenres, openCollectionPage, openBrowsePage]
@@ -6273,8 +6314,9 @@ ${lang}`
                                 cover: '',
                               });
                             }
-                          } else if (activeTab === 'mood' && activeMood) openMoodById(activeMood);
-                          else loadHome(lang);
+                          } else if (activeTab === 'mood' && activeMood) {
+                            openMoodById(activeMood, browseTitle ?? undefined);
+                          } else loadHome(lang);
                         }}
                       >
                         {t.retry}
@@ -6290,12 +6332,19 @@ ${lang}`
                       <MoodChips
                         chips={homeChips}
                         activeCategory={activeMood}
+                        activeTitle={browseTitle}
                         onCategoryClick={loadMood}
                         onMore={openMoodsGenres}
                         lang={lang}
                         t={t}
                       />
                     )}
+                    {activeTab === 'mood' &&
+                      browseTitle &&
+                      !isBrowseMood(activeMood) &&
+                      activeMood !== FAVORITES_ID && (
+                        <h2 className="moods-genres-heading">{browseTitle}</h2>
+                      )}
                     {activeTab === 'mood' &&
                       browseTitle &&
                       !artistHeader &&
@@ -6316,7 +6365,7 @@ ${lang}`
 
                     {activeTab === 'home' && (
                       <QuickPicks
-                        tracks={hiddenShelves[t.quickPicks.toLowerCase()] ? [] : quickPicks}
+                        tracks={hiddenShelves[QUICK_PICKS_SHELF] ? [] : quickPicks}
                         onItemClick={handleItemClick}
                         onHide={hideShelf}
                         t={t}
@@ -6434,7 +6483,28 @@ ${lang}`
                         <div className="sections-container">
                           {sectionRows}
                           {activeTab === 'home' && homeHasMore && (
-                            <LoadMoreSentinel onVisible={loadHomeNext} tick={homeMoreTick} />
+                            <>
+                              <LoadMoreSentinel onVisible={loadHomeNext} tick={homeMoreTick} />
+                              <div className="feed-load-more" role="status">
+                                {homeMore === 'loading' ? (
+                                  <Loader2
+                                    size={24}
+                                    className="spin-icon"
+                                    aria-label={t.loadingMore}
+                                  />
+                                ) : (
+                                  homeMore === 'error' && (
+                                    <button
+                                      type="button"
+                                      className="primary-action-btn"
+                                      onClick={loadHomeNext}
+                                    >
+                                      {t.retry}
+                                    </button>
+                                  )
+                                )}
+                              </div>
+                            </>
                           )}
                         </div>
                       )
@@ -6905,18 +6975,24 @@ ${lang}`
               <LocalFilesSetting lang={lang} />
               <BackupSetting lang={lang} />
               {Object.keys(hiddenShelves).length > 0 && (
-                <div className="settings-row-item settings-toggle-row">
-                  <div className="settings-account-info">
-                    <span className="setting-label">{t.hiddenShelves}</span>
-                    <span className="plugin-desc">{Object.values(hiddenShelves).join(', ')}</span>
-                  </div>
-                  <button
-                    type="button"
-                    className="lang-option-btn settings-action-btn"
-                    onClick={() => setHiddenShelves({})}
-                  >
-                    {t.hiddenShelvesRestore}
-                  </button>
+                <div className="settings-row-item local-files-row">
+                  <span className="setting-label">{t.hiddenShelves}</span>
+                  {Object.entries(hiddenShelves).map(([key, title]) => {
+                    const name = key === QUICK_PICKS_SHELF ? t.quickPicks : title;
+                    return (
+                      <div key={key} className="local-files-folder">
+                        <span title={name}>{name}</span>
+                        <button
+                          type="button"
+                          className="np-cancel-btn"
+                          aria-label={`${t.hiddenShelvesRestore}: ${name}`}
+                          onClick={() => showShelf(key)}
+                        >
+                          {t.hiddenShelvesRestore}
+                        </button>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
               <h3 className="settings-group-title">{PLUGIN_CATEGORY_LABELS.playback[lang]}</h3>

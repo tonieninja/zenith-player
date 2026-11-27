@@ -283,6 +283,8 @@ export interface Track {
 }
 
 export interface Section {
+  /** Stały klucz półki, której tytuł zależy od języka, a YTM nie daje jej celu „Więcej”. */
+  id?: string;
   title: string;
   items: Track[];
   more?: { browseId: string; params?: string };
@@ -1057,6 +1059,8 @@ export function parseArtistHeader(data: any): ArtistHeader | null {
 const artistCache = new Map<string, { data: ArtistPage; ts: number }>();
 // najechanie na kartę wykonawcy i klik chwilę później dzielą jedno zapytanie
 const artistInflight = new Map<string, Promise<ArtistPage>>();
+// gość bez ciasteczek dostaje „Więcej” z params kanału tylko z visitorData odpowiedzi, która dała ten link
+const subpageVisitor = new Map<string, string>();
 
 export async function getArtistPage(browseId: string, lang: Language): Promise<ArtistPage> {
   const key = `${browseId}:${lang}`;
@@ -1084,6 +1088,13 @@ async function fetchArtistPage(browseId: string, lang: Language, key: string): P
     header: parseArtistHeader(raw),
     sections: dedupeSections(parseShelves(raw, translations[lang])),
   };
+  const visitor = raw?.responseContext?.visitorData;
+  if (typeof visitor === 'string') {
+    for (const s of page.sections) {
+      if (s.more?.params) subpageVisitor.set(moreBrowseId(s.more), visitor);
+    }
+    pruneOldest(subpageVisitor, 60);
+  }
   if (page.sections.length) {
     artistCache.set(key, { data: page, ts: Date.now() });
     pruneOldest(artistCache, 20);
@@ -1253,6 +1264,7 @@ async function fetchBrowseUncached(
         hl: isPl ? 'pl' : 'en',
         gl: isPl ? 'PL' : 'US',
         params: params ?? null,
+        visitor: subpageVisitor.get(rawBrowseId) ?? null,
       },
       12000
     )

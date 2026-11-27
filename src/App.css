@@ -878,6 +878,15 @@ button.nav-item {
   height: 1px;
 }
 
+/* stała wysokość, żeby pojawienie się kółka albo „Spróbuj jeszcze raz” nie szarpało listą */
+.feed-load-more {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 40px;
+  color: var(--text-muted);
+}
+
 .yt-section {
   padding: 0 0 36px;
   animation: fadeSlideUp 0.4s var(--ease-standard) backwards;

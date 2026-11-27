@@ -62,16 +62,21 @@ pub fn upgrade(c: &Connection) -> rusqlite::Result<()> {
          DROP INDEX IF EXISTS plays_artist;",
     )?;
     if c.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))? < 1 {
-        // import z Last.fm przed tą wersją dublował odtworzenia, które Zenith zapisał i zescrobblował sam
-        c.execute(
-            "DELETE FROM plays WHERE source='lastfm' AND EXISTS (SELECT 1 FROM plays z
-               WHERE z.source='zenith' AND z.artist_key=plays.artist_key AND z.title_key=plays.title_key
-                 AND z.at BETWEEN plays.at-600000 AND plays.at+600000)",
-            [],
-        )?;
+        drop_lastfm_dupes(c)?;
         c.execute_batch("PRAGMA user_version=1")?;
     }
     Ok(())
+}
+
+/// Import z Last.fm przed user_version 1 dublował odtworzenia, które Zenith zapisał i zescrobblował sam;
+/// kopia zapasowa z tamtego czasu wnosi je z powrotem.
+pub fn drop_lastfm_dupes(c: &Connection) -> rusqlite::Result<usize> {
+    c.execute(
+        "DELETE FROM plays WHERE source='lastfm' AND EXISTS (SELECT 1 FROM plays z
+           WHERE z.source='zenith' AND z.artist_key=plays.artist_key AND z.title_key=plays.title_key
+             AND z.at BETWEEN plays.at-600000 AND plays.at+600000)",
+        [],
+    )
 }
 
 fn open(path: &Path) -> Option<Connection> {

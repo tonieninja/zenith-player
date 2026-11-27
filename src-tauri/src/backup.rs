@@ -127,6 +127,7 @@ fn restore(c: &rusqlite::Connection, db: &Value) -> rusqlite::Result<usize> {
         }
     }
     n += merge_collections(&tx, db)?;
+    n = n.saturating_sub(crate::db::drop_lastfm_dupes(&tx)?);
     tx.commit()?;
     Ok(n)
 }
@@ -368,6 +369,32 @@ mod tests {
         assert_eq!(restore(&b, &d).unwrap(), 0);
         let n: i64 = b
             .query_row("SELECT COUNT(*) FROM plays", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(n, 1);
+    }
+
+    #[test]
+    fn restore_drops_lastfm_copies_of_zenith_plays() {
+        let a = mem();
+        let add = |source: &str, at: i64| {
+            a.execute(
+                "INSERT INTO plays(title,artist,listened,at,source,artist_key,title_key) VALUES('Hit','A',200,?1,?2,'a','hit')",
+                rusqlite::params![at, source],
+            )
+            .unwrap();
+        };
+        add("zenith", 1_000_000);
+        add("lastfm", 1_240_000);
+        add("lastfm", 9_000_000);
+        let d = dump(&a).unwrap();
+        let b = mem();
+        assert_eq!(restore(&b, &d).unwrap(), 2);
+        let n: i64 = b
+            .query_row(
+                "SELECT COUNT(*) FROM plays WHERE source='lastfm'",
+                [],
+                |r| r.get(0),
+            )
             .unwrap();
         assert_eq!(n, 1);
     }
