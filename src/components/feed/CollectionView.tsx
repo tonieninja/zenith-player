@@ -2,7 +2,7 @@ import { memo } from 'react';
 import { Play, Shuffle } from 'lucide-react';
 import type { Track } from '../../api/youtube';
 import type { translations } from '../../i18n';
-import { coverAttrs } from '../../utils/covers';
+import { coverAttrs, isPlaceholderCover } from '../../utils/covers';
 import { formatTime } from '../../utils/playback';
 import { ctxTrackAttr } from '../../utils/tracks';
 import { WindowedList } from '../ui/WindowedList';
@@ -42,7 +42,11 @@ export const CollectionView = memo(function CollectionView({
     ? items.reduce((s, i) => s + (i.durationSec || 0), 0)
     : 0;
   const meta = [owner, tracksLabel(items.length, t), total ? fmtTotal(total) : ''].filter(Boolean);
-  const cover = collection.cover || collection.coverLarge ? collection : items[0];
+  // playlista z wyników bez miniatury ma okładkę z liter, a YTM pokazuje wtedy okładkę pierwszego utworu
+  const ownCover = [collection.coverLarge, collection.cover].some(
+    (u) => u && !isPlaceholderCover(u)
+  );
+  const cover = ownCover ? collection : items[0];
 
   return (
     <div className="collection-view">
