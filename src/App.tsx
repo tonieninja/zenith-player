@@ -206,6 +206,7 @@ import {
   GAPLESS_LEAD_SECS,
   GAPLESS_PREROLL_SECS,
   isAlbumCollectionId,
+  otherAlbum,
   planAutoTransition,
 } from './plugins/crossfade';
 import { padNeedsWindow, registerDualSenseHandler } from './plugins/dualSense';
@@ -3345,7 +3346,11 @@ export default function App() {
         const q = queueRef.current;
         const qi = queueIndexRef.current;
         const trackId = currentTrackIdRef.current;
-        const gapless = playingAlbumRef.current && getGaplessAlbums();
+        // radio dopięte po albumie nie jest już albumem, więc dostaje crossfade zamiast zszycia
+        const gapless =
+          playingAlbumRef.current &&
+          getGaplessAlbums() &&
+          !otherAlbum(q[qi], q[qi < q.length - 1 ? qi + 1 : 0]);
         const tail = tailRef.current;
         const end =
           !gapless && tail && tail.id === trackId && tail.end && tail.end > 0

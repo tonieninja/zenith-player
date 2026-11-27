@@ -1239,6 +1239,15 @@ pub mod headless {
         p["queue"][i]["id"].as_str().map(String::from)
     }
 
+    /// Utwory na pewno z różnych wydań; bez danych o albumie zostaje gapless, jak przed tym sprawdzeniem.
+    pub fn other_album(a: &Value, b: &Value) -> bool {
+        let key = |t: &Value, k: &str| t[k].as_str().filter(|s| !s.is_empty()).map(String::from);
+        match (key(a, "albumId"), key(b, "albumId")) {
+            (Some(x), Some(y)) => x != y,
+            _ => matches!((key(a, "album"), key(b, "album")), (Some(x), Some(y)) if x != y),
+        }
+    }
+
     async fn resolve(id: &str) -> Option<String> {
         let e = engine()?;
         crate::stream::get_stream_url(e.app.clone()?, id.to_string(), None)
@@ -1406,6 +1415,8 @@ pub mod headless {
         if loop_one {
             return;
         }
+        // radio dopięte po albumie nie jest już albumem, więc dostaje crossfade zamiast zszycia
+        let gapless = gapless && !h(|h| other_album(&h.plan["queue"][cur], &h.plan["queue"][next]));
         let tail_end = tail.filter(|t| t.0 == cur).and_then(|t| t.1);
         let remaining = match tail_end {
             Some(end) if !gapless && end > 0.0 => end.min(d) - s.t,
@@ -1774,6 +1785,24 @@ mod fade_tests {
         assert_eq!(auto_fade(6.0, true, 5.0), None);
         assert_eq!(auto_fade(0.0, true, 0.5), Some(0.08));
         assert_eq!(auto_fade(0.0, true, 0.01), None);
+    }
+
+    #[test]
+    fn radio_after_an_album_is_another_album() {
+        use super::headless::other_album;
+        use serde_json::json;
+        let a = json!({ "album": "You Suffer", "albumId": "MPREb_1" });
+        assert!(!other_album(
+            &a,
+            &json!({ "album": "You Suffer", "albumId": "MPREb_1" })
+        ));
+        assert!(other_album(
+            &a,
+            &json!({ "album": "FUTURE PAST", "albumId": "MPREb_2" })
+        ));
+        assert!(other_album(&a, &json!({ "album": "FUTURE PAST" })));
+        assert!(!other_album(&a, &json!({ "title": "no album data" })));
+        assert!(!other_album(&json!({}), &json!({ "album": "" })));
     }
 }
 

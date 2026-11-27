@@ -35,6 +35,7 @@ import {
   GAPLESS_BLEND_SECS,
   getGaplessAlbums,
   isAlbumCollectionId,
+  otherAlbum,
   planAutoTransition,
   saveGaplessAlbums,
 } from '../plugins/crossfade';
@@ -208,6 +209,15 @@ describe('equalizer', () => {
 });
 
 describe('crossfade planner', () => {
+  it('treats radio queued after an album as another album', () => {
+    const a = { album: 'You Suffer', albumId: 'MPREb_1' };
+    expect(otherAlbum(a, { album: 'You Suffer', albumId: 'MPREb_1' })).toBe(false);
+    expect(otherAlbum(a, { album: 'FUTURE PAST', albumId: 'MPREb_2' })).toBe(true);
+    expect(otherAlbum(a, { album: 'FUTURE PAST' })).toBe(true);
+    expect(otherAlbum(a, {})).toBe(false);
+    expect(otherAlbum(undefined, a)).toBe(false);
+  });
+
   const base = { crossfadeOn: true, crossfadeSecs: 6, album: false, gapless: true };
   it('crossfades singles near the end', () => {
     expect(planAutoTransition({ ...base, remaining: 10 })).toBeNull();

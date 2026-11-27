@@ -38,6 +38,15 @@ export function saveGaplessAlbums(on: boolean) {
   localStorage.setItem(GAPLESS_ALBUMS_KEY, on ? '1' : '0');
 }
 
+// to samo sprawdzenie robi Rust (headless::other_album); bez danych o albumie zostaje gapless
+export function otherAlbum(
+  a?: { album?: string; albumId?: string },
+  b?: { album?: string; albumId?: string }
+): boolean {
+  if (a?.albumId && b?.albumId) return a.albumId !== b.albumId;
+  return !!a?.album && !!b?.album && a.album !== b.album;
+}
+
 export type AutoTransition = { at: number; fade: number } | null;
 
 export function planAutoTransition(opts: {
