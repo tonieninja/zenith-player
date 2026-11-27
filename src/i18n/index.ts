@@ -575,6 +575,10 @@ const en = {
   audioOutputDesc:
     'Where Zenith plays. If the chosen device is unplugged, sound moves to the system default and comes back when it is connected again.',
   audioOutputSystem: 'System default',
+  panelGap: 'Space under the player',
+  panelGapDesc:
+    'Lifts the player bar off the bottom edge, so an auto-hiding panel or taskbar does not pop up over the buttons.',
+  panelGapNone: 'None',
   audioOutputMissing: 'not connected',
   lyricsSources: 'Lyrics sources',
   lyricsSourcesDesc:
@@ -1246,6 +1250,10 @@ const pl: Record<keyof typeof en, string> = {
   audioOutputDesc:
     'Gdzie gra Zenith. Gdy wybrane urządzenie zostanie odłączone, dźwięk przechodzi na domyślne systemu i wraca po ponownym podłączeniu.',
   audioOutputSystem: 'Domyślne systemu',
+  panelGap: 'Odstęp pod odtwarzaczem',
+  panelGapDesc:
+    'Odsuwa pasek odtwarzacza od dolnej krawędzi, żeby ukryty panel albo pasek zadań nie wysuwał się na przyciski.',
+  panelGapNone: 'Brak',
   audioOutputMissing: 'niepodłączone',
   lyricsSources: 'Źródła tekstów',
   lyricsSourcesDesc:

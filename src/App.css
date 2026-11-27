@@ -42,6 +42,7 @@
   --shadow-glow: 0 0 16px rgba(255, 255, 255, 0.06);
   --titlebar-h: 52px;
   --player-h: clamp(80px, 9vh, 108px);
+  --player-total: calc(var(--player-h) + var(--panel-gap, 0px));
   --sidebar-w: clamp(180px, 18vw, 280px);
   --content-gutter: clamp(16px, 3vw, 48px);
   --rich-black-1: rgba(28, 30, 36, 0.96);
@@ -1793,9 +1794,11 @@ button.nav-item {
   position: relative;
   flex-shrink: 0;
   width: 100%;
-  height: var(--player-h);
+  height: var(--player-total);
   background: linear-gradient(180deg, rgba(8, 9, 13, 0.97), rgba(6, 7, 10, 0.95));
   border-top: 1px solid rgba(255, 255, 255, 0.05);
+  /* ramka, nie padding: wąskie układy nadpisują padding paska */
+  border-bottom: var(--panel-gap, 0px) solid rgb(6, 7, 10);
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -4218,7 +4221,7 @@ html.has-cover-theme .main-play-pause-circle {
   position: fixed;
   top: var(--titlebar-h);
   right: 0;
-  bottom: var(--player-h);
+  bottom: var(--player-total);
   width: min(380px, 92vw);
   z-index: 9001;
   background: linear-gradient(180deg, rgba(18, 20, 28, 0.98), rgba(12, 14, 20, 0.99));
@@ -4446,7 +4449,7 @@ html.has-cover-theme .main-play-pause-circle {
 }
 
 .up-next-list-full {
-  max-height: min(420px, calc(100vh - var(--titlebar-h) - var(--player-h) - 280px));
+  max-height: min(420px, calc(100vh - var(--titlebar-h) - var(--player-total) - 280px));
 }
 
 :focus-visible {

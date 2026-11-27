@@ -121,6 +121,7 @@ import {
 import { SyncedLyricsRail } from './components/SyncedLyricsRail';
 import { LyricsSourceBar } from './components/LyricsSourceBar';
 import { LyricsSourcesSettings } from './components/LyricsSourcesSettings';
+import { PanelGapSetting } from './components/PanelGapSetting';
 import { AudioOutputSettings } from './components/AudioOutputSettings';
 import { PlainLyrics } from './components/PlainLyrics';
 import { LIB_EMPTY_KEYS, LIBRARY_CATEGORIES, nextLibraryViewState } from './constants/library';
@@ -6401,6 +6402,7 @@ export default function App() {
                 </button>
               </div>
               {isNativeAudio() && <AudioOutputSettings lang={lang} />}
+              <PanelGapSetting lang={lang} />
               <div className="settings-row-item settings-toggle-row">
                 <div className="settings-account-info">
                   <span className="setting-label" id="set-light-lyrics-label">
