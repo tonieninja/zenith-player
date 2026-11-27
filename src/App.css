@@ -2652,9 +2652,13 @@ button.modal-close-icon {
     max-width: 320px;
     margin: 0 auto;
   }
+  /* Mikrofon otwiera ten widok dla tekstu, więc w jednej kolumnie tekst idzie przed okładką. */
+  .player-col-lyrics {
+    order: -1;
+  }
   .lyrics-panel-full {
-    height: 360px;
-    min-height: 360px;
+    height: max(280px, calc(100vh - 190px));
+    min-height: 0;
   }
 }
 
@@ -2861,14 +2865,6 @@ button.modal-close-icon {
 @media (max-width: 900px) {
   .player-view-inner {
     grid-template-columns: 1fr;
-  }
-  /* Mikrofon otwiera ten widok dla tekstu, więc w wąskim oknie tekst idzie przed okładką. */
-  .player-col-lyrics {
-    order: -1;
-  }
-  .lyrics-panel-full {
-    height: max(280px, calc(100vh - 190px));
-    min-height: 0;
   }
 }
 @media (max-width: 768px) {
