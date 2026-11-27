@@ -5735,7 +5735,8 @@ html.has-cover-theme .main-play-pause-circle {
   position: fixed;
   z-index: 3000;
   min-width: 210px;
-  max-height: 340px;
+  max-width: min(320px, calc(100vw - 16px));
+  max-height: min(440px, calc(100vh - var(--player-total) - 16px));
   overflow-y: auto;
   padding: 6px;
   border-radius: 12px;
@@ -5767,6 +5768,16 @@ html.has-cover-theme .main-play-pause-circle {
   text-overflow: ellipsis;
 }
 .ctx-menu button:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+/* menu przewija się w pionie, więc obrys na zewnątrz przycisku byłby ucięty */
+.ctx-menu button:focus-visible {
+  outline-offset: -2px;
+  background: rgba(255, 255, 255, 0.08);
+}
+.ctx-menu-sep {
+  height: 1px;
+  margin: 4px 6px;
   background: rgba(255, 255, 255, 0.08);
 }
 .ctx-menu-empty {

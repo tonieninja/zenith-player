@@ -10,7 +10,8 @@ export function isPrimaryButton(button: number | undefined): boolean {
 }
 
 export function ctxTrackAttr(
-  item: Pick<Track, 'id' | 'title' | 'artist' | 'cover'> & { type?: Track['type'] }
+  item: Pick<Track, 'id' | 'title' | 'artist' | 'cover'> &
+    Partial<Pick<Track, 'type' | 'artistId' | 'albumId' | 'album' | 'durationSec'>>
 ): string | undefined {
   if (!isVideoTrackId(item.id)) return undefined;
   if (item.type && item.type !== 'track') return undefined;
@@ -20,8 +21,14 @@ export function ctxTrackAttr(
     title: item.title,
     artist: item.artist,
     cover: item.cover,
+    artistId: item.artistId,
+    albumId: item.albumId,
+    album: item.album,
+    durationSec: item.durationSec,
   });
 }
+
+const optString = (v: unknown) => (typeof v === 'string' && v ? v : undefined);
 
 export function parseCtxTrackAttr(raw: string | undefined | null): Track | null {
   if (!raw) return null;
@@ -41,6 +48,10 @@ export function parseCtxTrackAttr(raw: string | undefined | null): Track | null 
         title: typeof track.title === 'string' ? track.title : '',
         artist: typeof track.artist === 'string' ? track.artist : '',
         cover: typeof track.cover === 'string' ? track.cover : '',
+        artistId: optString(track.artistId),
+        albumId: optString(track.albumId),
+        album: optString(track.album),
+        durationSec: typeof track.durationSec === 'number' ? track.durationSec : undefined,
       };
     }
   } catch {

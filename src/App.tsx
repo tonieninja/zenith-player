@@ -12,6 +12,7 @@ import {
   useCallback,
   useEffect,
   useEffectEvent,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -145,7 +146,7 @@ import {
 } from './constants/playback';
 import { useDebounce } from './hooks/useDebounce';
 import { useScrubBar } from './hooks/useScrubBar';
-import { PopoverMenu } from './components/ui/PopoverMenu';
+import { contextMenuCoords, menuKeyIndex, PopoverMenu } from './components/ui/PopoverMenu';
 import { ModalOverlay, escapeTopModal, modalOpen } from './components/ui/ModalOverlay';
 import { clickOnKey, sliderKeyValue } from './components/ui/keyboard';
 import { YtmRatingButtons } from './components/player/YtmRatingButtons';
@@ -2809,23 +2810,27 @@ ${lang}`
   const ratingWantRef = useRef(new Map<string, TrackLikeStatus>());
   const ratingChainRef = useRef(new Map<string, Promise<unknown>>());
   const applyTrackRating = useCallback(
-    (next: TrackLikeStatus) => {
-      if (!currentTrack) return;
+    (next: TrackLikeStatus, picked?: Track) => {
+      const src = picked ?? currentTrack;
+      if (!src) return;
       const track: Track = {
-        id: currentTrack.id,
+        id: src.id,
         type: 'track',
-        title: currentTrack.title,
-        artist: currentTrack.artist,
-        cover: currentTrack.cover,
-        coverSmall: currentTrack.coverSmall,
-        coverLarge: currentTrack.coverLarge,
-        artistId: currentTrack.artistId,
-        albumId: currentTrack.albumId,
-        album: currentTrack.album,
+        title: src.title,
+        artist: src.artist,
+        cover: src.cover,
+        coverSmall: src.coverSmall,
+        coverLarge: src.coverLarge,
+        artistId: src.artistId,
+        albumId: src.albumId,
+        album: src.album,
       };
       const wasSaved = savedTracks.some((x) => x.id === track.id);
-      ratingReqRef.current += 1;
-      setTrackRatingState(next);
+      // stan serduszka w odtwarzaczu dotyczy tylko bieżącego utworu, nie tego z menu kontekstowego
+      if (track.id === currentTrack?.id) {
+        ratingReqRef.current += 1;
+        setTrackRatingState(next);
+      }
       void invoke('db_rate', {
         videoId: track.id,
         rating: next === 'LIKE' ? 1 : next === 'DISLIKE' ? -1 : 0,
@@ -4241,12 +4246,20 @@ ${lang}`
     settings: isSettingsOpen,
     lyricsSources: lyricsSourcesOpen,
     queue: queueOpen,
+    ctx: ctxMenu !== null,
   });
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const typing = isTypingEvent(e);
       if (e.key === 'Escape') {
         if (document.querySelector('.zen-select.open')) return;
+        // menu leży nad wszystkimi oknami, więc Escape zamyka najpierw je, a nie okno pod spodem
+        if (overlayStackRef.current.ctx) {
+          e.preventDefault();
+          e.stopPropagation();
+          setCtxMenu(null);
+          return;
+        }
         // pola w tych oknach nie obsługują Escape same, a nazwa kolekcji jest wypełniona od razu
         if (escapeTopModal()) {
           e.preventDefault();
@@ -4298,9 +4311,12 @@ ${lang}`
       const track = onCover ? currentTrackLatest.current : parseCtxTrackAttr(row?.dataset.ctxTrack);
       if (track) {
         e.stopPropagation();
-        const x = Math.min(e.clientX, window.innerWidth - 230);
-        const y = Math.min(e.clientY, window.innerHeight - 300);
-        setCtxMenu({ x, y, track, at: onCover && linkOn ? progressRef.current : undefined });
+        setCtxMenu({
+          x: e.clientX,
+          y: e.clientY,
+          track,
+          at: onCover && linkOn ? progressRef.current : undefined,
+        });
       } else {
         setCtxMenu(null);
       }
@@ -4319,6 +4335,37 @@ ${lang}`
       window.removeEventListener('auxclick', onAuxClick, true);
     };
   }, [currentTrackLatest]);
+
+  const ctxMenuRef = useRef<HTMLDivElement>(null);
+  // wysokość zależy od liczby kolekcji i playlist, więc pozycję liczymy po pomiarze, jeszcze przed malowaniem
+  useLayoutEffect(() => {
+    const el = ctxMenuRef.current;
+    if (!el || !ctxMenu) return;
+    el.style.left = '0px';
+    el.style.top = '0px';
+    const bar = document.querySelector('.player-bar')?.getBoundingClientRect();
+    const { left, top } = contextMenuCoords(
+      ctxMenu.x,
+      ctxMenu.y,
+      { width: el.offsetWidth, height: el.offsetHeight },
+      { width: window.innerWidth, bottom: bar?.height ? bar.top : window.innerHeight }
+    );
+    el.style.left = `${left}px`;
+    el.style.top = `${top}px`;
+  }, [ctxMenu, libCollections, userPlaylists]);
+  const ctxOpen = ctxMenu !== null;
+  const ctxLiked =
+    !!ctxMenu &&
+    (likedIdSet.has(ctxMenu.track.id) ||
+      (ctxMenu.track.id === currentTrack?.id && trackRating === 'LIKE'));
+  useEffect(() => {
+    if (!ctxOpen) return;
+    const opener = document.activeElement as HTMLElement | null;
+    ctxMenuRef.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
+    return () => {
+      if (opener?.isConnected) opener.focus();
+    };
+  }, [ctxOpen]);
 
   useEffect(() => {
     if (!pluginManager.isEnabled('duck-on-voice')) {
@@ -4363,30 +4410,41 @@ ${lang}`
     };
   }, [activeTab, refsTrackId, radioLangRef]);
 
-  const openTrackArtist = useCallback(async () => {
-    if (!currentTrack) return;
-    const refs: Pick<Track, 'artistId'> = currentRefs?.artistId
-      ? currentRefs
-      : refsTrackId
-        ? await getTrackRefs(refsTrackId, radioLangRef.current).catch(() => ({}))
-        : {};
-    if (!refs.artistId) return;
-    const name = currentTrack.artist.split(' • ')[0].split(/,| & /)[0].trim();
-    openBrowsePage({ id: refs.artistId, type: 'artist', title: name, artist: '', cover: '' });
-  }, [currentTrack, currentRefs, refsTrackId, openBrowsePage, radioLangRef]);
+  const openTrackArtist = useCallback(
+    async (picked?: Track) => {
+      const track = picked ?? currentTrack;
+      if (!track) return;
+      const known = picked ?? currentRefs;
+      const lookupId = picked ? picked.id : refsTrackId;
+      const refs: Pick<Track, 'artistId'> = known?.artistId
+        ? known
+        : lookupId
+          ? await getTrackRefs(lookupId, radioLangRef.current).catch(() => ({}))
+          : {};
+      if (!refs.artistId) return;
+      const name = track.artist.split(' • ')[0].split(/,| & /)[0].trim();
+      openBrowsePage({ id: refs.artistId, type: 'artist', title: name, artist: '', cover: '' });
+    },
+    [currentTrack, currentRefs, refsTrackId, openBrowsePage, radioLangRef]
+  );
 
-  const openTrackAlbum = useCallback(() => {
-    if (!currentTrack || !currentRefs?.albumId) return;
-    void openCollectionPage({
-      id: currentRefs.albumId,
-      type: 'album',
-      title: currentRefs.album || '',
-      artist: currentTrack.artist,
-      cover: currentTrack.cover,
-      coverSmall: currentTrack.coverSmall,
-      coverLarge: currentTrack.coverLarge,
-    });
-  }, [currentTrack, currentRefs, openCollectionPage]);
+  const openTrackAlbum = useCallback(
+    (picked?: Track) => {
+      const track = picked ?? currentTrack;
+      const refs = picked ?? currentRefs;
+      if (!track || !refs?.albumId) return;
+      void openCollectionPage({
+        id: refs.albumId,
+        type: 'album',
+        title: refs.album || '',
+        artist: track.artist,
+        cover: track.cover,
+        coverSmall: track.coverSmall,
+        coverLarge: track.coverLarge,
+      });
+    },
+    [currentTrack, currentRefs, openCollectionPage]
+  );
 
   // samo id z linku: radio zaczyna od tego utworu (dla teledysku od jego wersji audio), a dalej daje kolejkę
   const playLinkRef = useLatest(async (id: string) => {
@@ -4467,6 +4525,22 @@ ${lang}`
   const remoteEnabled = Boolean(pluginStates['remote-control']);
   const cycleLoopRef = useLatest(cycleLoop);
   const handleItemClickRef = useLatest(handleItemClick);
+  // pusta kolejka nie ma „po bieżącym”, więc utwór po prostu zaczyna grać; true znaczy, że trafił do kolejki
+  const insertTrack = useCallback(
+    (t: Track, next: boolean) => {
+      const q = queueRef.current;
+      if (!q.length || !currentTrackIdRef.current) {
+        void handleItemClickRef.current(t);
+        return false;
+      }
+      const at = next ? Math.min(q.length, queueIndexRef.current + 1) : q.length;
+      const nq = [...q.slice(0, at), t, ...q.slice(at)];
+      queueRef.current = nq;
+      setQueue(nq);
+      return true;
+    },
+    [queueRef, queueIndexRef, currentTrackIdRef, handleItemClickRef]
+  );
   const remoteSnapRef = useLatest<() => void>(() => {
     const q = queueRef.current;
     const idx = queueIndexRef.current;
@@ -4538,17 +4612,6 @@ ${lang}`
       coverSmall: r.cover,
       coverLarge: r.cover,
     });
-    const insertTrack = (t: Track, next: boolean) => {
-      const q = queueRef.current;
-      if (!q.length || !currentTrackIdRef.current) {
-        void handleItemClickRef.current(t);
-        return;
-      }
-      const at = next ? Math.min(q.length, queueIndexRef.current + 1) : q.length;
-      const nq = [...q.slice(0, at), t, ...q.slice(at)];
-      queueRef.current = nq;
-      setQueue(nq);
-    };
     const handler = (c: RemoteCommand) => {
       switch (c.cmd) {
         case 'toggle':
@@ -4655,6 +4718,7 @@ ${lang}`
     cycleLoopRef,
     durationRef,
     handleItemClickRef,
+    insertTrack,
     isPlayingRef,
     langRef,
     playNextRef,
@@ -5894,7 +5958,7 @@ ${lang}`
                         <button
                           type="button"
                           className="player-view-album link-btn"
-                          onClick={openTrackAlbum}
+                          onClick={() => openTrackAlbum()}
                         >
                           {currentRefs.album}
                         </button>
@@ -7175,11 +7239,85 @@ ${lang}`
               onContextMenu={() => setCtxMenu(null)}
             />
             <div
+              ref={ctxMenuRef}
               className="ctx-menu"
-              style={{ left: ctxMenu.x, top: ctxMenu.y }}
               role="menu"
+              aria-label={ctxMenu.track.title || undefined}
               data-testid="track-ctx-menu"
+              onKeyDown={(e) => {
+                if (e.key === 'Tab') {
+                  e.preventDefault();
+                  setCtxMenu(null);
+                  return;
+                }
+                const items = Array.from(
+                  e.currentTarget.querySelectorAll<HTMLElement>('[role="menuitem"]')
+                );
+                const next = menuKeyIndex(
+                  e.key,
+                  items.indexOf(document.activeElement as HTMLElement),
+                  items.length
+                );
+                if (next === null) return;
+                e.preventDefault();
+                items[next]?.focus();
+              }}
             >
+              <button
+                role="menuitem"
+                onClick={() => {
+                  const track = ctxMenu.track;
+                  setCtxMenu(null);
+                  if (insertTrack(track, true))
+                    pushToast(t.ctxQueuedNext.replace('{title}', track.title), 'success', 2200);
+                }}
+              >
+                {t.ctxPlayNext}
+              </button>
+              <button
+                role="menuitem"
+                onClick={() => {
+                  const track = ctxMenu.track;
+                  setCtxMenu(null);
+                  if (insertTrack(track, false))
+                    pushToast(t.ctxQueued.replace('{title}', track.title), 'success', 2200);
+                }}
+              >
+                {t.ctxAddToQueue}
+              </button>
+              <button
+                role="menuitem"
+                onClick={() => {
+                  const track = ctxMenu.track;
+                  setCtxMenu(null);
+                  applyTrackRating(ctxLiked ? 'INDIFFERENT' : 'LIKE', track);
+                }}
+              >
+                {ctxLiked ? t.ctxRemoveFav : t.save}
+              </button>
+              <button
+                role="menuitem"
+                onClick={() => {
+                  const track = ctxMenu.track;
+                  setCtxMenu(null);
+                  void openTrackArtist(track);
+                }}
+              >
+                {t.ctxGoToArtist}
+              </button>
+              {ctxMenu.track.albumId && (
+                <button
+                  role="menuitem"
+                  onClick={() => {
+                    const track = ctxMenu.track;
+                    setCtxMenu(null);
+                    openTrackAlbum(track);
+                  }}
+                >
+                  {t.ctxGoToAlbum}
+                </button>
+              )}
+              <div className="ctx-menu-sep" role="separator" />
               {ctxMenu.at !== undefined &&
                 [undefined, ctxMenu.at].map((sec) => (
                   <button
