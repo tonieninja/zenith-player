@@ -651,10 +651,12 @@ fn run(dev: Device, session: u64, rx: Receiver<Cmd>, emit: Emit) {
     };
     s.emit();
     let mut fails = 0u32;
+    let mut ever = false;
     loop {
         match Link::open(&dev.host, dev.port) {
             Ok(mut link) => {
                 fails = 0;
+                ever = true;
                 match s.serve(&mut link, &rx) {
                     Flow::Close => {
                         s.goodbye(&mut link);
@@ -677,7 +679,8 @@ fn run(dev: Device, session: u64, rx: Receiver<Cmd>, emit: Emit) {
             }
             Err(e) => {
                 fails += 1;
-                if fails > 5 {
+                // pierwsze połączenie zawodzi od razu, żeby okno nie czekało minutę na wyłączony telewizor
+                if fails > 5 || !ever {
                     s.finish(Some(e));
                     break;
                 }
@@ -781,20 +784,6 @@ fn query_param(url: &str, key: &str) -> Option<String> {
         .map(|(_, v)| v.into_owned())
 }
 
-// adres odtwarzacza to http://127.0.0.1:port/{zenith|offline}/token/id; telewizor dostaje link googlevideo
-fn video_id_of(src: &str) -> Option<String> {
-    let id = url::Url::parse(src)
-        .ok()?
-        .path_segments()?
-        .next_back()?
-        .to_string();
-    (id.len() == 11
-        && id
-            .bytes()
-            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_'))
-    .then_some(id)
-}
-
 async fn direct_url(app: AppHandle, id: &str) -> Result<String, String> {
     crate::stream::get_stream_url(app, id.to_string(), None).await?;
     if let Some(up) = crate::stream_proxy::current_upstream(id).filter(|u| !bound_to_v6(&u.url)) {
@@ -859,7 +848,10 @@ pub fn cast_connect(webview: tauri::Webview, app: AppHandle, id: String) -> Resu
     Ok(connect(
         dev,
         Arc::new(move |s: &Status| {
-            let _ = app.emit("cast", s);
+            // zdarzenia zamykanej sesji po przełączeniu urządzenia zakończyłyby w oknie nową
+            if s.session == CURRENT.load(Ordering::SeqCst) {
+                let _ = app.emit("cast", s);
+            }
         }),
     ))
 }
@@ -868,7 +860,7 @@ pub fn cast_connect(webview: tauri::Webview, app: AppHandle, id: String) -> Resu
 #[tauri::command]
 pub async fn cast_load(
     app: AppHandle,
-    src: String,
+    id: String,
     title: String,
     artist: String,
     album: Option<String>,
@@ -876,7 +868,7 @@ pub async fn cast_load(
     start: f64,
     autoplay: bool,
 ) -> Result<Status, String> {
-    let id = video_id_of(&src).ok_or("not castable")?;
+    crate::stream::validate_video_id(&id).map_err(|_| "not castable".to_string())?;
     let mut url = direct_url(app, &id).await?;
     let (album, cover) = (album.unwrap_or_default(), cover.unwrap_or_default());
     for retry in [false, true] {
@@ -951,15 +943,6 @@ mod tests {
 
     #[test]
     fn stream_urls_for_the_tv() {
-        assert_eq!(
-            video_id_of("http://127.0.0.1:5000/zenith/abc/dQw4w9WgXcQ").as_deref(),
-            Some("dQw4w9WgXcQ")
-        );
-        assert_eq!(
-            video_id_of("http://127.0.0.1:5000/offline/abc/dQw4w9WgXcQ").as_deref(),
-            Some("dQw4w9WgXcQ")
-        );
-        assert!(video_id_of("http://127.0.0.1:5000/local/abc/song.flac").is_none());
         assert!(bound_to_v6(
             "https://r1.googlevideo.com/videoplayback?ip=2a02%3A1%3A%3A5&mime=audio%2Fwebm"
         ));
@@ -972,6 +955,9 @@ mod tests {
         );
         assert_eq!(m["contentType"], "audio/webm");
         assert_eq!(m["metadata"]["images"], json!([]));
+        assert!(!bound_to_v6(
+            "https://r1.googlevideo.com/videoplayback?ip=1.2.3.4"
+        ));
     }
 }
 
@@ -1015,10 +1001,14 @@ mod live {
     }
 
     // po panice wątek sesji musi jeszcze zdążyć wysłać STOP, inaczej telewizor gra dalej
-    struct StopOnDrop;
+    struct StopOnDrop(Option<(f64, bool)>);
 
     impl Drop for StopOnDrop {
         fn drop(&mut self) {
+            if let Some((level, muted)) = self.0 {
+                let _ = send(Cmd::Volume(json!({ "level": level })));
+                let _ = send(Cmd::Volume(json!({ "muted": muted })));
+            }
             disconnect();
             std::thread::sleep(Duration::from_millis(1500));
         }
@@ -1043,13 +1033,20 @@ mod live {
                 let _ = tx.send(s.clone());
             }),
         );
-        let _guard = StopOnDrop;
+        let mut guard = StopOnDrop(None);
         wait_for(&rx, "connected", 10, |s| s.conn == "connected");
-        let vol0 = wait_for(&rx, "receiver status", 10, |_| true).volume;
+        let st0 = wait_for(&rx, "receiver status", 10, |_| true);
+        let (vol0, muted0) = (st0.volume, st0.muted);
+        guard.0 = Some((vol0, muted0));
 
         crate::player_js::init(std::env::temp_dir().join("zenith-live-player"));
         let id = std::env::var("ZENITH_CAST_ID").unwrap_or_else(|_| "dQw4w9WgXcQ".into());
-        let got = match crate::player::fetch_direct_audio(&id).await {
+        // ZENITH_CAST_JS sprawdza zapasowych klientów z JS, którzy zwykle dają WebM z Opusem
+        let direct = match std::env::var("ZENITH_CAST_JS") {
+            Ok(_) => None,
+            Err(_) => crate::player::fetch_direct_audio(&id).await,
+        };
+        let got = match direct {
             Some(g) => g,
             None => {
                 crate::player::resolve_with(&id, crate::resolve_plan::GUEST_JS, None)
@@ -1096,6 +1093,9 @@ mod live {
         wait_for(&rx, "volume restored", 10, |s| {
             (s.volume - vol0).abs() < 0.02
         });
+        // zmiana poziomu wyłącza wyciszenie telewizora, więc przywracamy je osobno
+        send(Cmd::Volume(json!({ "muted": muted0 }))).unwrap();
+        wait_for(&rx, "mute restored", 10, |s| s.muted == muted0);
 
         send(Cmd::Media(json!({"type": "STOP"}))).unwrap();
         wait_for(&rx, "stopped", 10, |s| s.player == "IDLE");
