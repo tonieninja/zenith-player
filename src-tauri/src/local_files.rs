@@ -165,7 +165,8 @@ fn read_tags(path: &Path) -> Tags {
         .and_then(|e| e.to_str())
         .unwrap_or("")
         .to_ascii_lowercase();
-    let mut t = symphonia_tags(path);
+    // panika symphonii na uszkodzonym pliku zamknęłaby aplikację przy każdym starcie (skan rusza sam)
+    let mut t = std::panic::catch_unwind(|| symphonia_tags(path)).unwrap_or_default();
     if (t.artist.is_none() || t.title.is_none()) && (ext == "opus" || ext == "ogg") {
         let mut head = vec![0u8; 256 * 1024];
         if let Ok(mut f) = std::fs::File::open(path) {
@@ -217,7 +218,7 @@ fn mtime(p: &Path) -> i64 {
 }
 
 /// Skanuje foldery w tle; niezmienione pliki (ta sama data) nie są czytane drugi raz.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn local_scan(app: AppHandle, folders: Vec<String>) -> Result<(), String> {
     if SCANNING.swap(true, Ordering::SeqCst) {
         return Err("scan already running".into());
@@ -270,22 +271,23 @@ pub fn local_scan(app: AppHandle, folders: Vec<String>) -> Result<(), String> {
                 );
             }
         }
-        // pliki usunięte z dysku albo spoza wybranych folderów nie mogą wygrywać ze streamem
-        let roots: Vec<String> = folders.clone();
-        let _ = with(|c| {
-            let mut q = c.prepare("SELECT path FROM local_files")?;
-            let gone: Vec<String> = q
-                .query_map([], |r| r.get::<_, String>(0))?
-                .flatten()
-                .filter(|p| {
-                    !Path::new(p).is_file() || !roots.iter().any(|r| p.starts_with(r.as_str()))
-                })
-                .collect();
-            for p in gone {
-                c.execute("DELETE FROM local_files WHERE path=?1", params![p])?;
-            }
-            Ok(())
-        });
+        // pliki usunięte z dysku albo spoza wybranych folderów nie mogą wygrywać ze streamem;
+        // stat każdego pliku idzie poza blokadą bazy, bo przy 30 tys. plików trwa ponad sekundę
+        let gone: Vec<&String> = known
+            .keys()
+            .filter(|p| {
+                !Path::new(p).is_file() || !folders.iter().any(|r| p.starts_with(r.as_str()))
+            })
+            .collect();
+        if !gone.is_empty() {
+            let _ = with(|c| {
+                let tx = c.unchecked_transaction()?;
+                for p in gone {
+                    tx.execute("DELETE FROM local_files WHERE path=?1", params![p])?;
+                }
+                tx.commit()
+            });
+        }
         if let Ok(mut b) = BOUND.lock() {
             *b = None;
         }
@@ -309,7 +311,7 @@ pub struct LocalStatus {
     count: i64,
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn local_status() -> LocalStatus {
     LocalStatus {
         count: with(|c| c.query_row("SELECT COUNT(*) FROM local_files", [], |r| r.get(0)))
@@ -317,7 +319,7 @@ pub fn local_status() -> LocalStatus {
     }
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn local_forget() -> Result<(), String> {
     if let Ok(mut b) = BOUND.lock() {
         *b = None;
@@ -349,8 +351,7 @@ pub fn find(
             (Some(a), Some(b)) if b > 0.0 => (a - b).abs() <= 6.0,
             _ => true,
         })
-        .map(|(p, _)| PathBuf::from(p))
-        .filter(|p| p.is_file()))
+        .map(|(p, _)| PathBuf::from(p)))
 }
 
 /// Wiąże id z YouTube Music z lokalnym plikiem; zwraca true, gdy utwór zagra z dysku.
@@ -358,7 +359,10 @@ pub fn bind(id: &str, artist: &str, title: &str, duration: Option<f64>) -> bool 
     if !crate::downloads::valid_id(id) {
         return false;
     }
-    let found = with(|c| find(c, artist, title, duration)).ok().flatten();
+    let found = with(|c| find(c, artist, title, duration))
+        .ok()
+        .flatten()
+        .filter(|p| p.is_file());
     let Ok(mut g) = BOUND.lock() else {
         return false;
     };
@@ -378,7 +382,7 @@ pub fn bind(id: &str, artist: &str, title: &str, duration: Option<f64>) -> bool 
     }
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn local_bind(id: String, artist: String, title: String, duration: Option<f64>) -> bool {
     bind(&id, &artist, &title, duration)
 }
@@ -439,6 +443,19 @@ mod tests {
         let v = vorbis_comments(&head);
         assert_eq!(v.artist.as_deref(), Some("Air"));
         assert_eq!(v.title.as_deref(), Some("La femme d'argent"));
+    }
+
+    #[test]
+    fn truncated_webm_named_opus_falls_back_to_the_file_name() {
+        let mut b =
+            std::fs::read(Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/tone.webm"))
+                .unwrap();
+        b.truncate(b.len() / 2);
+        let p = std::env::temp_dir().join(format!("Air - Kyoto {}.opus", std::process::id()));
+        std::fs::write(&p, b).unwrap();
+        let t = read_tags(&p);
+        let _ = std::fs::remove_file(&p);
+        assert_eq!(t.artist.as_deref(), Some("Air"));
     }
 
     #[test]

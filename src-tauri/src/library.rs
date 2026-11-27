@@ -85,7 +85,7 @@ pub struct Collection {
     count: i64,
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn lib_collections() -> Result<Vec<Collection>, String> {
     with(|c| {
         let mut q = c.prepare(
@@ -104,7 +104,7 @@ pub fn lib_collections() -> Result<Vec<Collection>, String> {
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn lib_collection_save(id: Option<i64>, name: String, folder: String) -> Result<i64, String> {
     let (name, folder) = (clean(&name, 120), clean(&folder, 120));
     if name.is_empty() {
@@ -128,7 +128,7 @@ pub fn lib_collection_save(id: Option<i64>, name: String, folder: String) -> Res
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn lib_collection_delete(id: i64) -> Result<(), String> {
     with(|c| {
         c.execute(
@@ -140,7 +140,7 @@ pub fn lib_collection_delete(id: i64) -> Result<(), String> {
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn lib_collection_add(id: i64, track: TrackIn) -> Result<(), String> {
     with(|c| {
         save_track(c, &track)?;
@@ -157,7 +157,7 @@ pub fn lib_collection_add(id: i64, track: TrackIn) -> Result<(), String> {
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn lib_collection_remove(id: i64, video_id: String) -> Result<(), String> {
     with(|c| {
         c.execute(
@@ -174,7 +174,7 @@ pub struct TagCount {
     count: i64,
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn lib_tags() -> Result<Vec<TagCount>, String> {
     with(|c| {
         let mut q = c.prepare(
@@ -190,7 +190,7 @@ pub fn lib_tags() -> Result<Vec<TagCount>, String> {
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn lib_track_tags(video_id: String) -> Result<Vec<String>, String> {
     with(|c| {
         let mut q = c.prepare("SELECT tag FROM lib_tags WHERE video_id=?1 ORDER BY tag")?;
@@ -199,7 +199,7 @@ pub fn lib_track_tags(video_id: String) -> Result<Vec<String>, String> {
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn lib_set_tags(track: TrackIn, tags: Vec<String>) -> Result<(), String> {
     with(|c| {
         let tx = c.unchecked_transaction()?;
@@ -300,13 +300,13 @@ pub fn query(c: &Connection, q: &Query) -> rusqlite::Result<Vec<LibTrack>> {
     Ok(rows.flatten().collect())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn lib_query(query: Query) -> Result<Vec<LibTrack>, String> {
     with(|c| self::query(c, &query))
 }
 
 /// Kolekcje, w których już jest ten utwór: menu kontekstowe pokazuje przy nich znacznik.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn lib_track_collections(video_id: String) -> Result<Vec<i64>, String> {
     with(|c| {
         let mut q =

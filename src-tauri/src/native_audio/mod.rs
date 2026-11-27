@@ -1097,6 +1097,8 @@ pub mod headless {
         tail: Option<(usize, Option<f64>)>,
         // pozycja z ostatniego tyknięcia: tyle przesłuchano utworu, który właśnie się zmienia
         cur_t: f64,
+        // historia i dopasowanie scrobbli z Last.fm liczą odtworzenie od startu, jak zapis z okna
+        started_ms: i64,
     }
     static H_: Mutex<Option<H>> = Mutex::new(None);
 
@@ -1137,6 +1139,9 @@ pub mod headless {
         now_playing(true);
         let (resume, i) = h(|h| (h.plan["playing"].as_bool().unwrap_or(false), index(&h.plan)));
         let s = snapshot();
+        // utwór zaczęty jeszcze przy oknie: start z pozycji, więc wcześniejsza pauza go przesuwa
+        let rate = with(|st| st.rate).unwrap_or(1.0).max(0.1);
+        h(|h| h.started_ms = crate::db::now_ms() - (s.t / rate * 1000.0) as i64);
         plugins::began(&h(|h| h.plan["queue"][i].clone()), !s.paused);
         // okno zginęło między końcem utworu a startem następnego; bez tego zasobnik milknie
         if resume && (s.ended || !s.has_source) {
@@ -1474,9 +1479,12 @@ pub mod headless {
             album: track["album"].as_str().map(String::from),
             duration: track["durationSec"].as_f64(),
             listened,
-            at: None,
+            at: Some(h(|h| h.started_ms)).filter(|&t| t > 0),
         });
-        h(|h| h.cur_t = 0.0);
+        h(|h| {
+            h.cur_t = 0.0;
+            h.started_ms = crate::db::now_ms();
+        });
     }
 
     pub fn on_ended() {

@@ -2,11 +2,12 @@ use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::sync::{Mutex, OnceLock};
 
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OpenFlags};
 use serde::Deserialize;
 use tauri::{AppHandle, Manager};
 
 static DB: OnceLock<Mutex<Connection>> = OnceLock::new();
+static READ: OnceLock<Mutex<Connection>> = OnceLock::new();
 
 pub const SCHEMA: &str = "
 CREATE TABLE IF NOT EXISTS plays(
@@ -25,7 +26,6 @@ CREATE TABLE IF NOT EXISTS plays(
 );
 CREATE INDEX IF NOT EXISTS plays_at ON plays(at);
 CREATE INDEX IF NOT EXISTS plays_video ON plays(video_id);
-CREATE INDEX IF NOT EXISTS plays_artist ON plays(artist_key);
 CREATE UNIQUE INDEX IF NOT EXISTS plays_import ON plays(source, at, title_key) WHERE source <> 'zenith';
 CREATE TABLE IF NOT EXISTS ratings(
   video_id TEXT PRIMARY KEY,
@@ -41,9 +41,37 @@ pub fn init(app: &AppHandle) {
         return;
     };
     let _ = std::fs::create_dir_all(&dir);
-    if let Some(c) = open(&dir.join("zenith.db")) {
+    let path = dir.join("zenith.db");
+    if let Some(c) = open(&path) {
         let _ = DB.set(Mutex::new(c));
+        if let Ok(r) = open_read(&path) {
+            let _ = READ.set(Mutex::new(r));
+        }
+        std::thread::spawn(|| {
+            if let Err(e) = with(upgrade) {
+                crate::diag::log(format!("[db] upgrade failed: {e}"));
+            }
+        });
     }
+}
+
+/// Przy dużej historii indeks i sprzątanie trwają ponad sekundę, więc idą w tle, a nie przed pokazaniem okna.
+pub fn upgrade(c: &Connection) -> rusqlite::Result<()> {
+    c.execute_batch(
+        "CREATE INDEX IF NOT EXISTS plays_track ON plays(artist_key, title_key, at);
+         DROP INDEX IF EXISTS plays_artist;",
+    )?;
+    if c.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))? < 1 {
+        // import z Last.fm przed tą wersją dublował odtworzenia, które Zenith zapisał i zescrobblował sam
+        c.execute(
+            "DELETE FROM plays WHERE source='lastfm' AND EXISTS (SELECT 1 FROM plays z
+               WHERE z.source='zenith' AND z.artist_key=plays.artist_key AND z.title_key=plays.title_key
+                 AND z.at BETWEEN plays.at-600000 AND plays.at+600000)",
+            [],
+        )?;
+        c.execute_batch("PRAGMA user_version=1")?;
+    }
+    Ok(())
 }
 
 fn open(path: &Path) -> Option<Connection> {
@@ -56,8 +84,22 @@ fn open(path: &Path) -> Option<Connection> {
     Some(c)
 }
 
+fn open_read(path: &Path) -> rusqlite::Result<Connection> {
+    Connection::open_with_flags(
+        path,
+        OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    )
+}
+
 pub fn with<R>(f: impl FnOnce(&Connection) -> rusqlite::Result<R>) -> Result<R, String> {
     let m = DB.get().ok_or("database unavailable")?;
+    let c = m.lock().unwrap_or_else(|p| p.into_inner());
+    f(&c).map_err(|e| e.to_string())
+}
+
+/// Statystyki i kopia czytają osobnym połączeniem, więc zapis odtworzenia i start utworu na nie nie czekają.
+pub fn with_read<R>(f: impl FnOnce(&Connection) -> rusqlite::Result<R>) -> Result<R, String> {
+    let Some(m) = READ.get() else { return with(f) };
     let c = m.lock().unwrap_or_else(|p| p.into_inner());
     f(&c).map_err(|e| e.to_string())
 }
@@ -201,42 +243,47 @@ pub fn log_play(p: &PlayIn) -> Result<(), String> {
 /// Scrobble z innej usługi: wykonawca, tytuł, album i czas w ms.
 pub type Scrobble = (String, String, Option<String>, i64);
 
+// scrobbler wysyła start utworu, jak zapis Zenitha; 10 min łapie też stare wpisy z Rusta z czasem końca
+const IMPORT: &str =
+    "INSERT OR IGNORE INTO plays(title,artist,album,listened,at,source,artist_key,title_key)
+     SELECT ?1,?2,?3,?4,?5,?6,?7,?8 WHERE NOT EXISTS (SELECT 1 FROM plays WHERE source='zenith'
+       AND artist_key=?7 AND title_key=?8 AND at BETWEEN ?5-600000 AND ?5+600000)";
+
 /// Odtworzenia z innej usługi; ten sam czas i tytuł z tego samego źródła nie wejdą drugi raz.
 pub fn import_plays(source: &str, rows: &[Scrobble]) -> Result<usize, String> {
-    with(|c| {
-        let tx = c.unchecked_transaction()?;
-        let mut n = 0;
-        {
-            let mut q = tx.prepare(
-                "INSERT OR IGNORE INTO plays(title,artist,album,listened,at,source,artist_key,title_key)
-                 VALUES(?1,?2,?3,?4,?5,?6,?7,?8)",
-            )?;
-            for (artist, title, album, at) in rows {
-                // shortcut: scrobble nie mówi, ile słuchano, więc liczymy typowe 3 minuty
-                n += q.execute(params![
-                    title,
-                    artist,
-                    album,
-                    180.0,
-                    at,
-                    source,
-                    artist_key(artist),
-                    title_key(title)
-                ])?;
-            }
-        }
-        tx.commit()?;
-        Ok(n)
-    })
+    with(|c| import_into(c, source, rows))
 }
 
-#[tauri::command]
+fn import_into(c: &Connection, source: &str, rows: &[Scrobble]) -> rusqlite::Result<usize> {
+    let tx = c.unchecked_transaction()?;
+    let mut n = 0;
+    {
+        let mut q = tx.prepare(IMPORT)?;
+        for (artist, title, album, at) in rows {
+            // shortcut: scrobble nie mówi, ile słuchano, więc liczymy typowe 3 minuty
+            n += q.execute(params![
+                title,
+                artist,
+                album,
+                180.0,
+                at,
+                source,
+                artist_key(artist),
+                title_key(title)
+            ])?;
+        }
+    }
+    tx.commit()?;
+    Ok(n)
+}
+
+#[tauri::command(async)]
 pub fn db_log_play(play: PlayIn) -> Result<(), String> {
     log_play(&play)
 }
 
 /// Ocena utworu: 1 lubię, -1 nie lubię, 0 zdejmuje ocenę.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn db_rate(video_id: String, rating: i32, title: String, artist: String) -> Result<(), String> {
     with(|c| {
         if rating == 0 {
@@ -401,7 +448,7 @@ pub fn rank(
     out
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn smart_queue(
     seed: Cand,
     candidates: Vec<Cand>,
@@ -420,9 +467,112 @@ pub fn smart_queue(
     )
 }
 
+/// Parametry zostają puste: planer bez ANALYZE wybiera indeks z samego kształtu zapytania.
+#[cfg(test)]
+pub fn query_plan(c: &Connection, sql: &str) -> String {
+    let mut q = c.prepare(&format!("EXPLAIN QUERY PLAN {sql}")).unwrap();
+    let n = q.parameter_count();
+    let rows = q
+        .query_map(
+            rusqlite::params_from_iter(std::iter::repeat_n(rusqlite::types::Null, n)),
+            |r| r.get::<_, String>(3),
+        )
+        .unwrap();
+    rows.flatten().collect::<Vec<_>>().join(" | ")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn mem() -> Connection {
+        let c = Connection::open_in_memory().unwrap();
+        c.execute_batch(SCHEMA).unwrap();
+        upgrade(&c).unwrap();
+        c
+    }
+
+    #[test]
+    fn import_skips_plays_zenith_logged_itself() {
+        let c = mem();
+        let t = 1_700_000_000_000i64;
+        c.execute(
+            "INSERT INTO plays(title,artist,listened,at,artist_key,title_key) VALUES('Hit','Fav',200,?1,'fav','hit')",
+            params![t],
+        )
+        .unwrap();
+        let s = |title: &str, at: i64| ("Fav, Other".to_string(), title.to_string(), None, at);
+        // dwa duplikaty (drugi 4 min dalej, jak stary zapis końca), inna piosenka, ta sama piosenka godzinę później
+        let rows = [
+            s("Hit", t),
+            s("Hit (Sped Up)", t + 240_000),
+            s("Other", t),
+            s("Hit", t + 3_600_000),
+        ];
+        assert_eq!(import_into(&c, "lastfm", &rows).unwrap(), 2);
+        assert_eq!(import_into(&c, "lastfm", &rows).unwrap(), 0);
+        let plan = query_plan(&c, IMPORT);
+        assert!(
+            plan.contains("INDEX plays_track (artist_key=? AND title_key=? AND at>? AND at<?)"),
+            "{plan}"
+        );
+    }
+
+    #[test]
+    fn reader_does_not_wait_for_an_open_write() {
+        let p = std::env::temp_dir().join(format!("zenith-read-{}.db", std::process::id()));
+        {
+            let w = open(&p).unwrap();
+            let r = open_read(&p).unwrap();
+            let tx = w.unchecked_transaction().unwrap();
+            tx.execute(
+                "INSERT INTO plays(title,artist,at,artist_key,title_key) VALUES('t','a',1,'a','t')",
+                [],
+            )
+            .unwrap();
+            let n = |r: &Connection| -> i64 {
+                r.query_row("SELECT COUNT(*) FROM plays", [], |x| x.get(0))
+                    .unwrap()
+            };
+            assert_eq!(n(&r), 0);
+            tx.commit().unwrap();
+            assert_eq!(n(&r), 1);
+            assert!(r.execute("DELETE FROM plays", []).is_err());
+        }
+        for ext in ["", "-wal", "-shm"] {
+            let _ = std::fs::remove_file(format!("{}{ext}", p.display()));
+        }
+    }
+
+    #[test]
+    fn upgrade_drops_duplicates_from_earlier_imports_once() {
+        let c = mem();
+        let add = |source: &str, title: &str, at: i64| {
+            c.execute(
+                "INSERT INTO plays(title,artist,listened,at,source,artist_key,title_key) VALUES(?1,'A',200,?2,?3,'a',?1)",
+                params![title, at, source],
+            )
+            .unwrap();
+        };
+        add("zenith", "x", 1_000_000);
+        add("lastfm", "x", 1_000_000);
+        add("lastfm", "x", 9_000_000);
+        add("lastfm", "y", 1_000_000);
+        c.execute_batch("PRAGMA user_version=0").unwrap();
+        upgrade(&c).unwrap();
+        let n = |c: &Connection| -> i64 {
+            c.query_row(
+                "SELECT COUNT(*) FROM plays WHERE source='lastfm'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap()
+        };
+        assert_eq!(n(&c), 2);
+        add("lastfm", "x", 1_000_001);
+        upgrade(&c).unwrap();
+        assert_eq!(n(&c), 3, "cleanup runs only once");
+    }
 
     fn c(id: &str, title: &str, artist: &str) -> Cand {
         Cand {

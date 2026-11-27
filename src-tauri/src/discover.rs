@@ -17,14 +17,16 @@ static CACHE: Mutex<Option<(Instant, Vec<Pick>)>> = Mutex::new(None);
 const TTL: Duration = Duration::from_secs(6 * 3600);
 const DEEZER: &str = "https://api.deezer.com";
 
+// „+” trzyma planer na zakresie dat; z indeksem wykonawcy czytał całą historię
+const TOP_ARTISTS: &str =
+    "SELECT artist, COUNT(*) n FROM plays WHERE at > ?1 AND skipped = 0 AND listened >= 30
+     GROUP BY +artist_key ORDER BY n DESC LIMIT 6";
+
 /// Najczęściej słuchani wykonawcy z dwóch miesięcy i wszyscy kiedykolwiek grani (ich nie polecamy).
 fn taste() -> (Vec<String>, HashSet<String>) {
     let since = crate::db::now_ms() - 60 * 86_400_000;
-    crate::db::with(|c| {
-        let mut q = c.prepare(
-            "SELECT artist, COUNT(*) n FROM plays WHERE at > ?1 AND skipped = 0 AND listened >= 30
-             GROUP BY artist_key ORDER BY n DESC LIMIT 6",
-        )?;
+    crate::db::with_read(|c| {
+        let mut q = c.prepare(TOP_ARTISTS)?;
         let top = q
             .query_map(params![since], |r| r.get::<_, String>(0))?
             .flatten()
@@ -144,5 +146,14 @@ mod tests {
         assert_eq!(out[0].1, "Air");
         assert!(out.iter().all(|x| x.1 != "Known Band"));
         assert_eq!(out.len(), 3);
+    }
+
+    #[test]
+    fn top_artists_read_only_two_months() {
+        let c = rusqlite::Connection::open_in_memory().unwrap();
+        c.execute_batch(crate::db::SCHEMA).unwrap();
+        crate::db::upgrade(&c).unwrap();
+        let plan = crate::db::query_plan(&c, TOP_ARTISTS);
+        assert!(plan.contains("SEARCH plays USING INDEX plays_at"), "{plan}");
     }
 }

@@ -150,6 +150,12 @@ fn hint_for(mime: &str) -> Hint {
     h
 }
 
+// symphonia panikuje na części uszkodzonych plików; bez tego jeden zły utwór zamyka całą aplikację
+fn guard<T>(f: impl FnOnce() -> Result<T, String>) -> Result<T, String> {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(f))
+        .unwrap_or_else(|_| Err("decoder panic".into()))
+}
+
 fn open_format(buf: &Arc<Buf>) -> Result<Box<dyn FormatReader>, String> {
     buf.wait_header()?;
     let mss = MediaSourceStream::new(
@@ -160,15 +166,17 @@ fn open_format(buf: &Arc<Buf>) -> Result<Box<dyn FormatReader>, String> {
         enable_gapless: true,
         ..Default::default()
     };
-    symphonia::default::get_probe()
-        .format(
-            &hint_for(&buf.mime()),
-            mss,
-            &fo,
-            &MetadataOptions::default(),
-        )
-        .map(|p| p.format)
-        .map_err(|e| format!("probe: {e}"))
+    guard(|| {
+        symphonia::default::get_probe()
+            .format(
+                &hint_for(&buf.mime()),
+                mss,
+                &fo,
+                &MetadataOptions::default(),
+            )
+            .map(|p| p.format)
+            .map_err(|e| format!("probe: {e}"))
+    })
 }
 
 fn make_dec(fmt: &dyn FormatReader) -> Result<(Dec, u32, TimeBase, u32, Option<f64>), String> {
@@ -201,9 +209,11 @@ fn make_dec(fmt: &dyn FormatReader) -> Result<(Dec, u32, TimeBase, u32, Option<f
             dur,
         ));
     }
-    let d = symphonia::default::get_codecs()
-        .make(p, &DecoderOptions::default())
-        .map_err(|e| format!("codec: {e}"))?;
+    let d = guard(|| {
+        symphonia::default::get_codecs()
+            .make(p, &DecoderOptions::default())
+            .map_err(|e| format!("codec: {e}"))
+    })?;
     let sr = p.sample_rate.unwrap_or(44100);
     Ok((Dec::Sym(d), t.id, tb, sr, dur))
 }
@@ -340,7 +350,7 @@ impl Session {
                 time: Time::from(from),
                 track_id: Some(track),
             };
-            if let Err(e) = self.fmt.seek(SeekMode::Accurate, to) {
+            if let Err(e) = guard(|| Ok(self.fmt.seek(SeekMode::Accurate, to)))? {
                 // bufor czeka na brakujące bajty, więc koniec strumienia przy seeku to naprawdę koniec utworu
                 let past_end = match &e {
                     SymError::SeekError(_) => true,
@@ -370,6 +380,10 @@ impl Session {
     }
 
     fn decode_packet(&mut self) -> Result<Option<f64>, String> {
+        guard(|| self.read_packet())
+    }
+
+    fn read_packet(&mut self) -> Result<Option<f64>, String> {
         let pkt = match self.fmt.next_packet() {
             Ok(p) => p,
             Err(SymError::IoError(e)) if e.kind() == std::io::ErrorKind::UnexpectedEof => {
@@ -779,6 +793,36 @@ mod tests {
         assert_eq!(pick_end(&flat, 225.0), None);
         let quiet: Vec<(f64, f64)> = (0..250).map(|i| (200.0 + i as f64 * 0.1, -80.0)).collect();
         assert_eq!(pick_end(&quiet, 225.0), None);
+    }
+
+    #[test]
+    fn corrupt_files_fail_instead_of_panicking() {
+        let read = |n: &str| {
+            std::fs::read(
+                std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("tests/fixtures")
+                    .join(n),
+            )
+            .unwrap()
+        };
+        let mut webm = read("tone.webm");
+        webm.truncate(webm.len() / 2);
+        let s = Session::open(Buf::from_bytes(webm, "audio/webm"), 1, 0, 1.0, 48000);
+        assert!(s.is_err());
+        let mut m4a = read("tone.m4a");
+        // zepsuta tablica próbek w moov: symphonia-core 0.5.5 panikuje na asercji przy następnym pakiecie
+        m4a[824] = 0xF9;
+        let out = DeckOut::default();
+        let mut s = Session::open(Buf::from_bytes(m4a, "audio/mp4"), 1, 0, 1.0, 48000).unwrap();
+        let mut lv = Vec::new();
+        let err = loop {
+            match s.step(&out, &mut lv) {
+                Ok(true) => {}
+                Ok(false) => break None,
+                Err(e) => break Some(e),
+            }
+        };
+        assert_eq!(err.as_deref(), Some("decoder panic"));
     }
 
     #[test]

@@ -33,7 +33,7 @@ fn write_later(slot: &'static Mutex<Option<(PathBuf, String)>>, path: PathBuf, b
 const MAX_KEYS: usize = 400;
 const MAX_VALUE: usize = 4096;
 const FAVORITES_MAX_BYTES: usize = 4_000_000;
-const FAVORITES_MAX_TRACKS: usize = 2000;
+pub const FAVORITES_MAX_TRACKS: usize = 2000;
 
 fn file(app: &AppHandle) -> Option<PathBuf> {
     Some(app.path().app_local_data_dir().ok()?.join("prefs.json"))

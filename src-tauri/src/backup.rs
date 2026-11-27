@@ -1,6 +1,7 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use rusqlite::types::Value as Sql;
+use rusqlite::{params, OptionalExtension};
 use serde_json::{json, Map, Value};
 use tauri::{AppHandle, Manager};
 
@@ -70,6 +71,9 @@ fn restore(c: &rusqlite::Connection, db: &Value) -> rusqlite::Result<usize> {
     let mut n = 0;
     for t in TABLES {
         let Some(part) = db.get(t) else { continue };
+        if matches!(t, "lib_collections" | "lib_collection_items") {
+            continue;
+        }
         let known = columns(&tx, t)?;
         let cols: Vec<&str> = part["columns"]
             .as_array()
@@ -122,8 +126,109 @@ fn restore(c: &rusqlite::Connection, db: &Value) -> rusqlite::Result<usize> {
             n += q.execute(rusqlite::params_from_iter(vals)).unwrap_or(0);
         }
     }
+    n += merge_collections(&tx, db)?;
     tx.commit()?;
     Ok(n)
+}
+
+fn backup_rows(db: &Value, table: &str, names: &[&str]) -> Vec<Vec<Value>> {
+    let cols = db[table]["columns"].as_array();
+    let idx: Option<Vec<usize>> = names
+        .iter()
+        .map(|n| cols?.iter().position(|c| c == n))
+        .collect();
+    let Some(idx) = idx else { return Vec::new() };
+    db[table]["rows"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|r| {
+            let r = r.as_array()?;
+            Some(
+                idx.iter()
+                    .map(|&i| r.get(i).cloned().unwrap_or(Value::Null))
+                    .collect(),
+            )
+        })
+        .collect()
+}
+
+// kolekcje łączymy po nazwie i folderze: id z innej bazy wskazałoby inną, lokalną kolekcję
+fn merge_collections(tx: &rusqlite::Connection, db: &Value) -> rusqlite::Result<usize> {
+    let mut ids: HashMap<i64, i64> = HashMap::new();
+    let mut n = 0;
+    for r in backup_rows(
+        db,
+        "lib_collections",
+        &["id", "name", "folder", "created_at"],
+    ) {
+        let (Some(old), Some(name)) = (r[0].as_i64(), r[1].as_str()) else {
+            continue;
+        };
+        let folder = r[2].as_str().unwrap_or("");
+        let found = tx
+            .query_row(
+                "SELECT id FROM lib_collections WHERE name=?1 AND folder=?2",
+                params![name, folder],
+                |x| x.get(0),
+            )
+            .optional()?;
+        let id = match found {
+            Some(id) => id,
+            None => {
+                tx.execute(
+                    "INSERT INTO lib_collections(name,folder,created_at) VALUES(?1,?2,?3)",
+                    params![
+                        name,
+                        folder,
+                        r[3].as_i64().unwrap_or_else(crate::db::now_ms)
+                    ],
+                )?;
+                n += 1;
+                tx.last_insert_rowid()
+            }
+        };
+        ids.insert(old, id);
+    }
+    let mut items = backup_rows(
+        db,
+        "lib_collection_items",
+        &["collection_id", "video_id", "pos"],
+    );
+    // kolejność z kopii zostaje, a utwory, których kolekcja nie ma, idą za jej obecnymi
+    items.sort_by_key(|r| r[2].as_i64().unwrap_or(0));
+    for r in items {
+        let (Some(&id), Some(video_id)) = (r[0].as_i64().and_then(|o| ids.get(&o)), r[1].as_str())
+        else {
+            continue;
+        };
+        n += tx.execute(
+            "INSERT OR IGNORE INTO lib_collection_items(collection_id,video_id,pos)
+             SELECT ?1, ?2, COALESCE(MAX(pos), -1) + 1 FROM lib_collection_items WHERE collection_id=?1",
+            params![id, video_id],
+        )?;
+    }
+    Ok(n)
+}
+
+// ulubione dodane po zrobieniu kopii zostają na początku, z kopii dochodzą tylko brakujące
+fn merge_favorites(current: &str, backup: &[&Value]) -> Vec<Value> {
+    let mut out: Vec<Value> = serde_json::from_str(current).unwrap_or_default();
+    let mut seen: HashSet<String> = out
+        .iter()
+        .filter_map(|f| f["id"].as_str().map(String::from))
+        .collect();
+    for f in backup
+        .iter()
+        .flat_map(|b| b.as_array().into_iter().flatten())
+    {
+        let id = f["id"].as_str().unwrap_or("");
+        if !id.is_empty() && id.len() <= 64 && seen.insert(id.to_string()) {
+            out.push(f.clone());
+        }
+    }
+    out.truncate(crate::prefs::FAVORITES_MAX_TRACKS);
+    out
 }
 
 fn stamp() -> String {
@@ -154,7 +259,7 @@ pub fn backup_export(
     let prefs: HashMap<String, String> = prefs.into_iter().filter(|(k, _)| !is_secret(k)).collect();
     let favorites: Value =
         serde_json::from_str(&crate::prefs::favorites_load(app.clone())).unwrap_or(json!([]));
-    let db = crate::db::with(dump).unwrap_or(Value::Null);
+    let db = crate::db::with_read(dump).unwrap_or(Value::Null);
     let body = json!({
         "format": FORMAT,
         "version": 1,
@@ -196,16 +301,22 @@ pub fn backup_import(
     if v["format"] != FORMAT {
         return Err("not a Zenith backup".into());
     }
-    if let Some(fav) = v
-        .get("favorites")
-        .filter(|f| f.as_array().is_some_and(|a| !a.is_empty()))
-    {
-        crate::prefs::favorites_save(app, fav.to_string())?;
+    let in_prefs: Value = v["prefs"]["zenith_saved_tracks"]
+        .as_str()
+        .and_then(|s| serde_json::from_str(s).ok())
+        .unwrap_or_default();
+    let favorites = merge_favorites(
+        &crate::prefs::favorites_load(app.clone()),
+        &[&v["favorites"], &in_prefs],
+    );
+    let favorites = (!favorites.is_empty()).then(|| Value::from(favorites).to_string());
+    if let Some(body) = &favorites {
+        crate::prefs::favorites_save(app, body.clone())?;
     }
     if v["db"].is_object() {
         crate::db::with(|c| restore(c, &v["db"]))?;
     }
-    Ok(v["prefs"]
+    let mut prefs: HashMap<String, String> = v["prefs"]
         .as_object()
         .map(|m| {
             m.iter()
@@ -213,7 +324,13 @@ pub fn backup_import(
                 .filter_map(|(k, v)| Some((k.clone(), v.as_str()?.to_string())))
                 .collect()
         })
-        .unwrap_or_default())
+        .unwrap_or_default();
+    // okno wpisuje te ustawienia do localStorage, więc lista z kopii nadpisałaby nowsze ulubione
+    prefs.remove("zenith_saved_tracks");
+    if let Some(body) = favorites {
+        prefs.insert("zenith_saved_tracks".into(), body);
+    }
+    Ok(prefs)
 }
 
 #[cfg(test)]
@@ -253,6 +370,61 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM plays", [], |r| r.get(0))
             .unwrap();
         assert_eq!(n, 1);
+    }
+
+    #[test]
+    fn collections_merge_by_name_not_by_id() {
+        let local = mem();
+        local
+            .execute_batch(
+                "INSERT INTO lib_collections(id,name,folder,created_at) VALUES(1,'Siłownia','',1);
+                 INSERT INTO lib_collection_items VALUES(1,'localAAAAAA',0);",
+            )
+            .unwrap();
+        let other = mem();
+        other
+            .execute_batch(
+                "INSERT INTO lib_collections(id,name,folder,created_at) VALUES(1,'Chill','',2),(2,'Siłownia','',3);
+                 INSERT INTO lib_collection_items VALUES(1,'backupCCCCC',1),(1,'backupBBBBB',0),(2,'backupDDDDD',0);",
+            )
+            .unwrap();
+        let d = dump(&other).unwrap();
+        assert_eq!(restore(&local, &d).unwrap(), 4);
+        assert_eq!(restore(&local, &d).unwrap(), 0);
+        let items = |name: &str| -> Vec<String> {
+            let mut q = local
+                .prepare(
+                    "SELECT i.video_id FROM lib_collection_items i JOIN lib_collections c ON c.id=i.collection_id
+                     WHERE c.name=?1 ORDER BY i.pos",
+                )
+                .unwrap();
+            q.query_map([name], |r| r.get(0))
+                .unwrap()
+                .flatten()
+                .collect()
+        };
+        assert_eq!(items("Siłownia"), ["localAAAAAA", "backupDDDDD"]);
+        assert_eq!(items("Chill"), ["backupBBBBB", "backupCCCCC"]);
+    }
+
+    #[test]
+    fn favorites_merge_instead_of_replacing() {
+        let backup = json!([{"id": "b"}, {"id": "c"}, {"id": ""}]);
+        let in_prefs = json!([{"id": "d"}]);
+        let out = merge_favorites(
+            r#"[{"id":"a"},{"id":"b","title":"new"}]"#,
+            &[&backup, &in_prefs],
+        );
+        let ids: Vec<&str> = out.iter().filter_map(|f| f["id"].as_str()).collect();
+        assert_eq!(ids, ["a", "b", "c", "d"]);
+        assert_eq!(out[1]["title"], "new");
+        let many: Value = (0..3000)
+            .map(|i| json!({ "id": format!("x{i}") }))
+            .collect();
+        assert_eq!(
+            merge_favorites("[]", &[&many]).len(),
+            crate::prefs::FAVORITES_MAX_TRACKS
+        );
     }
 
     #[test]
