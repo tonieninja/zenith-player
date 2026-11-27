@@ -1,4 +1,5 @@
 mod auth_store;
+mod backup;
 mod cover_cache;
 mod db;
 mod deeplink;
@@ -923,6 +924,8 @@ pub fn run() {
             db::db_log_play,
             db::db_rate,
             db::smart_queue,
+            backup::backup_export,
+            backup::backup_import,
             native_audio::zaudio_attach,
             native_audio::zaudio_snapshot,
             windows::ui_ready,

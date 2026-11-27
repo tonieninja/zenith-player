@@ -8,7 +8,7 @@ use tauri::{AppHandle, Manager};
 
 static DB: OnceLock<Mutex<Connection>> = OnceLock::new();
 
-const SCHEMA: &str = "
+pub const SCHEMA: &str = "
 CREATE TABLE IF NOT EXISTS plays(
   id INTEGER PRIMARY KEY,
   video_id TEXT NOT NULL DEFAULT '',

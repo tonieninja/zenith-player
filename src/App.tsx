@@ -121,6 +121,7 @@ import {
 import { SyncedLyricsRail } from './components/SyncedLyricsRail';
 import { LyricsSourceBar } from './components/LyricsSourceBar';
 import { LyricsSourcesSettings } from './components/LyricsSourcesSettings';
+import { BackupSetting } from './components/BackupSetting';
 import { PanelGapSetting } from './components/PanelGapSetting';
 import { AudioOutputSettings } from './components/AudioOutputSettings';
 import { PlainLyrics } from './components/PlainLyrics';
@@ -6580,6 +6581,7 @@ export default function App() {
               </div>
               {isNativeAudio() && <AudioOutputSettings lang={lang} />}
               <PanelGapSetting lang={lang} />
+              <BackupSetting lang={lang} />
               <h3 className="settings-group-title">{PLUGIN_CATEGORY_LABELS.playback[lang]}</h3>
               <PluginsPanel
                 lang={lang}
