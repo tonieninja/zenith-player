@@ -7259,6 +7259,7 @@ dependencies = [
  "reqwest 0.12.28",
  "rquickjs",
  "rusqlite",
+ "rustls",
  "serde",
  "serde_json",
  "sha1",
