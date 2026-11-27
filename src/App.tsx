@@ -16,7 +16,7 @@ import {
   useRef,
   useState,
 } from 'react';
-import { createPortal } from 'react-dom';
+import { createPortal, flushSync } from 'react-dom';
 import { invoke } from '@tauri-apps/api/core';
 import { getVersion } from '@tauri-apps/api/app';
 import { listen } from '@tauri-apps/api/event';
@@ -48,6 +48,8 @@ import {
   prefetchLibrary,
   extendLibrarySections,
   getLyrics,
+  getMoodPage,
+  moreBrowseId,
   getMoodPlaylist,
   loadPlaylistItems,
   AlreadyInPlaylistError,
@@ -55,7 +57,8 @@ import {
   getUserPlaylists,
   getWatchRelated,
   getRadioTracks,
-  getHomeMore,
+  getHomeNextPage,
+  type HomeChip,
   getTrackRefs,
   getRelatedTracks,
   preloadImage,
@@ -98,6 +101,7 @@ import {
 } from './components/FeedUI';
 import { HeroSection } from './components/feed/HeroSection';
 import { MoodChips } from './components/feed/MoodChips';
+import { LoadMoreSentinel } from './components/feed/LoadMoreSentinel';
 import { MoodsGenresView } from './components/feed/MoodsGenresView';
 import { QuickPicks, SectionRow } from './components/feed/FeedCarousel';
 import { ArtistSkeleton, ArtistView, type ArtistPlayMode } from './components/feed/ArtistView';
@@ -169,7 +173,7 @@ import {
 import { sponsorBlockJump } from './plugins/sponsorBlock';
 import { downloadTrack } from './plugins/offlineDownloads';
 import { playLogSwitch, playLogTick } from './utils/playLog';
-import { discoverSection } from './plugins/discover';
+import { discoverSection, peekDiscoverSection } from './plugins/discover';
 import { registerAutoPauseCallback } from './plugins/autoPauseBlur';
 import { Select } from './components/ui/Select';
 import {
@@ -286,7 +290,7 @@ import {
 } from './utils/appUpdate';
 import { resetOnboarding, shouldShowOnboarding } from './utils/onboarding';
 import { smartShuffle } from './utils/smartShuffle';
-import { stableOrderSections } from './utils/feed';
+import { stableOrderSections, upsertSections } from './utils/feed';
 import { streamCacheSet } from './utils/streamCache';
 import {
   installMaximizeStateHandler,
@@ -428,6 +432,9 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<ViewTab>('home');
   const [prevTab, setPrevTab] = useState<ViewTab>('home');
   const [quickPicks, setQuickPicks] = useState<Track[]>([]);
+  const [homeChips, setHomeChips] = useState<HomeChip[]>([]);
+  const [homeHasMore, setHomeHasMore] = useState(false);
+  const [homeMoreTick, setHomeMoreTick] = useState(0);
   const [activeMood, setActiveMood] = useState<string | null>(null);
   const [browseTitle, setBrowseTitle] = useState<string | null>(null);
   const [artistPage, setArtistPage] = useState<ArtistPageState | null>(null);
@@ -917,37 +924,6 @@ export default function App() {
 
   const openMoodsGenres = useCallback(() => navigateTo('moods_genres'), [navigateTo]);
 
-  const changeLanguage = useCallback(
-    (newLang: Language) => {
-      if (newLang === lang) return;
-      localStorage.setItem('zenith_lang', newLang);
-      setLang(newLang);
-      clearHomeBrowseCache();
-      const dataSeq = ++feedSeqRef.current.home;
-      setFeedTabLoading('home', true);
-      setHomeSections([]);
-      setQuickPicks([]);
-      getHomeFeed(newLang)
-        .then(({ sections: nextHome, quickPicks: picks }) => {
-          if (dataSeq !== feedSeqRef.current.home) return;
-          setHomeSections(stableOrderSections(nextHome));
-          setQuickPicks(picks);
-        })
-        .catch(() => undefined)
-        .finally(() => {
-          if (dataSeq === feedSeqRef.current.home) setFeedTabLoading('home', false);
-        });
-      const exploreSeq = ++feedSeqRef.current.explore;
-      getExplore(newLang)
-        .then((data) => {
-          if (exploreSeq !== feedSeqRef.current.explore) return;
-          setExploreSections(stableOrderSections(data));
-        })
-        .catch(() => undefined);
-    },
-    [lang, setFeedTabLoading]
-  );
-
   useEffect(() => {
     document.documentElement.lang = lang;
     const tt = translations[lang];
@@ -1018,6 +994,9 @@ export default function App() {
     [showSplashRef]
   );
 
+  // klucz (język i stan logowania) wyświetlonej Głównej; pusty, dopóki nic nie przyszło z sieci
+  const homeKeyRef = useRef('');
+
   const loadHome = useCallback(
     (language: Language = lang, navigate = true) => {
       const dataSeq = ++feedSeqRef.current.home;
@@ -1027,42 +1006,114 @@ export default function App() {
         setSearchQuery('');
         setActiveMood(null);
         setBrowseEmptyKind(null);
-        clearHomeBrowseCache();
       }
       const safety = window.setTimeout(() => setFeedTabLoading('home', false), 8000);
       getHomeFeed(language)
-        .then(({ sections: nextHome, quickPicks: picks }) => {
+        .then((feed) => {
           if (dataSeq !== feedSeqRef.current.home) return;
-          const normalizedHome = stableOrderSections(nextHome);
-          setHomeSections(normalizedHome);
-          void getHomeMore(language).then((more) => {
-            if (!more.length || dataSeq !== feedSeqRef.current.home) return;
-            setHomeSections((cur) => {
-              const seen = new Set(cur.map((s) => s.title));
-              return [...cur, ...more.filter((s) => !seen.has(s.title))];
-            });
+          // pusta odpowiedź to zwykle brak sieci: zostaje to, co już widać
+          if (!feed.sections.length && !feed.quickPicks.length) {
+            startBackgroundPrefetch([]);
+            return;
+          }
+          const fresh = feed.key !== homeKeyRef.current;
+          homeKeyRef.current = feed.key;
+          const base = stableOrderSections(feed.sections);
+          const row = pluginManager.isEnabled('discover') ? peekDiscoverSection(language) : null;
+          setHomeSections((cur) => {
+            if (fresh) return row ? [...base.slice(0, 2), row, ...base.slice(2)] : base;
+            const next = upsertSections(cur, base);
+            return row && !next.some((s) => s.title === row.title) ? [...next, row] : next;
           });
-          if (pluginManager.isEnabled('discover')) {
-            void discoverSection(language, translations[language].discoverRow).then((row) => {
-              if (!row || dataSeq !== feedSeqRef.current.home) return;
-              setHomeSections((cur) => [...cur.slice(0, 2), row, ...cur.slice(2)]);
+          if (row === undefined) {
+            void discoverSection(language, translations[language].discoverRow).then((r) => {
+              if (!r || homeKeyRef.current !== feed.key) return;
+              // na końcu, żeby wiersz policzony po kilku sekundach nie przesunął tego, na co ktoś patrzy
+              setHomeSections((cur) => (cur.some((s) => s.title === r.title) ? cur : [...cur, r]));
             });
           }
-          setQuickPicks(picks);
-          const allTracks = [
-            ...picks,
-            ...normalizedHome.flatMap((s) => s.items).filter((i) => i.type === 'track'),
-          ];
-          startBackgroundPrefetch(allTracks);
-          allTracks.slice(0, 3).forEach((t) => prefetchStream(t));
+          setQuickPicks((prev) => (feed.quickPicks.length || fresh ? feed.quickPicks : prev));
+          setHomeChips(feed.chips);
+          setHomeHasMore(feed.more);
+          const items = [...feed.quickPicks, ...base.flatMap((s) => s.items)];
+          startBackgroundPrefetch(items);
+          items
+            .filter((i) => i.type === 'track')
+            .slice(0, 3)
+            .forEach((t) => prefetchStream(t));
         })
-        .catch(() => undefined)
+        .catch(() => startBackgroundPrefetch([]))
         .finally(() => {
           window.clearTimeout(safety);
           if (dataSeq === feedSeqRef.current.home) setFeedTabLoading('home', false);
         });
     },
     [lang, navigateTo, setFeedTabLoading, prefetchStream, startBackgroundPrefetch]
+  );
+
+  const homeMoreBusyRef = useRef(false);
+  const homeMoreFailsRef = useRef(0);
+  const loadHomeNext = useCallback(() => {
+    if (homeMoreBusyRef.current) return;
+    homeMoreBusyRef.current = true;
+    getHomeNextPage(lang)
+      .then((page) => {
+        homeMoreFailsRef.current = 0;
+        if (page.key !== homeKeyRef.current) return;
+        if (page.quickPicks.length) {
+          const box = document.querySelector<HTMLElement>('.content-area .sections-container');
+          const scroller = box?.closest<HTMLElement>('.content-scrollable');
+          const before = box?.getBoundingClientRect().top ?? 0;
+          flushSync(() => setQuickPicks((prev) => (prev.length ? prev : page.quickPicks)));
+          // wiersz wstawiony nad widokiem; Chromium sam trzyma treść w miejscu, WebKit nie ma zakotwiczenia
+          const shift = (box?.getBoundingClientRect().top ?? 0) - before;
+          if (scroller && shift && before < scroller.getBoundingClientRect().top) {
+            scroller.scrollBy(0, shift);
+          }
+        }
+        if (page.sections.length) {
+          setHomeSections((cur) => upsertSections(cur, stableOrderSections(page.sections)));
+        }
+        setHomeHasMore(page.more);
+      })
+      .then(
+        () => {
+          homeMoreBusyRef.current = false;
+          setHomeMoreTick((n) => n + 1);
+        },
+        () => {
+          homeMoreBusyRef.current = false;
+          const fails = ++homeMoreFailsRef.current;
+          // obserwator ponowiłby od razu, a sieci po błędzie zwykle trzeba chwili
+          window.setTimeout(
+            () => setHomeMoreTick((n) => n + 1),
+            Math.min(30_000, 1000 * 2 ** fails)
+          );
+        }
+      );
+  }, [lang]);
+
+  const changeLanguage = useCallback(
+    (newLang: Language) => {
+      if (newLang === lang) return;
+      localStorage.setItem('zenith_lang', newLang);
+      setLang(newLang);
+      clearHomeBrowseCache();
+      homeKeyRef.current = '';
+      setHomeSections([]);
+      setQuickPicks([]);
+      setHomeChips([]);
+      setHomeHasMore(false);
+      loadHome(newLang, false);
+      const exploreSeq = ++feedSeqRef.current.explore;
+      getExplore(newLang)
+        .then((data) => {
+          if (exploreSeq !== feedSeqRef.current.explore) return;
+          setExploreSections(stableOrderSections(data));
+        })
+        .catch(() => undefined);
+    },
+    [lang, loadHome]
   );
 
   const searchLangRef = useRef(lang);
@@ -1104,7 +1155,7 @@ export default function App() {
   );
 
   const loadMood = useCallback(
-    (categoryId: string, browseId: string, language: Language = lang) => {
+    (categoryId: string, browseId: string, title?: string, language: Language = lang) => {
       const dataSeq = ++feedSeqRef.current.mood;
       setFeedTabLoading('mood', true);
       navigateTo('mood');
@@ -1113,7 +1164,7 @@ export default function App() {
       setBrowseEmptyKind(null);
       setActiveMood(categoryId);
       const safety = window.setTimeout(() => setFeedTabLoading('mood', false), 8000);
-      getMoodPlaylist(browseId, language)
+      getMoodPage(browseId, title, language)
         .then((data) => {
           if (dataSeq !== feedSeqRef.current.mood) return;
           setSections(stableOrderSections(data));
@@ -1163,7 +1214,10 @@ export default function App() {
       load
         .then((data) => {
           if (dataSeq !== feedSeqRef.current.mood) return;
-          setSections(stableOrderSections(data));
+          // siatka bez nagłówka (np. „Nowości” po „Więcej”) nosi tytuł strony zamiast ogólnego „Odkrywaj”
+          const untitled =
+            data.length === 1 && data[0].title === translations[lang].defaultSectionTitle;
+          setSections(stableOrderSections(untitled ? [{ ...data[0], title: item.title }] : data));
         })
         .catch(() => {
           if (dataSeq !== feedSeqRef.current.mood) return;
@@ -1456,11 +1510,10 @@ export default function App() {
     })();
   }, [lang, loadUserPlaylists, persistSessionIfWanted, refreshAccountProfile]);
 
-  const homeEmptyRef = useLatest(homeSections.length === 0);
   // bez tego start bez sieci zostawia wylogowaną bibliotekę i pusty Home aż do ręcznego kliknięcia
   useEffect(() => {
     const onOnline = () => {
-      if (homeEmptyRef.current) loadHome(lang, false);
+      if (!homeKeyRef.current) loadHome(lang, false);
       if (libAuthedRef.current || !getRememberLogin()) return;
       void waitForLogin(lang, 4, 1500).then((ok) => {
         if (!ok || libAuthedRef.current) return;
@@ -1472,7 +1525,7 @@ export default function App() {
     };
     window.addEventListener('online', onOnline);
     return () => window.removeEventListener('online', onOnline);
-  }, [lang, loadHome, loadUserPlaylists, refreshAccountProfile, libAuthedRef, homeEmptyRef]);
+  }, [lang, loadHome, loadUserPlaylists, refreshAccountProfile, libAuthedRef]);
 
   const completeLogin = useCallback(async () => {
     if (loginFinishingRef.current) return;
@@ -5087,6 +5140,22 @@ export default function App() {
     [collectionPage, handleItemClick]
   );
 
+  const openShelfMore = useCallback(
+    (section: Section) => {
+      if (!section.more) return;
+      // „Więcej” przy polecanych playlistach prowadzi do siatki nastrojów, którą Zenith ma jako osobny widok
+      if (section.more.browseId === 'FEmusic_moods_and_genres') {
+        openMoodsGenres();
+        return;
+      }
+      const id = moreBrowseId(section.more);
+      const target: Track = { id, type: 'playlist', title: section.title, artist: '', cover: '' };
+      if (id.startsWith('VL')) void openCollectionPage(target);
+      else openBrowsePage(target);
+    },
+    [openMoodsGenres, openCollectionPage, openBrowsePage]
+  );
+
   const sectionRows = useMemo(
     () =>
       stableOrderSections(activeTab === 'home' ? homeSections : sections).map((section, idx) => (
@@ -5095,9 +5164,10 @@ export default function App() {
           section={section}
           sectionIndex={idx}
           onItemClick={handleItemClick}
+          onMore={openShelfMore}
         />
       )),
-    [activeTab, homeSections, sections, handleItemClick]
+    [activeTab, homeSections, sections, handleItemClick, openShelfMore]
   );
 
   return (
@@ -5291,7 +5361,14 @@ export default function App() {
               aria-label={t.home}
               title={t.home}
               onKeyDown={clickOnKey}
-              onClick={() => loadHome()}
+              onClick={() => {
+                // drugi klik na Głównej tylko wraca na górę, bez pobierania i przebudowy półek
+                if (activeTab === 'home' && homeKeyRef.current) {
+                  document
+                    .querySelector<HTMLElement>('.content-area .content-scrollable')
+                    ?.scrollTo({ top: 0, behavior: 'smooth' });
+                } else loadHome();
+              }}
               data-tour="home"
             >
               <Home size={22} />
@@ -5986,6 +6063,7 @@ export default function App() {
                         !isBrowseMood(activeMood) &&
                         activeMood !== FAVORITES_ID)) && (
                       <MoodChips
+                        chips={homeChips}
                         activeCategory={activeMood}
                         onCategoryClick={loadMood}
                         onMore={openMoodsGenres}
@@ -5997,7 +6075,8 @@ export default function App() {
                       browseTitle &&
                       !artistHeader &&
                       !collectionPage &&
-                      (isBrowseMood(activeMood) || activeMood === FAVORITES_ID) && (
+                      (isBrowseMood(activeMood) || activeMood === FAVORITES_ID) &&
+                      sections[0]?.title !== browseTitle && (
                         <h2 className="library-section-title">{browseTitle}</h2>
                       )}
 
@@ -6083,6 +6162,7 @@ export default function App() {
                             section={section}
                             sectionIndex={idx}
                             onItemClick={handleItemClick}
+                            onMore={openShelfMore}
                           />
                         )}
                       />
@@ -6101,6 +6181,7 @@ export default function App() {
                           onItemClick={handleItemClick}
                           onPlay={playArtist}
                           onShowAll={showArtistSongs}
+                          onMore={openShelfMore}
                           t={t}
                         />
                       </div>
@@ -6124,7 +6205,12 @@ export default function App() {
                       activeTab !== 'explore' &&
                       activeTab !== 'moods_genres' &&
                       activeTab !== 'search' && (
-                        <div className="sections-container">{sectionRows}</div>
+                        <div className="sections-container">
+                          {sectionRows}
+                          {activeTab === 'home' && homeHasMore && (
+                            <LoadMoreSentinel onVisible={loadHomeNext} tick={homeMoreTick} />
+                          )}
+                        </div>
                       )
                     )}
                   </>

@@ -886,6 +886,10 @@ button.nav-item {
   padding: 0 0 80px;
 }
 
+.feed-load-sentinel {
+  height: 1px;
+}
+
 .yt-section {
   padding: 0 0 36px;
   animation: fadeSlideUp 0.4s var(--ease-standard) backwards;
@@ -913,6 +917,64 @@ button.nav-item {
   text-overflow: ellipsis;
   min-width: 0;
   flex-shrink: 1;
+}
+
+.yt-section-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex-shrink: 1;
+}
+
+.yt-section-strap {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.yt-section-title-link {
+  font: inherit;
+  letter-spacing: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.yt-section-title-link:hover {
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+.yt-section-more {
+  height: 32px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
+}
+
+.yt-section-more:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.35);
 }
 
 .yt-section-arrows {
@@ -1027,6 +1089,23 @@ button.nav-item {
   flex-wrap: nowrap;
 }
 
+.yt-list-track {
+  display: grid;
+  grid-template-columns: repeat(var(--cols, 4), minmax(0, 1fr));
+  gap: 0 12px;
+  padding: 2px clamp(12px, 3vw, 52px) 16px;
+}
+
+.yt-list-col {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.yt-list-track .yt-list-row {
+  padding: 5px 10px;
+}
+
 .yt-card {
   flex: 1 1 0;
   min-width: 0;
@@ -1047,6 +1126,22 @@ button.nav-item {
 
 .yt-card:last-child {
   margin-right: clamp(12px, 3vw, 52px);
+}
+
+.yt-grid-wrap {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  padding: 2px clamp(12px, 3vw, 52px) 16px;
+}
+
+.yt-grid-wrap > .yt-card {
+  max-width: none;
+  margin: 0;
+}
+
+/* siatka „Więcej” ma dziesiątki kart, a półka z content-visibility i stałą wysokością skakałaby przy przewijaniu */
+.yt-section-grid {
+  content-visibility: visible;
 }
 
 .yt-card:hover {

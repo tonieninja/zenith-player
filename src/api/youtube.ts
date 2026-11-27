@@ -1,6 +1,7 @@
 import { fetch } from '@tauri-apps/plugin-http';
 import { invoke } from '@tauri-apps/api/core';
 import { Language, translations } from '../i18n';
+import { moodLabel } from '../i18n/plugins';
 import { resolveFeedItem, bylineFromRuns, refsFromRuns } from '../utils/feed';
 import { isPlaceholderCover, isYouTubeVideoId, letterCover, localCover } from '../utils/covers';
 import {
@@ -284,6 +285,9 @@ export interface Track {
 export interface Section {
   title: string;
   items: Track[];
+  more?: { browseId: string; params?: string };
+  strapline?: string;
+  layout?: 'list' | 'grid';
 }
 
 export type { LyricsLine };
@@ -321,6 +325,9 @@ export const MOOD_BROWSE_ID = 'FEmusic_moods_and_genres_category';
 const BROWSE_PARAMS_SEP = '::';
 const moodBrowse = (params: string) => `${MOOD_BROWSE_ID}${BROWSE_PARAMS_SEP}${params}`;
 
+export const moreBrowseId = (m: { browseId: string; params?: string }) =>
+  m.params ? `${m.browseId}${BROWSE_PARAMS_SEP}${m.params}` : m.browseId;
+
 function splitBrowseId(id: string): { browseId: string; params?: string } {
   const at = id.indexOf(BROWSE_PARAMS_SEP);
   if (at < 0) return { browseId: id };
@@ -328,6 +335,8 @@ function splitBrowseId(id: string): { browseId: string; params?: string } {
 }
 
 export function moodBrowseIdFor(categoryId: string): string | null {
+  // kategorie pobrane na żywo i chipy Głównej mają za id samo zapytanie
+  if (categoryId.includes(BROWSE_PARAMS_SEP)) return categoryId;
   const hit = [...MOODS_AND_MOMENTS, ...GENRES].find((c) => c.id === categoryId);
   return hit ? hit.browseId : null;
 }
@@ -700,89 +709,162 @@ export function getOptimizedCover(
   return u;
 }
 
-export interface HomeFeed {
-  sections: Section[];
-  quickPicks: Track[];
+export interface HomeChip {
+  id: string;
+  title: string;
+  browseId: string;
 }
 
-const QUICK_PICK_TITLES = ['quick picks', 'szybkie wybory'];
-const HOME_MORE_PAGES = 4;
+export interface HomeFeed {
+  key: string;
+  sections: Section[];
+  quickPicks: Track[];
+  chips: HomeChip[];
+  more: boolean;
+}
+
+export interface HomePage {
+  key: string;
+  sections: Section[];
+  quickPicks: Track[];
+  more: boolean;
+}
+
+// YTM zmienia nazwę tej półki; samo „składanki” złapałoby też „Składanki dla Ciebie”
+const QUICK_PICK_TITLES = [
+  'quick picks',
+  'song mixes',
+  'szybki wybór',
+  'szybkie wybory',
+  'składanki na bazie utworu',
+];
 const homeNext = new Map<string, { token: string | null; visitor: string | null }>();
 const homeMore = new Map<string, Section[]>();
+const homeQuick = new Map<string, Track[]>();
+const homeChips = new Map<string, { title: string; params: string }[]>();
+const homePending = new Map<string, Promise<HomePage>>();
 
-/** Dalsze półki strony głównej (miksy, albumy dla ciebie, teledyski); pierwsza porcja nie czeka na nie. */
-export async function getHomeMore(lang: Language): Promise<Section[]> {
-  const authed = extractSapisid(await getYtmCookie()) ? '1' : '0';
-  const key = `FEmusic_home:${lang}:${authed}`;
-  const done = homeMore.get(key);
-  if (done) return done;
+export async function homeFeedKey(lang: Language): Promise<string> {
+  return `FEmusic_home:${lang}:${extractSapisid(await getYtmCookie()) ? '1' : '0'}`;
+}
+
+function splitQuickPicks(sections: Section[]): { sections: Section[]; quickPicks: Track[] } {
+  const at = sections.findIndex(
+    (s) =>
+      QUICK_PICK_TITLES.some((k) => s.title.toLowerCase().includes(k)) &&
+      s.items.some((i) => i.type === 'track')
+  );
+  if (at < 0) return { sections, quickPicks: [] };
+  return {
+    sections: sections.filter((_, i) => i !== at),
+    quickPicks: sections[at].items.filter((i) => i.type === 'track'),
+  };
+}
+
+function parseHomeChips(data: any): { title: string; params: string }[] {
+  const cloud = findRenderer(data?.contents, 'sectionListRenderer')?.header?.chipCloudRenderer;
+  const out: { title: string; params: string }[] = [];
+  for (const chip of cloud?.chips ?? []) {
+    const r = chip?.chipCloudChipRenderer;
+    const ep = r?.navigationEndpoint?.browseEndpoint;
+    const title = runsText(r?.text);
+    if (title && ep?.browseId === 'FEmusic_home' && typeof ep.params === 'string') {
+      out.push({ title, params: ep.params });
+    }
+  }
+  return out;
+}
+
+// nazwy chipów YTM różnią się od nazw kategorii o tych samych params
+const CHIP_ALIASES: Record<string, string> = {
+  relax: 'chill',
+  relaks: 'chill',
+  'na drogę': 'commute',
+  koncentracja: 'focus',
+  smutna: 'sad',
+  romans: 'romance',
+};
+
+function guestChipCategory(title: string): string | null {
+  const name = title.trim().toLowerCase();
+  const alias = CHIP_ALIASES[name];
+  const hit = MOODS_AND_MOMENTS.find(
+    (c) =>
+      c.id === alias ||
+      c.title.toLowerCase() === name ||
+      (['en', 'pl'] as const).some(
+        (l) => moodLabel(l, c.id, c.title, translations[l]).toLowerCase() === name
+      )
+  );
+  return hit?.browseId ?? null;
+}
+
+function homeChipTargets(key: string): HomeChip[] {
+  const authed = key.endsWith(':1');
+  return (homeChips.get(key) ?? []).map(({ title, params }) => {
+    // gość dostaje w kanale chipu półki po 10 pozycji, a strona kategorii ma ich więcej i „Więcej”
+    const browseId =
+      (!authed && guestChipCategory(title)) || `FEmusic_home${BROWSE_PARAMS_SEP}${params}`;
+    return { id: browseId, title, browseId };
+  });
+}
+
+export async function getHomeFeed(lang: Language): Promise<HomeFeed> {
+  const key = await homeFeedKey(lang);
+  let sections = await fetchBrowse('FEmusic_home', lang);
+  if (sections.length === 0) {
+    const landing = await fetchBrowse('FEmusic_library_landing', lang);
+    if (landing.length) sections = landing;
+  }
+  const first = splitQuickPicks(sections);
+  return {
+    key,
+    sections: dedupeSections([...first.sections, ...(homeMore.get(key) ?? [])]),
+    quickPicks: first.quickPicks.length ? first.quickPicks : (homeQuick.get(key) ?? []),
+    chips: homeChipTargets(key),
+    more: Boolean(homeNext.get(key)?.token),
+  };
+}
+
+/** Kolejna strona Głównej; równoległe wywołania dostają to samo zapytanie, bo token jest jednorazowy. */
+export async function getHomeNextPage(lang: Language): Promise<HomePage> {
+  const key = await homeFeedKey(lang);
+  let run = homePending.get(key);
+  if (!run) {
+    run = fetchHomePage(key, lang).finally(() => homePending.delete(key));
+    homePending.set(key, run);
+  }
+  return run;
+}
+
+async function fetchHomePage(key: string, lang: Language): Promise<HomePage> {
   const next = homeNext.get(key);
-  if (!next) return [];
+  if (!next?.token) return { key, sections: [], quickPicks: [], more: false };
   const isPl = lang === 'pl';
-  const out: Section[] = [];
-  let token = next.token;
-  for (let i = 0; i < HOME_MORE_PAGES && token; i++) {
-    const json = await invokeWithTimeout<string>(
+  const json = JSON.parse(
+    await invokeWithTimeout<string>(
       'ytm_browse',
       {
         browseId: 'FEmusic_home',
         hl: isPl ? 'pl' : 'en',
         gl: isPl ? 'PL' : 'US',
         params: null,
-        continuation: token,
+        continuation: next.token,
         visitor: next.visitor,
       },
       12000
     )
-      .then((t) => JSON.parse(t))
-      .catch(() => null);
-    if (!json) break;
-    out.push(...parseShelves(json, translations[lang]));
-    token = findContinuationToken(json);
-  }
-  const result = dedupeSections(out);
-  if (result.length) homeMore.set(key, result);
-  return result;
-}
-
-export async function getHomeFeed(lang: Language): Promise<HomeFeed> {
-  let sections = await fetchBrowse('FEmusic_home', lang);
-  if (sections.length === 0) {
-    const landing = await fetchBrowse('FEmusic_library_landing', lang);
-    if (landing.length) sections = landing;
-  }
-  const qpIndex = sections.findIndex((s) =>
-    QUICK_PICK_TITLES.some((k) => s.title.toLowerCase().includes(k))
   );
-  if (qpIndex >= 0) {
-    const quickPicks = sections[qpIndex].items.filter((i) => i.type === 'track').slice(0, 16);
-    const rest = sections.filter((_, i) => i !== qpIndex);
-    return { sections: rest, quickPicks };
+  if (json?.error) throw new Error('home continuation failed');
+  // Główna pobrana w międzyczasie od nowa ma własny token, a ta strona należy do poprzedniej
+  if (homeNext.get(key) !== next) {
+    return { key, sections: [], quickPicks: [], more: Boolean(homeNext.get(key)?.token) };
   }
-  const quickPicks: Track[] = [];
-  const seen = new Set<string>();
-  const pushItem = (item: Track) => {
-    if (seen.has(item.id)) return;
-    seen.add(item.id);
-    quickPicks.push(item);
-  };
-  for (const section of sections) {
-    for (const item of section.items) {
-      if (item.type === 'track') pushItem(item);
-      if (quickPicks.length >= 12) break;
-    }
-    if (quickPicks.length >= 12) break;
-  }
-  if (quickPicks.length < 6) {
-    for (const section of sections) {
-      for (const item of section.items) {
-        if (item.type === 'album' || item.type === 'playlist') pushItem(item);
-        if (quickPicks.length >= 12) break;
-      }
-      if (quickPicks.length >= 12) break;
-    }
-  }
-  return { sections, quickPicks };
+  next.token = findContinuationToken(json);
+  const page = splitQuickPicks(dedupeSections(parseShelves(json, translations[lang])));
+  homeMore.set(key, dedupeSections([...(homeMore.get(key) ?? []), ...page.sections]));
+  if (page.quickPicks.length && !homeQuick.has(key)) homeQuick.set(key, page.quickPicks);
+  return { key, ...page, more: Boolean(next.token) };
 }
 
 function orderExploreSectionsData(sections: Section[]): Section[] {
@@ -816,6 +898,113 @@ export async function getMoodPlaylist(browseId: string, lang: Language): Promise
   } catch {
     return [];
   }
+}
+
+const isPersonalMix = (t: Track) => /^(VL)?RDTMAK/.test(t.id);
+
+// Supermix i miksy nastroju zalogowany dostaje tylko w kanale Głównej z chipem o tej samej nazwie
+async function getMoodMixes(name: string, lang: Language): Promise<Track[]> {
+  const key = await homeFeedKey(lang);
+  if (!key.endsWith(':1')) return [];
+  if (!homeChips.has(key)) await fetchBrowse('FEmusic_home', lang);
+  const want = name.trim().toLowerCase();
+  const chip = homeChips.get(key)?.find((c) => c.title.trim().toLowerCase() === want);
+  if (!chip) return [];
+  const feed = await fetchBrowse(`FEmusic_home${BROWSE_PARAMS_SEP}${chip.params}`, lang);
+  return feed.find((s) => s.items.some(isPersonalMix))?.items.filter(isPersonalMix) ?? [];
+}
+
+/** Strona nastroju; bez własnej półki miksów dostaje na górze miksy z chipu Głównej. */
+export async function getMoodPage(
+  browseId: string,
+  name: string | undefined,
+  lang: Language
+): Promise<Section[]> {
+  const withMixes = Boolean(name) && !browseId.startsWith('FEmusic_home');
+  const [page, mixes] = await Promise.all([
+    getMoodPlaylist(browseId, lang),
+    withMixes ? getMoodMixes(name!, lang).catch(() => []) : Promise.resolve([]),
+  ]);
+  if (!mixes.length || page.some((s) => s.items.some(isPersonalMix))) return page;
+  return [{ title: translations[lang].mixesForYou, items: mixes }, ...page];
+}
+
+export interface MoodCategory {
+  id: string;
+  title: string;
+  browseId: string;
+  color: string;
+}
+
+export interface MoodGroup {
+  title: string;
+  items: MoodCategory[];
+}
+
+export function parseMoodGroups(data: unknown): MoodGroup[] {
+  const groups: MoodGroup[] = [];
+  const walk = (n: any) => {
+    if (!n || typeof n !== 'object') return;
+    if (Array.isArray(n)) {
+      n.forEach(walk);
+      return;
+    }
+    const grid = n.gridRenderer;
+    if (!grid) {
+      Object.values(n).forEach(walk);
+      return;
+    }
+    const items: MoodCategory[] = [];
+    for (const it of grid.items ?? []) {
+      const b = it?.musicNavigationButtonRenderer;
+      const ep = b?.clickCommand?.browseEndpoint;
+      const title = runsText(b?.buttonText);
+      if (!title || typeof ep?.browseId !== 'string') continue;
+      const browseId = ep.params ? `${ep.browseId}${BROWSE_PARAMS_SEP}${ep.params}` : ep.browseId;
+      const stripe = b.solid?.leftStripeColor;
+      // kolor przychodzi jako ARGB w jednej liczbie
+      const color =
+        typeof stripe === 'number'
+          ? `#${(stripe & 0xffffff).toString(16).padStart(6, '0')}`
+          : '#607D8B';
+      items.push({ id: browseId, title, browseId, color });
+    }
+    if (items.length)
+      groups.push({ title: runsText(grid.header?.gridHeaderRenderer?.title), items });
+  };
+  walk(data);
+  return groups;
+}
+
+const moodGroupsCache = new Map<string, { at: number; groups: MoodGroup[] }>();
+const lastMoodGroups = new Map<Language, MoodGroup[]>();
+
+export function peekMoodGroups(lang: Language): MoodGroup[] | null {
+  return lastMoodGroups.get(lang) ?? null;
+}
+
+/** Nastroje i gatunki z YTM w języku interfejsu, z grupą „Dla Ciebie” po zalogowaniu; null przy błędzie. */
+export async function getMoodGroups(lang: Language): Promise<MoodGroup[] | null> {
+  const key = await homeFeedKey(lang);
+  const hit = moodGroupsCache.get(key);
+  if (hit && Date.now() - hit.at < 30 * 60_000) return hit.groups;
+  const isPl = lang === 'pl';
+  const groups = await invokeWithTimeout<string>(
+    'ytm_browse',
+    {
+      browseId: 'FEmusic_moods_and_genres',
+      hl: isPl ? 'pl' : 'en',
+      gl: isPl ? 'PL' : 'US',
+      params: null,
+    },
+    12000
+  )
+    .then((text) => parseMoodGroups(JSON.parse(text)))
+    .catch(() => []);
+  if (!groups.length) return null;
+  moodGroupsCache.set(key, { at: Date.now(), groups });
+  lastMoodGroups.set(lang, groups);
+  return groups;
 }
 
 export interface ArtistHeader {
@@ -994,7 +1183,12 @@ async function fetchBrowse(browseId: string, lang: Language): Promise<Section[]>
   const cached = browseCache.get(cacheKey);
   const ttl =
     browseId.startsWith('FEmusic_home') || browseId.startsWith('FEmusic_explore') ? 180000 : 120000;
-  if (cached && Date.now() - cached.ts < ttl) return cached.data;
+  if (cached && Date.now() - cached.ts < ttl) {
+    // przy limicie 6 wpisów kilka stron nastrojów wypychałoby Główną, choć wraca się do niej najczęściej
+    browseCache.delete(cacheKey);
+    browseCache.set(cacheKey, cached);
+    return cached.data;
+  }
   const epoch = browseEpoch;
 
   return Promise.race([
@@ -1057,6 +1251,8 @@ async function fetchBrowseUncached(
             visitor: json?.responseContext?.visitorData ?? null,
           });
           homeMore.delete(cacheKey);
+          homeQuick.delete(cacheKey);
+          homeChips.set(cacheKey, parseHomeChips(json));
         }
         return parsePayload(json);
       })
@@ -3245,13 +3441,16 @@ function parseShelves(data: any, t: TranslationBundle): Section[] {
   function extractItems(contents: any[]): Track[] {
     const items: Track[] = [];
     for (const content of contents || []) {
+      const episode = content.musicMultiRowListItemRenderer;
       const nested =
         content.richItemRenderer?.content ||
         content.musicResponsiveListItemRenderer ||
         content.musicTwoRowItemRenderer ||
         content.gridVideoRenderer ||
         null;
+      // odcinek podcastu (chip „Podcasty”) ma nazwę audycji w secondTitle, a w subtitle tylko wyświetlenia i datę
       const r =
+        (episode && { ...episode, subtitle: episode.secondTitle ?? episode.subtitle }) ||
         nested?.musicResponsiveListItemRenderer ||
         nested?.musicTwoRowItemRenderer ||
         nested?.gridVideoRenderer ||
@@ -3362,12 +3561,35 @@ function parseShelves(data: any, t: TranslationBundle): Section[] {
       obj.musicShelfContinuation ||
       obj.gridContinuation;
     if (renderer) {
+      const head = renderer.header?.musicCarouselShelfBasicHeaderRenderer;
       const title =
-        extractFirstText(renderer.header?.musicCarouselShelfBasicHeaderRenderer?.title) ||
+        extractFirstText(head?.title) ||
         extractFirstText(renderer.header?.musicShelfHeaderRenderer?.title) ||
+        extractFirstText(renderer.header?.gridHeaderRenderer?.title) ||
         extractFirstText(renderer.title) ||
         extractFirstText(renderer.header?.title) ||
         t.defaultSectionTitle;
+      const meta: Partial<Section> = {};
+      const moreEp =
+        head?.moreContentButton?.buttonRenderer?.navigationEndpoint?.browseEndpoint ??
+        head?.title?.runs?.[0]?.navigationEndpoint?.browseEndpoint;
+      if (typeof moreEp?.browseId === 'string') {
+        meta.more = moreEp.params
+          ? { browseId: moreEp.browseId, params: moreEp.params }
+          : { browseId: moreEp.browseId };
+      }
+      const strapline = extractFirstText(head?.strapline);
+      if (strapline) meta.strapline = strapline;
+      const contents: any[] = renderer.contents || [];
+      if (
+        obj.musicCarouselShelfRenderer &&
+        contents.length > 0 &&
+        contents.every((c) => c?.musicResponsiveListItemRenderer)
+      ) {
+        meta.layout = 'list';
+      } else if (obj.gridRenderer || obj.musicGridRenderer) {
+        meta.layout = 'grid';
+      }
       if (obj.musicCardShelfRenderer) {
         const card = obj.musicCardShelfRenderer;
         const self = extractItems([
@@ -3389,10 +3611,10 @@ function parseShelves(data: any, t: TranslationBundle): Section[] {
         ]);
         const more = extractItems(card.contents || []);
         const all = [...self, ...more];
-        if (all.length > 0) sections.push({ title, items: all });
+        if (all.length > 0) sections.push({ title, items: all, ...meta });
       } else {
         const items = extractItems(renderer.contents || renderer.items);
-        if (items.length > 0) sections.push({ title, items });
+        if (items.length > 0) sections.push({ title, items, ...meta });
       }
     }
 

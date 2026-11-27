@@ -146,3 +146,22 @@ export function stableOrderSections(sections: Section[]): Section[] {
     return true;
   });
 }
+
+/** Półki o tym samym tytule podmienia w miejscu, nowe dokleja na końcu; bez zmian zwraca tę samą tablicę. */
+export function upsertSections(cur: Section[], incoming: Section[]): Section[] {
+  const at = new Map(cur.map((s, i) => [s.title, i]));
+  const next = [...cur];
+  let changed = false;
+  for (const s of incoming) {
+    const i = at.get(s.title);
+    if (i === undefined) {
+      at.set(s.title, next.length);
+      next.push(s);
+      changed = true;
+    } else if (next[i] !== s) {
+      next[i] = s;
+      changed = true;
+    }
+  }
+  return changed ? next : cur;
+}

@@ -55,6 +55,7 @@ export const ArtistView = memo(function ArtistView({
   onItemClick,
   onPlay,
   onShowAll,
+  onMore,
   t,
 }: {
   avatar: Track;
@@ -63,6 +64,7 @@ export const ArtistView = memo(function ArtistView({
   onItemClick: ItemClick;
   onPlay: (mode: ArtistPlayMode) => void;
   onShowAll: () => void;
+  onMore?: (section: Section) => void;
   t: Record<string, string>;
 }) {
   const top = header.songsTitle ? sections.find((s) => s.title === header.songsTitle) : undefined;
@@ -194,6 +196,7 @@ export const ArtistView = memo(function ArtistView({
           section={section}
           sectionIndex={idx}
           onItemClick={onItemClick}
+          onMore={onMore}
         />
       ))}
     </div>

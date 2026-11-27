@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { resolveFeedItem, bylineFromRuns, tidyByline } from '../utils/feed';
+import type { Section, Track } from '../api/youtube';
+import { resolveFeedItem, bylineFromRuns, tidyByline, upsertSections } from '../utils/feed';
 import { browseMoodId, isViewingPlaylist, itemClickPlan, sidebarClickPlan } from '../utils/tracks';
 
 describe('search / feed item identity', () => {
@@ -203,5 +204,28 @@ describe('byline play counts', () => {
       id: 'i_ZUw4sB7RE',
       type: 'track',
     });
+  });
+});
+
+const track = (id: string): Track => ({ id, type: 'track', title: id, artist: '', cover: '' });
+const shelf = (title: string, n = 2, extra: Partial<Section> = {}): Section => ({
+  title,
+  items: Array.from({ length: n }, (_, i) => track(`${title}-${i}`)),
+  ...extra,
+});
+
+describe('home shelves merge', () => {
+  it('replaces a shelf with the same title in place and appends new ones', () => {
+    const a = shelf('A');
+    const b = shelf('B');
+    const b2 = shelf('B', 3);
+    const next = upsertSections([a, b], [b2, shelf('C')]);
+    expect(next.map((s) => s.title)).toEqual(['A', 'B', 'C']);
+    expect(next[1]).toBe(b2);
+  });
+
+  it('keeps the same array when nothing changed', () => {
+    const cur = [shelf('A'), shelf('B')];
+    expect(upsertSections(cur, [cur[1]])).toBe(cur);
   });
 });
