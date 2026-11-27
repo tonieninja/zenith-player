@@ -22,7 +22,7 @@ export const HeroSection = memo(function HeroSection({
           width={200}
           height={200}
           alt=""
-          className="hero-cover-art"
+          className={`hero-cover-art${track.type === 'artist' ? ' is-artist' : ''}`}
           {...coverAttrs(track, 'large')}
         />
         <div className="hero-text-block">
@@ -30,8 +30,8 @@ export const HeroSection = memo(function HeroSection({
           <h1 className="hero-title-massive">{track.title}</h1>
           <h2 className="hero-artist-name">{track.artist}</h2>
           <div className="hero-action-buttons">
-            <button type="button" className="play-button" onClick={onPlay}>
-              <Play size={26} fill="currentColor" /> {t.play}
+            <button type="button" className="feed-hero-play" onClick={onPlay}>
+              <Play size={20} fill="currentColor" /> {t.play}
             </button>
           </div>
         </div>

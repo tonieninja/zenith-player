@@ -1,10 +1,11 @@
 import { memo, useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
-import { BarChart3, ChevronLeft, ChevronRight, Flame, Play, Smile } from 'lucide-react';
+import { BarChart3, Flame, Play, Smile } from 'lucide-react';
 import type { Section, Track } from '../api/youtube';
-import { type Language, currentT } from '../i18n';
+import type { Language } from '../i18n';
 import { usePager } from '../hooks/usePager';
 import { useResponsivePageSize } from '../hooks/useResponsivePageSize';
 import { coverAttrs } from '../utils/covers';
+import { PAGE_SIZE, PagerArrows } from './feed/FeedCarousel';
 import { getExploreLayout } from '../i18n/plugins';
 import { preBlur, preBlurred } from '../utils/preBlur';
 
@@ -68,15 +69,74 @@ export const FeedHero = memo(function FeedHero({
   );
 });
 
-export const FeedSkeleton = memo(function FeedSkeleton() {
+const skeletonChips = (n: number) =>
+  Array.from({ length: n }).map((_, i) => <div key={i} className="skeleton-block skeleton-chip" />);
+
+// twarda spacja daje blokowi wysokość linii prawdziwego tekstu w tej samej klasie
+export const SkeletonText = ({ className }: { className: string }) => (
+  <div className={`${className} skeleton-block skeleton-text`}>&nbsp;</div>
+);
+
+// te same klasy i liczba kolumn co gotowy widok, żeby treść po wczytaniu nie przeskakiwała
+export const FeedSkeleton = memo(function FeedSkeleton({
+  variant,
+}: {
+  variant: 'home' | 'explore' | 'search' | 'mood';
+}) {
+  const { ref, pageSize } = useResponsivePageSize<HTMLDivElement>(176, PAGE_SIZE);
+  if (variant === 'search')
+    return (
+      <div className="feed-skeleton" aria-hidden>
+        <section className="hero-section">
+          <div className="hero-content-wrapper">
+            <div className="hero-cover-art skeleton-block" />
+            <div className="hero-text-block">
+              <SkeletonText className="hero-badge" />
+              <SkeletonText className="hero-title-massive" />
+              <SkeletonText className="hero-artist-name" />
+              <div className="hero-action-buttons">
+                <SkeletonText className="feed-hero-play" />
+              </div>
+            </div>
+          </div>
+        </section>
+        <div className="search-results-list">
+          <LibrarySkeleton />
+        </div>
+      </div>
+    );
   return (
-    <div className="feed-skeleton" aria-hidden>
+    <div className="feed-skeleton" ref={ref} aria-hidden>
+      {(variant === 'home' || variant === 'mood') && (
+        <div className="mood-chips-container">
+          <div className="mood-chips-scroll">{skeletonChips(10)}</div>
+        </div>
+      )}
+      {(variant === 'home' || variant === 'explore') && (
+        <section className="feed-hero">
+          <div className="feed-hero-body">
+            <SkeletonText className="feed-hero-eyebrow" />
+            <SkeletonText className="feed-hero-title" />
+            <SkeletonText className="feed-hero-artist" />
+            <SkeletonText className="feed-hero-play" />
+          </div>
+        </section>
+      )}
+      {variant === 'explore' && <div className="explore-top-nav">{skeletonChips(3)}</div>}
       {[0, 1, 2].map((i) => (
-        <section key={i} className="yt-section skeleton-section">
-          <div className="skeleton-line skeleton-title" />
-          <div className="skeleton-cards-row">
-            {Array.from({ length: 6 }).map((_, j) => (
-              <div key={j} className="skeleton-card" />
+        <section key={i} className="yt-section">
+          <div className="yt-section-head">
+            <div className="skeleton-line skeleton-title" />
+          </div>
+          <div className="yt-scroll-track" style={{ '--cols': pageSize } as CSSProperties}>
+            {Array.from({ length: pageSize }).map((_, j) => (
+              <div key={j} className="yt-card">
+                <div className="yt-card-thumb skeleton-block" />
+                <div className="yt-card-info">
+                  <div className="skeleton-line" />
+                  <div className="skeleton-line short" />
+                </div>
+              </div>
             ))}
           </div>
         </section>
@@ -103,7 +163,7 @@ export const LibrarySkeleton = memo(function LibrarySkeleton() {
 
 const EXPLORE_TRENDING_MIN = 12;
 const EXPLORE_TRENDING_ROWS = 3;
-const EXPLORE_TRENDING_COL_W = 200;
+const EXPLORE_TRENDING_COL_W = 300;
 
 const ExploreTrendingShelf = memo(function ExploreTrendingShelf({
   section,
@@ -115,7 +175,7 @@ const ExploreTrendingShelf = memo(function ExploreTrendingShelf({
   const { ref: listRef, pageSize: cols } = useResponsivePageSize<HTMLElement>(
     EXPLORE_TRENDING_COL_W,
     10,
-    4
+    2
   );
   const pageSize = Math.max(EXPLORE_TRENDING_MIN, cols * EXPLORE_TRENDING_ROWS);
   const pg = usePager(section.items, pageSize);
@@ -124,24 +184,7 @@ const ExploreTrendingShelf = memo(function ExploreTrendingShelf({
     <section className="explore-section" ref={listRef}>
       <div className="explore-section-header">
         <h2 className="explore-section-title">{section.title}</h2>
-        <div className="explore-header-right">
-          <button
-            type="button"
-            className={'yt-arrow' + (!pg.canPrev ? ' yt-arrow-disabled' : '')}
-            onClick={pg.prev}
-            aria-label={currentT().previousTrack}
-          >
-            <ChevronLeft size={18} />
-          </button>
-          <button
-            type="button"
-            className={'yt-arrow' + (!pg.canNext ? ' yt-arrow-disabled' : '')}
-            onClick={pg.next}
-            aria-label={currentT().nextTrack}
-          >
-            <ChevronRight size={18} />
-          </button>
-        </div>
+        <PagerArrows pg={pg} className="explore-header-right" />
       </div>
       <div
         key={pg.epoch}

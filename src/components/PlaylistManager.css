@@ -450,49 +450,6 @@
   color: #ff9a9a;
   font-size: 12.5px;
 }
-.ctx-menu {
-  position: fixed;
-  z-index: 3000;
-  min-width: 210px;
-  max-height: 340px;
-  overflow-y: auto;
-  padding: 6px;
-  border-radius: 12px;
-  background: #1b1c20;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.55);
-}
-.ctx-menu-label {
-  padding: 6px 10px 4px;
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--text-muted);
-}
-.ctx-menu button {
-  display: block;
-  width: 100%;
-  text-align: left;
-  padding: 7px 10px;
-  border: 0;
-  border-radius: 8px;
-  background: transparent;
-  color: #fff;
-  font: inherit;
-  font-size: 13px;
-  cursor: pointer;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.ctx-menu button:hover {
-  background: rgba(255, 255, 255, 0.08);
-}
-.ctx-menu-empty {
-  padding: 7px 10px;
-  font-size: 12.5px;
-  color: rgba(255, 255, 255, 0.5);
-}
 @media (max-width: 860px) {
   .pm-body {
     grid-template-columns: 1fr;
@@ -507,11 +464,6 @@
   max-height: 90vh;
   overflow: hidden;
   padding-bottom: 0;
-}
-.ctx-menu-catcher {
-  position: fixed;
-  inset: 0;
-  z-index: 2999;
 }
 
 .pm-list-cover,

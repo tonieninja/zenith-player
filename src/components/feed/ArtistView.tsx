@@ -5,6 +5,7 @@ import { coverAttrs } from '../../utils/covers';
 import { formatTime } from '../../utils/playback';
 import { ctxTrackAttr } from '../../utils/tracks';
 import { SectionRow } from './FeedCarousel';
+import { SkeletonText } from '../FeedUI';
 
 export type ArtistPlayMode = 'all' | 'shuffle' | 'radio';
 
@@ -79,12 +80,17 @@ export const ArtistView = memo(function ArtistView({
       <section className="artist-hero" aria-labelledby="artist-name">
         {header.banner && (
           <img
+            // nowy węzeł dla nowego banera, bo display: none po błędzie poprzedniego artysty zostałby na elemencie
+            key={header.banner}
             className="artist-hero-banner"
             src={header.banner}
             alt=""
             aria-hidden
             decoding="async"
             fetchPriority="high"
+            onError={(e) => {
+              e.currentTarget.style.display = 'none';
+            }}
           />
         )}
         <div className="artist-hero-scrim" />
@@ -202,8 +208,25 @@ export const ArtistView = memo(function ArtistView({
 
 export const ArtistSkeleton = memo(function ArtistSkeleton() {
   return (
-    <div className="artist-skeleton" aria-hidden>
-      <div className="skeleton-card artist-skeleton-hero" />
+    <div className="artist-view artist-skeleton" aria-hidden>
+      <section className="artist-hero">
+        <div className="artist-hero-body">
+          <div className="artist-hero-identity">
+            <div className="artist-hero-avatar skeleton-block" />
+            <div className="artist-hero-text">
+              <SkeletonText className="artist-hero-name" />
+              <SkeletonText className="artist-hero-meta" />
+            </div>
+          </div>
+          <div className="artist-hero-about">
+            <SkeletonText className="artist-hero-description" />
+            <SkeletonText className="artist-hero-more" />
+          </div>
+          <div className="artist-hero-actions">
+            <SkeletonText className="feed-hero-play" />
+          </div>
+        </div>
+      </section>
       <div className="library-skeleton">
         {Array.from({ length: 5 }).map((_, i) => (
           <div key={i} className="library-skeleton-row">

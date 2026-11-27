@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { isPlaceholderCover, letterCover, localCover } from '../utils/covers';
+import type React from 'react';
+import { coverAttrs, imgErr, isPlaceholderCover, letterCover, localCover } from '../utils/covers';
 
 const svgOf = (u: string) => decodeURIComponent(u.split(',')[1]);
 
@@ -32,5 +33,44 @@ describe('letterCover', () => {
     expect(isPlaceholderCover('https://ui-avatars.com/api/?name=a')).toBe(true);
     expect(isPlaceholderCover('https://i.ytimg.com/vi/abc/hqdefault.jpg')).toBe(false);
     expect(isPlaceholderCover(undefined)).toBe(false);
+  });
+});
+
+describe('coverAttrs', () => {
+  const tr = {
+    id: 'x',
+    cover: 'c=w226-h226',
+    coverSmall: 's=w120-h120',
+    coverLarge: 'l=w544-h544',
+  };
+
+  it('gives cards the medium cover so they stay sharp without the 544 px file', () => {
+    expect(coverAttrs(tr, 'medium').src).toBe('c=w226-h226');
+    expect(coverAttrs(tr, 'small').src).toBe('s=w120-h120');
+    expect(coverAttrs(tr, 'large').src).toBe('l=w544-h544');
+    expect(coverAttrs({ id: 'x', coverLarge: 'l' }, 'medium').src).toBe('l');
+  });
+
+  it('swaps the letterboxed hqdefault for hq720 in large covers and falls back when it is missing', () => {
+    const vid = { id: 'abcdefghijk', cover: 'https://i.ytimg.com/vi/abcdefghijk/hqdefault.jpg' };
+    expect(coverAttrs(vid, 'large').src).toBe('https://i.ytimg.com/vi/abcdefghijk/hq720.jpg');
+    expect(coverAttrs(vid, 'medium').src).toBe('https://i.ytimg.com/vi/abcdefghijk/hqdefault.jpg');
+    const img = document.createElement('img');
+    img.src = 'https://i.ytimg.com/vi/abcdefghijk/hq720.jpg';
+    imgErr({ currentTarget: img } as unknown as React.SyntheticEvent<HTMLImageElement>);
+    expect(img.src).toBe('https://i.ytimg.com/vi/abcdefghijk/hqdefault.jpg');
+  });
+
+  it('ends on a placeholder it recognises, so a failing fallback cannot loop', () => {
+    const img = document.createElement('img');
+    img.src = 'https://lh3.googleusercontent.com/x=s100';
+    const err = () =>
+      imgErr({ currentTarget: img } as unknown as React.SyntheticEvent<HTMLImageElement>);
+    err();
+    expect(isPlaceholderCover(img.src)).toBe(true);
+    expect(decodeURIComponent(img.src)).not.toContain('>?<');
+    const placeholder = img.src;
+    err();
+    expect(img.src).toBe(placeholder);
   });
 });

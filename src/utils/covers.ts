@@ -29,7 +29,12 @@ export function localCover(url: string): string {
   );
 }
 
-const FALLBACK_AVATAR = letterCover('?', '#111827', '#6b7280');
+// nuta zamiast „?”, który wyglądał jak zepsuty obrazek; prefiks LETTER_COVER, by isPlaceholderCover ją rozpoznał
+const FALLBACK_AVATAR =
+  LETTER_COVER +
+  encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="#161821"/><g transform="translate(32 32) scale(1.5)" fill="none" stroke="#6b7280" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></g></svg>'
+  );
 
 const YTIMG = 'https://i.ytimg.com/vi/';
 
@@ -59,12 +64,20 @@ type CoverTrack = {
   coverLarge?: string;
 };
 
-export function coverAttrs(track: CoverTrack, size: 'thumb' | 'small' | 'large' = 'small') {
-  const src = localCover(
+export function coverAttrs(
+  track: CoverTrack,
+  size: 'thumb' | 'small' | 'medium' | 'large' = 'small'
+) {
+  let src = localCover(
     size === 'large'
       ? track.coverLarge || track.cover || track.coverSmall || ''
-      : track.coverSmall || track.cover || track.coverLarge || ''
+      : size === 'medium'
+        ? track.cover || track.coverLarge || track.coverSmall || ''
+        : track.coverSmall || track.cover || track.coverLarge || ''
   );
+  // hqdefault ma wbudowane czarne pasy widoczne w kwadratowym kadrze, a hq720 to czyste 16:9
+  if (size === 'large' && src.startsWith(YTIMG))
+    src = src.replace(/\/hqdefault\.jpg$/, '/hq720.jpg');
   const cached = cachedCoverUrl(src, size === 'large' ? 544 : size === 'thumb' ? 120 : 240);
   return {
     src: cached,
@@ -88,8 +101,8 @@ export function imgErr(e: React.SyntheticEvent<HTMLImageElement>) {
   const src = el.getAttribute('src') || el.src || '';
   const videoId = el.dataset.videoId || '';
 
-  if (src.includes('maxresdefault')) {
-    el.src = src.replace('maxresdefault', 'hqdefault');
+  if (src.includes('maxresdefault') || src.includes('/hq720.jpg')) {
+    el.src = src.replace(/maxresdefault|hq720/, 'hqdefault');
     return;
   }
 

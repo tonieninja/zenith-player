@@ -31,11 +31,11 @@ export const MoodChips = memo(function MoodChips({
             <span className="mood-chip-label">{moodLabel(lang, cat.id, cat.title, t)}</span>
           </button>
         ))}
-        <button type="button" className="mood-chip mood-chip-more" onClick={onMore}>
-          <span className="mood-chip-label">{t.moodsAndGenres}</span>
-          <ChevronRight size={14} aria-hidden />
-        </button>
       </div>
+      <button type="button" className="mood-chip mood-chip-more" onClick={onMore}>
+        <span className="mood-chip-label">{t.moodsAndGenres}</span>
+        <ChevronRight size={14} aria-hidden />
+      </button>
     </div>
   );
 });

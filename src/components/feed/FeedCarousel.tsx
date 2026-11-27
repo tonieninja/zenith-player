@@ -1,4 +1,4 @@
-import { memo, useCallback } from 'react';
+import { memo, useCallback, type CSSProperties } from 'react';
 import { ChevronLeft, ChevronRight, Play } from 'lucide-react';
 import type { Section, Track } from '../../api/youtube';
 import { usePager } from '../../hooks/usePager';
@@ -11,6 +11,39 @@ import { clickOnKey } from '../ui/keyboard';
 export const PAGE_SIZE = 8;
 
 type ItemClick = (t: Track, st?: string, si?: Track[]) => void;
+
+// strzałka bez disabled łapała fokus z Tab, a półka mieszcząca się na jednej stronie nie potrzebuje ich wcale
+export function PagerArrows({
+  pg,
+  className = 'yt-section-arrows',
+}: {
+  pg: { canPrev: boolean; canNext: boolean; prev: () => void; next: () => void };
+  className?: string;
+}) {
+  if (!pg.canPrev && !pg.canNext) return null;
+  return (
+    <div className={className}>
+      <button
+        type="button"
+        className="yt-arrow"
+        disabled={!pg.canPrev}
+        onClick={pg.prev}
+        aria-label={currentT().previousTrack}
+      >
+        <ChevronLeft size={18} />
+      </button>
+      <button
+        type="button"
+        className="yt-arrow"
+        disabled={!pg.canNext}
+        onClick={pg.next}
+        aria-label={currentT().nextTrack}
+      >
+        <ChevronRight size={18} />
+      </button>
+    </div>
+  );
+}
 
 const AlbumCard = memo(function AlbumCard({
   track,
@@ -32,9 +65,11 @@ const AlbumCard = memo(function AlbumCard({
     },
     [onClick, track, sectionTitle, sectionItems]
   );
+  // teledysk w kwadracie pokazywał czarne pasy z hqdefault, więc dostaje kartę 16:9 także w półce mieszanej
+  const wide = track.cover.includes('i.ytimg.com/vi/');
   return (
     <div
-      className={`yt-card yt-card-${track.type}`}
+      className={`yt-card yt-card-${track.type}${wide ? ' yt-card-wide' : ''}`}
       role="button"
       tabIndex={0}
       onClick={handleClick}
@@ -48,7 +83,7 @@ const AlbumCard = memo(function AlbumCard({
           decoding="async"
           alt=""
           className="yt-card-img"
-          {...coverAttrs(track, devicePixelRatio > 1 ? 'large' : 'small')}
+          {...coverAttrs(track, devicePixelRatio >= 2 ? 'large' : 'medium')}
         />
         <div className="yt-card-overlay">
           <div className="yt-card-play-btn">
@@ -86,27 +121,11 @@ export const SectionRow = memo(function SectionRow({
     <section className={'yt-section' + (video ? ' yt-section-video' : '')} ref={ref}>
       <div className="yt-section-head">
         <h2 className="yt-section-title">{section.title}</h2>
-        <div className="yt-section-arrows">
-          <button
-            type="button"
-            className={'yt-arrow' + (!pg.canPrev ? ' yt-arrow-disabled' : '')}
-            onClick={pg.prev}
-            aria-label={currentT().previousTrack}
-          >
-            <ChevronLeft size={18} />
-          </button>
-          <button
-            type="button"
-            className={'yt-arrow' + (!pg.canNext ? ' yt-arrow-disabled' : '')}
-            onClick={pg.next}
-            aria-label={currentT().nextTrack}
-          >
-            <ChevronRight size={18} />
-          </button>
-        </div>
+        <PagerArrows pg={pg} />
       </div>
       <div
         key={pg.epoch}
+        style={{ '--cols': pageSize } as CSSProperties}
         className={'yt-scroll-track' + (pg.dir ? ' yt-anim yt-slide-' + pg.dir : '')}
       >
         {pg.visible.map((track, idx) => (
@@ -140,27 +159,11 @@ export const QuickPicks = memo(function QuickPicks({
     <section className="yt-section" ref={ref}>
       <div className="yt-section-head">
         <h2 className="yt-section-title">{t.quickPicks}</h2>
-        <div className="yt-section-arrows">
-          <button
-            type="button"
-            className={'yt-arrow' + (!pg.canPrev ? ' yt-arrow-disabled' : '')}
-            onClick={pg.prev}
-            aria-label={currentT().previousTrack}
-          >
-            <ChevronLeft size={18} />
-          </button>
-          <button
-            type="button"
-            className={'yt-arrow' + (!pg.canNext ? ' yt-arrow-disabled' : '')}
-            onClick={pg.next}
-            aria-label={currentT().nextTrack}
-          >
-            <ChevronRight size={18} />
-          </button>
-        </div>
+        <PagerArrows pg={pg} />
       </div>
       <div
         key={pg.epoch}
+        style={{ '--cols': pageSize } as CSSProperties}
         className={'yt-scroll-track' + (pg.dir ? ' yt-anim yt-slide-' + pg.dir : '')}
       >
         {pg.visible.map((track, idx) => (
