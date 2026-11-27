@@ -1,11 +1,17 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const m = vi.hoisted(() => ({ listens: new Map<string, number>() }));
+const m = vi.hoisted(() => ({
+  listens: new Map<string, number>(),
+  roomJoinGate: null as Promise<void> | null,
+}));
 
 vi.mock('@tauri-apps/api/core', () => ({
   invoke: vi.fn(async (cmd: string) => {
     if (cmd === 'remote_start') return { running: true, port: 8765, clients: 0, pairedDevices: 0 };
-    if (cmd === 'room_join') return true;
+    if (cmd === 'room_join') {
+      await m.roomJoinGate;
+      return true;
+    }
     if (cmd === 'room_get_port') return 18765;
     if (cmd === 'discover_picks') return [];
     return null;
@@ -34,7 +40,7 @@ vi.mock('@tauri-apps/plugin-http', () => ({
 
 import { ALL_PLUGINS, pluginManager, type ZenithPlugin } from '../plugins';
 import { startDuckMonitor } from '../plugins/duckOnVoice';
-import { joinRoom } from '../plugins/listeningRoom';
+import { getRoomCode, joinRoom } from '../plugins/listeningRoom';
 import { registerRemotePusher, startRemote } from '../plugins/remoteControl';
 import { sponsorBlockJump } from '../plugins/sponsorBlock';
 
@@ -244,4 +250,22 @@ describe('plugin lifecycle', () => {
       expect(snapshot()).toEqual(before);
     });
   }
+
+  it('listening-room: turning it off mid-join leaves no socket and no guest role', async () => {
+    pluginManager.setEnabled('listening-room', true);
+    await flush();
+    const before = snapshot();
+    let open!: () => void;
+    m.roomJoinGate = new Promise<void>((r) => (open = r));
+    const joined = joinRoom('ABC123');
+    await flush();
+    pluginManager.setEnabled('listening-room', false);
+    await flush();
+    open();
+    m.roomJoinGate = null;
+    expect(await joined).toBe(false);
+    await flush();
+    expect(snapshot()).toEqual(before);
+    expect(getRoomCode()).toBe('');
+  });
 });
