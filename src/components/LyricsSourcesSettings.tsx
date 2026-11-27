@@ -10,7 +10,7 @@ import {
   type LyricsSource,
 } from '../lyrics/prefs';
 
-export function LyricsSourcesSettings({ lang, inModal }: { lang: Language; inModal?: boolean }) {
+export function LyricsSourcesSettings({ lang }: { lang: Language }) {
   const t = translations[lang];
   const prefs = useLyricsPrefs();
   const upgrade = lyricsUpgrade.useValue();
@@ -24,10 +24,10 @@ export function LyricsSourcesSettings({ lang, inModal }: { lang: Language; inMod
   };
 
   return (
-    <div id="lyrics-sources" className={`lyrics-sources${inModal ? ' in-modal' : ''}`}>
+    <div className="lyrics-sources">
       <div className="settings-row-item settings-toggle-row">
         <div className="settings-account-info">
-          {!inModal && <span className="setting-label">{t.lyricsSources}</span>}
+          <span className="setting-label">{t.lyricsSources}</span>
           <span className="plugin-desc">{t.lyricsSourcesDesc}</span>
         </div>
         <button

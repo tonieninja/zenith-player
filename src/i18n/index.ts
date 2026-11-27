@@ -584,7 +584,7 @@ const en = {
   lyricsSourcesDesc:
     'Auto asks them in this order. The starred one wins whenever it agrees with the others; switched-off sources are never asked.',
   lyricsSourcesReset: 'Reset',
-  lyricsSourcesManage: 'Lyrics sources',
+  lyricsSourcesManage: 'Lyrics settings',
   lyricsSourceMakeTop: 'Make {name} the top source',
   lyricsSourceTop: 'Top source',
   lyricsSourceUp: 'Move up',
@@ -1259,7 +1259,7 @@ const pl: Record<keyof typeof en, string> = {
   lyricsSourcesDesc:
     'Auto pyta je w tej kolejności. Źródło z gwiazdką wygrywa, gdy zgadza się z innymi; wyłączonych nie pyta wcale.',
   lyricsSourcesReset: 'Przywróć',
-  lyricsSourcesManage: 'Źródła tekstów',
+  lyricsSourcesManage: 'Ustawienia tekstów',
   lyricsSourceMakeTop: 'Ustaw {name} jako główne źródło',
   lyricsSourceTop: 'Główne źródło',
   lyricsSourceUp: 'Przesuń wyżej',

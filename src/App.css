@@ -1672,18 +1672,15 @@ button.nav-item {
 .lyrics-sources-modal {
   width: 460px;
 }
-.lyrics-sources.in-modal .settings-toggle-row:first-child {
-  padding-top: 0;
-}
-.lyrics-sources.in-modal .lyrics-sources-list {
+.lyrics-sources .lyrics-sources-list {
   margin: 4px 0 12px;
   padding: 6px;
   border: 1px solid rgba(255, 255, 255, 0.06);
 }
-.lyrics-sources.in-modal .lyrics-source-row {
+.lyrics-sources .lyrics-source-row {
   padding: 7px 10px;
 }
-.lyrics-sources.in-modal .lyrics-source-name {
+.lyrics-sources .lyrics-source-name {
   font-size: 14px;
 }
 

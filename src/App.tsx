@@ -6321,7 +6321,7 @@ export default function App() {
             onClick={(e) => e.stopPropagation()}
           >
             <div className="modal-header">
-              <h2>{t.lyricsSources}</h2>
+              <h2>{t.lyricsSourcesManage}</h2>
               <button
                 type="button"
                 className="modal-close-icon"
@@ -6333,7 +6333,58 @@ export default function App() {
               </button>
             </div>
             <div className="modal-body">
-              <LyricsSourcesSettings lang={lang} inModal />
+              <div className="settings-row-item settings-toggle-row">
+                <div className="settings-account-info">
+                  <span className="setting-label" id="set-light-lyrics-label">
+                    {t.lightLyrics}
+                  </span>
+                  <span className="plugin-desc">{t.lightLyricsDesc}</span>
+                </div>
+                <button
+                  type="button"
+                  className={`lang-option-btn remember-login-toggle${lightLyrics ? ' active' : ''}`}
+                  aria-pressed={lightLyrics}
+                  aria-labelledby="set-light-lyrics-label"
+                  onClick={() => setLightLyrics(!lightLyrics)}
+                >
+                  {lightLyrics ? t.toggleOn : t.toggleOff}
+                </button>
+              </div>
+              <div className="settings-row-item settings-toggle-row">
+                <div className="settings-account-info">
+                  <span className="setting-label" id="set-romanize-label">
+                    {t.lyricsRomanize}
+                  </span>
+                  <span className="plugin-desc">{t.lyricsRomanizeDesc}</span>
+                </div>
+                <button
+                  type="button"
+                  className={`lang-option-btn remember-login-toggle${romanize ? ' active' : ''}`}
+                  aria-pressed={romanize}
+                  aria-labelledby="set-romanize-label"
+                  onClick={() => romanizeLyrics.set(!romanize)}
+                >
+                  {romanize ? t.toggleOn : t.toggleOff}
+                </button>
+              </div>
+              <div className="settings-row-item settings-toggle-row">
+                <div className="settings-account-info">
+                  <span className="setting-label" id="set-translate-label">
+                    {t.lyricsTranslate}
+                  </span>
+                  <span className="plugin-desc">{t.lyricsTranslateDesc}</span>
+                </div>
+                <button
+                  type="button"
+                  className={`lang-option-btn remember-login-toggle${translateLyricsOn ? ' active' : ''}`}
+                  aria-pressed={translateLyricsOn}
+                  aria-labelledby="set-translate-label"
+                  onClick={() => translateLyrics.set(!translateLyricsOn)}
+                >
+                  {translateLyricsOn ? t.toggleOn : t.toggleOff}
+                </button>
+              </div>
+              <LyricsSourcesSettings lang={lang} />
             </div>
           </div>
         </ModalOverlay>
@@ -6403,58 +6454,6 @@ export default function App() {
               </div>
               {isNativeAudio() && <AudioOutputSettings lang={lang} />}
               <PanelGapSetting lang={lang} />
-              <div className="settings-row-item settings-toggle-row">
-                <div className="settings-account-info">
-                  <span className="setting-label" id="set-light-lyrics-label">
-                    {t.lightLyrics}
-                  </span>
-                  <span className="plugin-desc">{t.lightLyricsDesc}</span>
-                </div>
-                <button
-                  type="button"
-                  className={`lang-option-btn remember-login-toggle${lightLyrics ? ' active' : ''}`}
-                  aria-pressed={lightLyrics}
-                  aria-labelledby="set-light-lyrics-label"
-                  onClick={() => setLightLyrics(!lightLyrics)}
-                >
-                  {lightLyrics ? t.toggleOn : t.toggleOff}
-                </button>
-              </div>
-              <div className="settings-row-item settings-toggle-row">
-                <div className="settings-account-info">
-                  <span className="setting-label" id="set-romanize-label">
-                    {t.lyricsRomanize}
-                  </span>
-                  <span className="plugin-desc">{t.lyricsRomanizeDesc}</span>
-                </div>
-                <button
-                  type="button"
-                  className={`lang-option-btn remember-login-toggle${romanize ? ' active' : ''}`}
-                  aria-pressed={romanize}
-                  aria-labelledby="set-romanize-label"
-                  onClick={() => romanizeLyrics.set(!romanize)}
-                >
-                  {romanize ? t.toggleOn : t.toggleOff}
-                </button>
-              </div>
-              <div className="settings-row-item settings-toggle-row">
-                <div className="settings-account-info">
-                  <span className="setting-label" id="set-translate-label">
-                    {t.lyricsTranslate}
-                  </span>
-                  <span className="plugin-desc">{t.lyricsTranslateDesc}</span>
-                </div>
-                <button
-                  type="button"
-                  className={`lang-option-btn remember-login-toggle${translateLyricsOn ? ' active' : ''}`}
-                  aria-pressed={translateLyricsOn}
-                  aria-labelledby="set-translate-label"
-                  onClick={() => translateLyrics.set(!translateLyricsOn)}
-                >
-                  {translateLyricsOn ? t.toggleOn : t.toggleOff}
-                </button>
-              </div>
-              <LyricsSourcesSettings lang={lang} />
               <div className="settings-row-item settings-toggle-row">
                 <div className="settings-account-info">
                   <span className="setting-label">{t.replayOnboarding}</span>
