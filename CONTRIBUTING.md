@@ -13,3 +13,5 @@ Please don't add YouTube or Google logos or call the app official.
    `gh release create vX.Y.Z --draft --title X.Y.Z --notes-file notes.md`
 3. Tag and push. CI uploads everything into that draft.
 4. Check the files and publish with `gh release edit vX.Y.Z --draft=false --latest`.
+5. Run `node scripts/update-packaging.mjs X.Y.Z` and copy the results to the AUR, the Homebrew tap and
+   Flathub ([packaging/README.md](packaging/README.md)).

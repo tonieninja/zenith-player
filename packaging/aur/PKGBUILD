@@ -1,0 +1,21 @@
+# Maintainer: tonieninja <https://github.com/tonieninja>
+pkgname=zenith-player-bin
+pkgver=4.7.0
+pkgrel=1
+pkgdesc='Desktop music player with synced lyrics, crossfade and plugins (not affiliated with Google or YouTube)'
+arch=('x86_64')
+url='https://github.com/tonieninja/zenith-player'
+license=('MIT')
+depends=('alsa-lib' 'gst-libav' 'gst-plugins-base' 'gst-plugins-good' 'gtk3' 'libayatana-appindicator' 'webkit2gtk-4.1')
+optdepends=('xdg-utils: open links in the browser')
+provides=('zenith-player')
+conflicts=('zenith-player')
+options=('!debug')
+source_x86_64=("$pkgname-$pkgver.deb::$url/releases/download/v$pkgver/Zenith_${pkgver}_amd64.deb")
+sha256sums_x86_64=('0000000000000000000000000000000000000000000000000000000000000000')
+
+package() {
+  # makepkg rozpakował już .deb, zostaje data.tar z drzewem /usr
+  bsdtar -xf data.tar.* -C "$pkgdir"
+  install -Dm644 "$pkgdir/usr/lib/Zenith/LICENSE" -t "$pkgdir/usr/share/licenses/$pkgname"
+}
