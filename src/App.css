@@ -4467,6 +4467,28 @@ button.modal-close-icon {
   pointer-events: none;
 }
 
+/* okładka nagłówka nie ma ramki z ::after, więc mieni się jej własne tło */
+:is(.collection-cover, .artist-hero-avatar):not([data-loaded]) {
+  background-image: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0),
+    rgba(255, 255, 255, 0.07),
+    rgba(255, 255, 255, 0)
+  );
+  background-size: 40% 100%;
+  background-repeat: no-repeat;
+  animation: coverSweep 1.4s ease-in-out infinite;
+}
+
+@keyframes coverSweep {
+  from {
+    background-position: -70% 0;
+  }
+  to {
+    background-position: 170% 0;
+  }
+}
+
 @keyframes skeletonShimmer {
   from {
     transform: translateX(0);

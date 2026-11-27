@@ -75,6 +75,9 @@ export function coverAttrs(
         ? track.cover || track.coverLarge || track.coverSmall || ''
         : track.coverSmall || track.cover || track.coverLarge || ''
   );
+  // React pomija pusty src, a obrazek bez niego nie da load ani error, więc mieniłby się bez końca
+  if (!src)
+    src = isYouTubeVideoId(track.id) ? `${YTIMG}${track.id}/hqdefault.jpg` : FALLBACK_AVATAR;
   // hqdefault ma wbudowane czarne pasy widoczne w kwadratowym kadrze, a hq720 to czyste 16:9
   if (size === 'large' && src.startsWith(YTIMG))
     src = src.replace(/\/hqdefault\.jpg$/, '/hq720.jpg');
