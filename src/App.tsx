@@ -4126,12 +4126,13 @@ ${lang}`
       const typing = isTypingEvent(e);
       if (e.key === 'Escape') {
         if (document.querySelector('.zen-select.open')) return;
-        if (typing && (e.target as HTMLInputElement | null)?.value) return;
+        // pola w tych oknach nie obsługują Escape same, a nazwa kolekcji jest wypełniona od razu
         if (escapeTopModal()) {
           e.preventDefault();
           e.stopPropagation();
           return;
         }
+        if (typing && (e.target as HTMLInputElement | null)?.value) return;
         const open = overlayStackRef.current;
         if (open.np) setNpOpen(false);
         else if (open.plEdit) setPlEdit(null);
