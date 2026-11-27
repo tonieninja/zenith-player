@@ -244,6 +244,14 @@ pub async fn lastfm_scrobble(app: AppHandle, t: ScrobbleTrack) -> Result<(), Str
 
 static IMPORTING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
+// awaria usługi (8, 11, 16), limit zapytań (29) i zerwane połączenie mijają same; zły klucz czy użytkownik nie
+fn transient(e: &str) -> bool {
+    match e.strip_prefix("last.fm ") {
+        Some(rest) => matches!(rest.split(':').next(), Some("8" | "11" | "16" | "29")),
+        None => true,
+    }
+}
+
 /// Jedna strona historii: (wykonawca, tytuł, album, czas w ms); utwór grany teraz nie ma daty i odpada.
 pub fn parse_recent(v: &serde_json::Value) -> (Vec<crate::db::Scrobble>, u64) {
     let rt = &v["recenttracks"];
@@ -303,7 +311,17 @@ pub fn lastfm_import(app: AppHandle, user: Option<String>) -> Result<(), String>
             p.insert("user".into(), user.clone());
             p.insert("limit".into(), "200".into());
             p.insert("page".into(), page.to_string());
-            let v = match call(&c, "user.getrecenttracks", p, false).await {
+            let mut tries = 0;
+            let got = loop {
+                match call(&c, "user.getrecenttracks", p.clone(), false).await {
+                    Err(e) if tries < 3 && transient(&e) => {
+                        tries += 1;
+                        tokio::time::sleep(std::time::Duration::from_secs(2 << tries)).await;
+                    }
+                    r => break r,
+                }
+            };
+            let v = match got {
                 Ok(v) => v,
                 Err(e) => {
                     error = Some(e);
@@ -346,6 +364,15 @@ mod tests {
     }
 
     use super::*;
+    #[test]
+    fn import_retries_only_passing_failures() {
+        assert!(transient("last.fm 29: Rate Limit Exceeded"));
+        assert!(transient("last.fm 8: Operation failed"));
+        assert!(transient("error sending request for url"));
+        assert!(!transient("last.fm 6: User not found"));
+        assert!(!transient("last.fm 10: Invalid API key"));
+    }
+
     #[test]
     fn signature_matches_spec_example() {
         let mut p = BTreeMap::new();
