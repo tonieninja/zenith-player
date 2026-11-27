@@ -297,6 +297,16 @@ const CATALOG: Record<string, Record<Language, PluginText>> = {
       desc: 'Linki w rodzaju zenith://play?v=<id> z przeglądarki albo innych programów otwierają się w Zenith. Windows i Linux.',
     },
   },
+  discover: {
+    en: {
+      name: 'Discover',
+      desc: 'A home row with artists close to the ones you play most, found through Deezer, so not only from the YouTube Music bubble. Only the names of your top artists are sent.',
+    },
+    pl: {
+      name: 'Odkrywaj',
+      desc: 'Rząd na stronie głównej z wykonawcami bliskimi tym, których słuchasz najczęściej, znalezionymi przez Deezera, czyli nie tylko z bańki YouTube Music. Wysyłane są tylko nazwy twoich ulubionych wykonawców.',
+    },
+  },
   'window-title': {
     en: { name: 'Window title', desc: "Shows what's playing in the window title." },
     pl: { name: 'Tytuł okna', desc: 'Pokazuje w tytule okna, co teraz leci.' },

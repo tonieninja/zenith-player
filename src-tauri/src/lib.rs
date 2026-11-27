@@ -6,6 +6,7 @@ mod deeplink;
 mod deps;
 mod diag;
 mod discord;
+mod discover;
 mod downloads;
 mod dualsense;
 mod export_file;
@@ -926,6 +927,7 @@ pub fn run() {
             db::smart_queue,
             backup::backup_export,
             backup::backup_import,
+            discover::discover_picks,
             native_audio::zaudio_attach,
             native_audio::zaudio_snapshot,
             windows::ui_ready,

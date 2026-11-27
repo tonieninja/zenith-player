@@ -35,6 +35,7 @@ import { statsTrackerPlugin } from './statsTracker';
 import { systemTrayPlugin } from './systemTray';
 import { webhookPlugin } from './webhook';
 import { windowTitlePlugin } from './windowTitle';
+import { discoverPlugin } from './discover';
 import { taskbarButtonsPlugin } from './taskbarButtons';
 import { zenithLinksPlugin } from './zenithLinks';
 import { blockArtistsPlugin } from './blockArtists';
@@ -74,6 +75,7 @@ export const PLUGIN_ORDER = [
   'webhook',
   'lastfm-scrobbler',
   'listenbrainz-scrobbler',
+  'discover',
   'discord-rpc',
   'listening-room',
   'zenith-stage',
@@ -153,6 +155,7 @@ export const ALL_PLUGINS: ZenithPlugin[] = [
   taskbarButtonsPlugin,
   webhookPlugin,
   windowTitlePlugin,
+  discoverPlugin,
   zenithLinksPlugin,
   zenithStagePlugin,
 ];

@@ -165,6 +165,7 @@ import {
 import { sponsorBlockJump } from './plugins/sponsorBlock';
 import { downloadTrack } from './plugins/offlineDownloads';
 import { playLogSwitch, playLogTick } from './utils/playLog';
+import { discoverSection } from './plugins/discover';
 import { registerAutoPauseCallback } from './plugins/autoPauseBlur';
 import { Select } from './components/ui/Select';
 import {
@@ -1008,6 +1009,12 @@ export default function App() {
           if (dataSeq !== feedSeqRef.current.home) return;
           const normalizedHome = stableOrderSections(nextHome);
           setHomeSections(normalizedHome);
+          if (pluginManager.isEnabled('discover')) {
+            void discoverSection(language, translations[language].discoverRow).then((row) => {
+              if (!row || dataSeq !== feedSeqRef.current.home) return;
+              setHomeSections((cur) => [...cur.slice(0, 2), row, ...cur.slice(2)]);
+            });
+          }
           setQuickPicks(picks);
           const allTracks = [
             ...picks,

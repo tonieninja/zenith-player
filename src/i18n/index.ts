@@ -580,6 +580,7 @@ const en = {
     'Lifts the player bar off the bottom edge, so an auto-hiding panel or taskbar does not pop up over the buttons.',
   panelGapNone: 'None',
   backupTitle: 'Backup',
+  discoverRow: 'Outside your usual',
   backupDesc:
     'One file with your settings, plugin setup, playlist folders, favorites, ratings and listening history. Sign-ins and downloaded songs are not in it.',
   backupExport: 'Export',
@@ -1263,6 +1264,7 @@ const pl: Record<keyof typeof en, string> = {
     'Odsuwa pasek odtwarzacza od dolnej krawędzi, żeby ukryty panel albo pasek zadań nie wysuwał się na przyciski.',
   panelGapNone: 'Brak',
   backupTitle: 'Kopia zapasowa',
+  discoverRow: 'Spoza twojej bańki',
   backupDesc:
     'Jeden plik z ustawieniami, konfiguracją wtyczek, folderami playlist, ulubionymi, ocenami i historią słuchania. Bez logowań i pobranych utworów.',
   backupExport: 'Eksportuj',
