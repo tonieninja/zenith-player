@@ -496,9 +496,9 @@ async fn fetch_to_disk(
         .unwrap_or(0);
     let mut ext = ext_for(&head[..n]);
     let mut done = done;
-    if tags && ext == "webm" {
-        if let Some(size) = tag_as_opus(&part, &meta).await {
-            ext = "opus";
+    if tags && (ext == "webm" || ext == "m4a") {
+        if let Some(size) = tag_file(&part, &meta, ext).await {
+            ext = if ext == "webm" { "opus" } else { ext };
             done = size;
         }
     }
@@ -525,18 +525,18 @@ async fn fetch_to_disk(
     Ok(meta)
 }
 
-// nieudane przepakowanie zostawia oryginalny WebM bez tagów, bo utwór i tak jest już na dysku
-async fn tag_as_opus(part: &std::path::Path, meta: &DownloadMeta) -> Option<u64> {
+// nieudane tagowanie zostawia oryginalny plik bez tagów, bo utwór i tak jest już na dysku
+async fn tag_file(part: &std::path::Path, meta: &DownloadMeta, ext: &str) -> Option<u64> {
     let cover = match meta.cover.as_str() {
         "" => None,
         url => crate::cover_cache::get(544, url.to_string()).await.ok(),
     };
     let (src, dst, m) = (
         part.to_path_buf(),
-        part.with_extension("opus.part"),
+        part.with_extension("tag.part"),
         meta.clone(),
     );
-    let out = dst.clone();
+    let (out, m4a) = (dst.clone(), ext == "m4a");
     let r = tokio::task::spawn_blocking(move || {
         let tags = crate::opus_tags::Tags {
             title: &m.title,
@@ -544,7 +544,11 @@ async fn tag_as_opus(part: &std::path::Path, meta: &DownloadMeta) -> Option<u64>
             album: &m.album,
             cover_jpeg: cover.as_deref(),
         };
-        crate::opus_tags::webm_to_ogg(&src, &out, &tags)
+        if m4a {
+            crate::opus_tags::tag_m4a(&src, &out, &tags)
+        } else {
+            crate::opus_tags::webm_to_ogg(&src, &out, &tags)
+        }
     })
     .await
     .map_err(|e| e.to_string())
