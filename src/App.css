@@ -1094,7 +1094,8 @@ button.nav-item {
   display: grid;
   grid-template-columns: repeat(var(--cols, 4), minmax(0, 1fr));
   gap: 0 12px;
-  padding: 2px clamp(12px, 3vw, 52px) 16px;
+  /* wiersz ma 10 px wewnętrznego marginesu, więc miniatura staje w linii z tytułem półki */
+  padding: 2px calc(var(--content-gutter) - 10px) 16px;
 }
 
 .yt-list-col {
@@ -1132,7 +1133,7 @@ button.nav-item {
 .yt-grid-wrap {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
-  padding: 2px clamp(12px, 3vw, 52px) 16px;
+  padding: 2px calc(var(--content-gutter) - 10px) 16px;
 }
 
 .yt-grid-wrap > .yt-card {
@@ -2765,7 +2766,8 @@ button.modal-close-icon {
 .search-results-list {
   display: flex;
   flex-direction: column;
-  padding: 0 clamp(16px, 3vw, 48px) 120px;
+  /* odejmuje padding wiersza, żeby okładki stały w linii z nagłówkiem wyników */
+  padding: 0 calc(var(--content-gutter) - 14px) 120px;
 }
 .search-result-row {
   display: flex;
@@ -2869,7 +2871,7 @@ button.modal-close-icon {
 }
 @media (max-width: 768px) {
   .search-results-list {
-    padding: 0 8px 100px;
+    padding: 0 calc(var(--content-gutter) - 8px) 100px;
   }
   .search-result-row {
     padding: 7px 8px;
