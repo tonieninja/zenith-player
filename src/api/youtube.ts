@@ -630,6 +630,8 @@ export function invalidateLibraryCache() {
   librarySectionCache.clear();
   // stary token kontynuacji dokleiłby strony z poprzedniej wersji listy
   libraryContinuations.clear();
+  playlistCache.clear();
+  playlistHeads.clear();
 }
 
 const PLAYLIST_OVERRIDE_MS = 10 * 60 * 1000;
@@ -864,11 +866,22 @@ export function parseArtistHeader(data: any): ArtistHeader | null {
 }
 
 const artistCache = new Map<string, { data: ArtistPage; ts: number }>();
+// najechanie na kartę wykonawcy i klik chwilę później dzielą jedno zapytanie
+const artistInflight = new Map<string, Promise<ArtistPage>>();
 
 export async function getArtistPage(browseId: string, lang: Language): Promise<ArtistPage> {
   const key = `${browseId}:${lang}`;
   const cached = artistCache.get(key);
   if (cached && Date.now() - cached.ts < 120000) return cached.data;
+  let task = artistInflight.get(key);
+  if (!task) {
+    task = fetchArtistPage(browseId, lang, key).finally(() => artistInflight.delete(key));
+    artistInflight.set(key, task);
+  }
+  return task;
+}
+
+async function fetchArtistPage(browseId: string, lang: Language, key: string): Promise<ArtistPage> {
   const isPl = lang === 'pl';
   const raw = await invokeWithTimeout<string>(
     'ytm_browse',
@@ -1432,12 +1445,57 @@ async function loadWatchQueue(playlistId: string, lang: Language): Promise<Track
   return extractAllTracks(JSON.parse(await response.text()), translations[lang]);
 }
 
+// ponowne wejście w album lub playlistę nie czeka na YouTube; listy LM, SE, WL i miksy RD zmieniają się same
+const playlistCache = new Map<string, { res: PlaylistLoad; ts: number }>();
+// pierwsza strona pobrana po najechaniu na kartę; klik czeka na nią zamiast wysyłać to samo zapytanie
+const playlistHeads = new Map<string, { task: Promise<any>; ts: number }>();
+const PLAYLIST_CACHE_MS = 120_000;
+
+async function fetchPlaylistHead(id: string, lang: Language, timeoutMs: number): Promise<any> {
+  const key = `${id}:${lang}`;
+  const pre = playlistHeads.get(key);
+  playlistHeads.delete(key);
+  const early = pre && Date.now() - pre.ts < PLAYLIST_CACHE_MS ? await pre.task : null;
+  if (early) return early;
+  const response = await fetchWithTimeout(
+    ytmUrl('browse'),
+    {
+      method: 'POST',
+      headers: await buildAuthHeaders(lang),
+      body: JSON.stringify({ ...buildClientContext(lang), browseId: id }),
+    },
+    timeoutMs
+  );
+  if (!response.ok) return null;
+  return JSON.parse(await response.text());
+}
+
+/** Najechanie na kartę albumu lub playlisty: pierwsza strona rusza, zanim padnie klik. */
+export function prefetchPlaylist(browseId: string, lang: Language) {
+  const hit = playlistCache.get(`${browseId}:${lang}`);
+  if (!isEditablePlaylist(browseId) || (hit && Date.now() - hit.ts < PLAYLIST_CACHE_MS)) return;
+  const id = playlistBrowseCandidates(browseId)[0];
+  if (!id || playlistHeads.has(`${id}:${lang}`)) return;
+  const task = fetchPlaylistHead(id, lang, 20000).catch(() => null);
+  playlistHeads.set(`${id}:${lang}`, { task, ts: Date.now() });
+  pruneOldest(playlistHeads, 8);
+}
+
 export async function loadPlaylistItems(
   browseId: string,
   lang: Language,
   onPage?: (items: Track[]) => void,
-  isStale?: () => boolean
+  isStale?: () => boolean,
+  fresh = false
 ): Promise<PlaylistLoad> {
+  const cacheKey = `${browseId}:${lang}`;
+  const cacheable = isEditablePlaylist(browseId);
+  const hit = cacheable && !fresh ? playlistCache.get(cacheKey) : undefined;
+  if (hit && Date.now() - hit.ts < PLAYLIST_CACHE_MS) {
+    onPage?.(hit.res.items.slice());
+    return hit.res;
+  }
+  const epoch = libraryEpoch;
   const ids = playlistBrowseCandidates(browseId);
   const generated = isGeneratedMixId(browseId);
   const timeoutMs = generated ? 15000 : 20000;
@@ -1449,19 +1507,8 @@ export async function loadPlaylistItems(
     }
     for (const id of ids) {
       try {
-        const headers = await buildAuthHeaders(lang);
-        const response = await fetchWithTimeout(
-          ytmUrl('browse'),
-          {
-            method: 'POST',
-            headers,
-            body: JSON.stringify({ ...buildClientContext(lang), browseId: id }),
-          },
-          timeoutMs
-        );
-        if (!response.ok) continue;
-        const data = JSON.parse(await response.text());
-        if (data?.error || !data?.contents) continue;
+        const data = await fetchPlaylistHead(id, lang, timeoutMs);
+        if (!data || data.error || !data.contents) continue;
         const root = playlistContentRoot(data, id);
         if (root === EMPTY_PLAYLIST) {
           sawEmpty = true;
@@ -1488,19 +1535,29 @@ export async function loadPlaylistItems(
         addFrom(root);
         if (tracks.length) onPage?.(tracks.slice());
         let token = findContinuationToken(root);
+        let cut = false;
         // porzucony widok nie musi ściągać i parsować kolejnych 50 stron
         for (let round = 0; token && round < maxPages && !isStale?.(); round += 1) {
           let cont: { data: unknown; next: string | null };
           try {
             cont = await fetchPlaylistContinuation(token, lang);
           } catch {
+            cut = true;
             break;
           }
           if (!addFrom(cont.data)) break;
           onPage?.(tracks.slice());
           token = cont.next !== token ? cont.next : null;
         }
-        if (tracks.length) return { items: tracks, status: 'ok' };
+        if (tracks.length) {
+          const res: PlaylistLoad = { items: tracks, status: 'ok' };
+          // lista ucięta przez porzucony widok, błąd strony albo edycję w trakcie nie może udawać całej
+          if (cacheable && !cut && !isStale?.() && epoch === libraryEpoch) {
+            playlistCache.set(cacheKey, { res, ts: Date.now() });
+            pruneOldest(playlistCache, 20);
+          }
+          return res;
+        }
         sawEmpty = true;
       } catch {
         continue;
@@ -1938,7 +1995,10 @@ export async function addToPlaylist(
   if (!opts.allowDuplicate) {
     const current = await loadPlaylistItems(
       toPlaylistBrowseId(toPlainPlaylistId(playlistId)),
-      lang
+      lang,
+      undefined,
+      undefined,
+      true
     );
     if (current.items.some((t) => t.id === videoId)) throw new AlreadyInPlaylistError();
   }

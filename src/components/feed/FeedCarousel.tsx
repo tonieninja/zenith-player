@@ -1,4 +1,4 @@
-import { memo, useCallback } from 'react';
+import { memo, useCallback, useRef } from 'react';
 import { ChevronLeft, ChevronRight, Play } from 'lucide-react';
 import type { Section, Track } from '../../api/youtube';
 import { usePager } from '../../hooks/usePager';
@@ -11,23 +11,29 @@ import { clickOnKey } from '../ui/keyboard';
 export const PAGE_SIZE = 8;
 
 type ItemClick = (t: Track, st?: string, si?: Track[]) => void;
+type ItemHover = (t: Track) => void;
 
 const AlbumCard = memo(function AlbumCard({
   track,
   sectionTitle,
   sectionItems,
   onClick,
+  onHover,
   priority = false,
 }: {
   track: Track;
   sectionTitle?: string;
   sectionItems?: Track[];
   onClick: ItemClick;
+  onHover?: ItemHover;
   priority?: boolean;
 }) {
+  const hoverTimer = useRef(0);
   const handleClick = useCallback(
     (e: { button?: number }) => {
       if (!isPrimaryButton(e.button)) return;
+      // klik sam wczytuje stronę, więc spóźniony prefetch wysłałby to samo zapytanie drugi raz
+      window.clearTimeout(hoverTimer.current);
       onClick(track, sectionTitle, sectionItems);
     },
     [onClick, track, sectionTitle, sectionItems]
@@ -39,6 +45,14 @@ const AlbumCard = memo(function AlbumCard({
       tabIndex={0}
       onClick={handleClick}
       onKeyDown={clickOnKey}
+      // przejazd kursorem przez rząd kart nie wysyła zapytań, dopiero zatrzymanie na karcie
+      onPointerEnter={
+        onHover &&
+        (() => {
+          hoverTimer.current = window.setTimeout(() => onHover(track), 150);
+        })
+      }
+      onPointerLeave={() => window.clearTimeout(hoverTimer.current)}
       data-ctx-track={ctxTrackAttr(track)}
     >
       <div className="yt-card-thumb">
@@ -72,10 +86,12 @@ export const SectionRow = memo(function SectionRow({
   section,
   sectionIndex,
   onItemClick,
+  onItemHover,
 }: {
   section: Section;
   sectionIndex: number;
   onItemClick: ItemClick;
+  onItemHover?: ItemHover;
 }) {
   // miniatura teledysku w kwadracie traci boki kadru, więc taka sekcja dostaje szersze karty 16:9
   const video =
@@ -116,6 +132,7 @@ export const SectionRow = memo(function SectionRow({
             sectionTitle={section.title}
             sectionItems={section.items}
             onClick={onItemClick}
+            onHover={onItemHover}
             priority={sectionIndex === 0 && idx < 4}
           />
         ))}

@@ -50,6 +50,7 @@ import {
   getLyrics,
   getMoodPlaylist,
   loadPlaylistItems,
+  prefetchPlaylist,
   AlreadyInPlaylistError,
   SessionExpiredError,
   getUserPlaylists,
@@ -5125,6 +5126,18 @@ ${lang}`
     [collectionPage, handleItemClick]
   );
 
+  // tylko strony z cache (album, playlista, wykonawca); strumień utworu po samym najechaniu zjadałby limit
+  const prefetchItem = useCallback(
+    (item: Track) => {
+      if (item.type === 'artist' && item.id.startsWith('UC')) {
+        void getArtistPage(item.id, lang).catch(() => undefined);
+      } else if (item.type === 'album' || itemClickPlan(item).kind === 'play-collection') {
+        prefetchPlaylist(item.id, lang);
+      }
+    },
+    [lang]
+  );
+
   const sectionRows = useMemo(
     () =>
       stableOrderSections(activeTab === 'home' ? homeSections : sections).map((section, idx) => (
@@ -5133,9 +5146,10 @@ ${lang}`
           section={section}
           sectionIndex={idx}
           onItemClick={handleItemClick}
+          onItemHover={prefetchItem}
         />
       )),
-    [activeTab, homeSections, sections, handleItemClick]
+    [activeTab, homeSections, sections, handleItemClick, prefetchItem]
   );
 
   return (
@@ -6122,6 +6136,7 @@ ${lang}`
                             section={section}
                             sectionIndex={idx}
                             onItemClick={handleItemClick}
+                            onItemHover={prefetchItem}
                           />
                         )}
                       />
