@@ -65,7 +65,14 @@
           radial-gradient(circle at 50% 10%, rgba(255, 255, 255, 0.04), transparent 55%), #171a22;
         display: block;
       }
+      html[data-theme='light'],
+      html[data-theme='light'] body,
+      html[data-theme='light'] #root:empty::after {
+        background: #f1f2f5;
+        color: #15171c;
+      }
     </style>
+    <script src="/theme-boot.js"></script>
   </head>
   <body>
     <div id="root"></div>

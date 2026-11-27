@@ -1,4 +1,4 @@
-import { themeVars } from './themes';
+import { inkAccent, isLightTheme, themeVars } from './themes';
 
 function rgbToHex(r: number, g: number, b: number) {
   return `#${[r, g, b].map((v) => Math.max(0, Math.min(255, v)).toString(16).padStart(2, '0')).join('')}`;
@@ -100,7 +100,16 @@ export function coverLedColor(coverUrl: string): Promise<Rgb | null> {
   });
 }
 
+let lastCover: string | null = null;
+
+/** Po zmianie jasności motywu akcent z okładki trzeba policzyć od nowa, bo zależy od tła. */
+export function refreshCoverTheme() {
+  if (lastCover && document.documentElement.classList.contains('has-cover-theme'))
+    applyCoverTheme(lastCover);
+}
+
 export function applyCoverTheme(coverUrl: string | undefined | null) {
+  lastCover = coverUrl || null;
   if (!coverUrl) {
     resetCoverTheme();
     return;
@@ -148,8 +157,13 @@ export function applyCoverTheme(coverUrl: string | undefined | null) {
       r = Math.round(r / n);
       g = Math.round(g / n);
       b = Math.round(b / n);
-      const accent = rgbToHex(mix(r, 255, 0.15), mix(g, 255, 0.12), mix(b, 255, 0.1));
-      const accent2 = rgbToHex(mix(r, 0, 0.25), mix(g, 0, 0.25), mix(b, 0, 0.25));
+      const light = isLightTheme();
+      const accent = light
+        ? inkAccent([r, g, b])
+        : rgbToHex(mix(r, 255, 0.15), mix(g, 255, 0.12), mix(b, 255, 0.1));
+      const accent2 = light
+        ? inkAccent([r, g, b], 0.2)
+        : rgbToHex(mix(r, 0, 0.25), mix(g, 0, 0.25), mix(b, 0, 0.25));
       applyVars(
         accent,
         accent2,

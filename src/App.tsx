@@ -142,6 +142,7 @@ import { ThemeSetting } from './components/ThemeSetting';
 import { LocalFilesSetting } from './components/LocalFilesSetting';
 import { addToCollection, listCollections, type Collection } from './api/library';
 import { PanelGapSetting } from './components/PanelGapSetting';
+import { AutostartSetting } from './components/AutostartSetting';
 import { AudioOutputSettings } from './components/AudioOutputSettings';
 import { PlainLyrics } from './components/PlainLyrics';
 import { LIB_EMPTY_KEYS, LIBRARY_CATEGORIES, nextLibraryViewState } from './constants/library';
@@ -7266,6 +7267,7 @@ export default function App() {
               {isNativeAudio() && <AudioOutputSettings lang={lang} />}
               <ThemeSetting lang={lang} />
               <PanelGapSetting lang={lang} />
+              <AutostartSetting lang={lang} />
               <LocalFilesSetting lang={lang} />
               <BackupSetting lang={lang} />
               {Object.keys(hiddenShelves).length > 0 && (

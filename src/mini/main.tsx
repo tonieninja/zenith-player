@@ -35,6 +35,7 @@ import {
 } from '../utils/headlessFeed';
 import { imgErr, isYouTubeVideoId } from '../utils/covers';
 import { coverLedColor } from '../utils/coverTheme';
+import { inkAccent } from '../utils/themes';
 import { formatTime } from '../utils/playback';
 import {
   AUX_STRINGS,
@@ -44,6 +45,8 @@ import {
   useAuxLang,
 } from '../utils/auxWindow';
 import './mini.css';
+import '../styles/light.css';
+import { applyAppearance, useLightTheme } from '../utils/appearance';
 
 type Strings = (typeof AUX_STRINGS)[keyof typeof AUX_STRINGS];
 type Clock = { progress: number; at: number; playing: boolean; rate: number };
@@ -448,12 +451,15 @@ function MiniApp() {
 
   const [grad, setGrad] = useState<[string, string] | null>(null);
   const coverUrl = data?.coverUrl;
+  const light = useLightTheme();
   useEffect(() => {
     if (!coverUrl) return setGrad(null);
     let alive = true;
     void coverLedColor(coverUrl).then((c) => {
       if (!alive) return;
       if (!c) return setGrad(null);
+      // na jasnym tle jasny kolor okładki zlałby się z tłem, więc ciemnieje do czytelnego kontrastu
+      if (light) return setGrad([inkAccent(c), inkAccent(c, 0.3)]);
       // drugi przystanek rozjaśniony w stronę bieli, jak w domyślnym przejściu z fioletu do bieli
       const lift = (v: number) => Math.round(v + (255 - v) * 0.6);
       setGrad([`rgb(${c.join(', ')})`, `rgb(${c.map(lift).join(', ')})`]);
@@ -461,7 +467,7 @@ function MiniApp() {
     return () => {
       alive = false;
     };
-  }, [coverUrl]);
+  }, [coverUrl, light]);
 
   const seek = useCallback((t: number) => {
     act(`seek:${t.toFixed(2)}`);
@@ -607,6 +613,7 @@ function MiniApp() {
   );
 }
 
+applyAppearance();
 markOpaqueAuxWindow();
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

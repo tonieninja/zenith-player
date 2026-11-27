@@ -92,8 +92,9 @@ export function isLinuxDesktop(ua = navigator.userAgent || ''): boolean {
 export function markOpaqueAuxWindow() {
   if (!isLinuxDesktop()) return;
   document.documentElement.classList.add('opaque-window');
-  document.documentElement.style.background = '#0a0b10';
-  if (document.body) document.body.style.background = '#0a0b10';
+  const bg = document.documentElement.dataset.theme === 'light' ? '#f1f2f5' : '#0a0b10';
+  document.documentElement.style.background = bg;
+  if (document.body) document.body.style.background = bg;
   const root = document.getElementById('root');
-  if (root) root.style.background = '#0a0b10';
+  if (root) root.style.background = bg;
 }

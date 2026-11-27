@@ -495,10 +495,11 @@ fn rebuild_main(app: &AppHandle, show: bool) -> bool {
         return true;
     }
     mark_not_ready();
-    let Some(cfg) = app.config().app.windows.first().cloned() else {
+    let Some(mut cfg) = app.config().app.windows.first().cloned() else {
         REBUILDING.store(false, Ordering::SeqCst);
         return false;
     };
+    cfg.background_color = Some(window_bg(true));
     let h = app.clone();
     let _ = app.run_on_main_thread(move || {
         if let Some(win) = h.get_window("main") {
@@ -637,8 +638,41 @@ fn style_aux_window<'a, R: tauri::Runtime, M: tauri::Manager<R>>(
     if aux_windows_use_transparency() {
         b.transparent(true)
     } else {
-        b.transparent(false)
-            .background_color(tauri::window::Color(10, 11, 16, 255))
+        b.transparent(false).background_color(window_bg(false))
+    }
+}
+
+static LIGHT: AtomicBool = AtomicBool::new(false);
+
+// natywne tło widać, zanim WebView narysuje stronę i przy zmianie rozmiaru, więc idzie za motywem strony
+fn window_bg(main: bool) -> tauri::window::Color {
+    match (LIGHT.load(Ordering::SeqCst), main) {
+        (true, _) => tauri::window::Color(241, 242, 245, 255),
+        (false, true) => tauri::window::Color(23, 26, 34, 255),
+        (false, false) => tauri::window::Color(10, 11, 16, 255),
+    }
+}
+
+pub fn appearance_is_light(pref: Option<&str>, os_light: bool) -> bool {
+    pref == Some("light") || (pref == Some("system") && os_light)
+}
+
+/// Motyw z prefs.json przed pierwszym malowaniem; localStorage WebView jest wtedy jeszcze niedostępny.
+pub fn init_window_theme(app: &AppHandle, main: &tauri::WebviewWindow) {
+    let os_light = matches!(main.theme(), Ok(tauri::Theme::Light));
+    let pref = crate::prefs::get(app, "zenith_appearance");
+    if appearance_is_light(pref.as_deref(), os_light) {
+        LIGHT.store(true, Ordering::SeqCst);
+        let _ = main.set_background_color(Some(window_bg(true)));
+    }
+}
+
+#[tauri::command]
+pub fn set_window_light(window: tauri::WebviewWindow, light: bool) {
+    LIGHT.store(light, Ordering::SeqCst);
+    let main = window.label() == "main";
+    if main || !aux_windows_use_transparency() {
+        let _ = window.set_background_color(Some(window_bg(main)));
     }
 }
 
@@ -922,6 +956,16 @@ mod aux_style_tests {
             super::aux_windows_use_transparency(),
             !cfg!(target_os = "linux")
         );
+    }
+
+    #[test]
+    fn appearance_follows_pref_and_system() {
+        use super::appearance_is_light as light;
+        assert!(light(Some("light"), false));
+        assert!(light(Some("system"), true));
+        assert!(!light(Some("system"), false));
+        assert!(!light(Some("dark"), true));
+        assert!(!light(None, true));
     }
 }
 

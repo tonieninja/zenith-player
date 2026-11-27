@@ -1,0 +1,30 @@
+/* Jasny motyw: zmienne i poprawki tam, gdzie kolorów nie da się wyliczyć z ciemnych (reszta w lightTheme.ts). */
+:root[data-theme='light'] {
+  color-scheme: light;
+  --bg-sidebar: rgba(248, 249, 251, 0.96);
+  --text-primary: #15171c;
+  --text-secondary: rgba(21, 23, 28, 0.78);
+  --text-muted: rgba(21, 23, 28, 0.58);
+  --glass-border: 1px solid rgba(21, 23, 28, 0.12);
+  --glass-border-highlight: 1px solid rgba(21, 23, 28, 0.2);
+  --shadow-card: 0 10px 26px rgba(24, 30, 48, 0.12);
+  --shadow-glow: 0 0 0 transparent;
+  --rich-black-1: rgba(255, 255, 255, 0.96);
+  --rich-black-2: rgba(250, 251, 253, 0.98);
+}
+
+/* zastępcze okładki to ciemne SVG w <img>, więc w jasnym motywie odwracamy je w całości */
+:root[data-theme='light'] img[src^='data:image/svg+xml;charset=utf-8,%3Csvg'] {
+  filter: invert(1) hue-rotate(180deg);
+}
+
+/* zastępcze okładki to ciemne SVG w <img>, więc w jasnym motywie odwracamy je w całości */
+:root[data-theme='light'] img[src^='data:image/svg+xml;charset=utf-8,%3Csvg'] {
+  filter: invert(1) hue-rotate(180deg);
+}
+
+/* domyślny fiolet mini odtwarzacza ma za mały kontrast z jasnym tłem; kolor z okładki nadpisuje go w stylu elementu */
+:root[data-theme='light'] .mini-root {
+  --mini-c1: #6a4ad9;
+  --mini-c2: #a78bfa;
+}
