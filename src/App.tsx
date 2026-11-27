@@ -122,6 +122,7 @@ import { SyncedLyricsRail } from './components/SyncedLyricsRail';
 import { LyricsSourceBar } from './components/LyricsSourceBar';
 import { LyricsSourcesSettings } from './components/LyricsSourcesSettings';
 import { BackupSetting } from './components/BackupSetting';
+import { StatsView } from './components/StatsView';
 import {
   addToCollection,
   CollectionDialog,
@@ -333,6 +334,7 @@ import {
   Folder,
   FolderOpen,
   Archive,
+  BarChart3,
 } from 'lucide-react';
 import { useLatest } from './hooks/useLatest';
 import {
@@ -514,6 +516,7 @@ export default function App() {
     at?: number;
   } | null>(null);
   const [localLibOpen, setLocalLibOpen] = useState(false);
+  const [statsOpen, setStatsOpen] = useState(false);
   const [libCollections, setLibCollections] = useState<Collection[]>([]);
   const [tagTrack, setTagTrack] = useState<Track | null>(null);
   const [newCollectionFor, setNewCollectionFor] = useState<Track | null>(null);
@@ -5338,6 +5341,19 @@ export default function App() {
               <Archive size={18} />
               <span>{t.libMine}</span>
             </div>
+            <div
+              className="nav-item playlist-link"
+              role="button"
+              tabIndex={0}
+              aria-label={t.statsTitle}
+              title={t.statsTitle}
+              onKeyDown={clickOnKey}
+              onClick={() => setStatsOpen(true)}
+              data-testid="stats-link"
+            >
+              <BarChart3 size={18} />
+              <span>{t.statsTitle}</span>
+            </div>
             {(() => {
               const renderPl = (pl: Track) => (
                 <div
@@ -6804,6 +6820,16 @@ export default function App() {
           onPlay={(tracks, index, title) => {
             setLocalLibOpen(false);
             if (tracks[index]) void handleItemClick(tracks[index], title, tracks);
+          }}
+        />
+      )}
+      {statsOpen && (
+        <StatsView
+          lang={lang}
+          onClose={() => setStatsOpen(false)}
+          onPlay={(track) => {
+            setStatsOpen(false);
+            void handleItemClick(track);
           }}
         />
       )}

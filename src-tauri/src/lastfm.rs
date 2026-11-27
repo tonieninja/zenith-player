@@ -242,8 +242,109 @@ pub async fn lastfm_scrobble(app: AppHandle, t: ScrobbleTrack) -> Result<(), Str
     call(&c, "track.scrobble", p, true).await.map(|_| ())
 }
 
+static IMPORTING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Jedna strona historii: (wykonawca, tytuł, album, czas w ms); utwór grany teraz nie ma daty i odpada.
+pub fn parse_recent(v: &serde_json::Value) -> (Vec<crate::db::Scrobble>, u64) {
+    let rt = &v["recenttracks"];
+    let pages = rt["@attr"]["totalPages"]
+        .as_str()
+        .and_then(|p| p.parse().ok())
+        .or_else(|| rt["@attr"]["totalPages"].as_u64())
+        .unwrap_or(0);
+    // jeden scrobble przychodzi jako obiekt, nie lista
+    let list = match &rt["track"] {
+        serde_json::Value::Array(a) => a.clone(),
+        o @ serde_json::Value::Object(_) => vec![o.clone()],
+        _ => Vec::new(),
+    };
+    let rows = list
+        .iter()
+        .filter_map(|t| {
+            let uts: i64 = t["date"]["uts"].as_str()?.parse().ok()?;
+            let artist = t["artist"]["#text"]
+                .as_str()
+                .or_else(|| t["artist"]["name"].as_str())?;
+            let title = t["name"].as_str()?;
+            let album = t["album"]["#text"]
+                .as_str()
+                .filter(|a| !a.is_empty())
+                .map(String::from);
+            Some((artist.to_string(), title.to_string(), album, uts * 1000))
+        })
+        .collect();
+    (rows, pages)
+}
+
+/// Całą historię Last.fm wciąga w tle do bazy statystyk; postęp idzie zdarzeniem lastfm-import.
+#[tauri::command]
+pub fn lastfm_import(app: AppHandle, user: Option<String>) -> Result<(), String> {
+    use std::sync::atomic::Ordering;
+    let c = load(&app);
+    if c.api_key.is_empty() {
+        return Err("Set your Last.fm API key in the scrobbler plugin first".into());
+    }
+    let user = user
+        .map(|u| u.trim().to_string())
+        .filter(|u| !u.is_empty())
+        .unwrap_or_else(|| c.user.clone());
+    if user.is_empty() || user.len() > 64 {
+        return Err("Last.fm user name missing".into());
+    }
+    if IMPORTING.swap(true, Ordering::SeqCst) {
+        return Err("import already running".into());
+    }
+    tauri::async_runtime::spawn(async move {
+        use tauri::Emitter;
+        let (mut page, mut pages, mut added) = (1u64, 1u64, 0usize);
+        let mut error = None;
+        while page <= pages {
+            let mut p = BTreeMap::new();
+            p.insert("user".into(), user.clone());
+            p.insert("limit".into(), "200".into());
+            p.insert("page".into(), page.to_string());
+            let v = match call(&c, "user.getrecenttracks", p, false).await {
+                Ok(v) => v,
+                Err(e) => {
+                    error = Some(e);
+                    break;
+                }
+            };
+            let (rows, total) = parse_recent(&v);
+            pages = total.max(1);
+            added += crate::db::import_plays("lastfm", &rows).unwrap_or(0);
+            let _ = app.emit(
+                "lastfm-import",
+                serde_json::json!({ "page": page, "pages": pages, "added": added }),
+            );
+            page += 1;
+            // Last.fm wpuszcza około pięciu zapytań na sekundę
+            tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+        }
+        let _ = app.emit(
+            "lastfm-import",
+            serde_json::json!({ "done": true, "added": added, "error": error }),
+        );
+        IMPORTING.store(false, Ordering::SeqCst);
+    });
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn recent_tracks_skip_now_playing_and_accept_single_object() {
+        let v = serde_json::json!({"recenttracks":{"@attr":{"totalPages":"3"},"track":[
+            {"artist":{"#text":"A"},"name":"Now","@attr":{"nowplaying":"true"}},
+            {"artist":{"#text":"B"},"name":"Old","album":{"#text":""},"date":{"uts":"100"}}
+        ]}});
+        let (rows, pages) = super::parse_recent(&v);
+        assert_eq!(pages, 3);
+        assert_eq!(rows, vec![("B".into(), "Old".into(), None, 100_000)]);
+        let one = serde_json::json!({"recenttracks":{"track":{"artist":{"#text":"C"},"name":"X","date":{"uts":"5"}}}});
+        assert_eq!(super::parse_recent(&one).0.len(), 1);
+    }
+
     use super::*;
     #[test]
     fn signature_matches_spec_example() {

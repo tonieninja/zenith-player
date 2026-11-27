@@ -33,6 +33,7 @@ mod secret_store;
 #[cfg(not(target_os = "linux"))]
 mod smtc;
 mod spotify_auth;
+mod stats;
 mod stream;
 mod stream_proxy;
 mod thumbbar;
@@ -928,6 +929,9 @@ pub fn run() {
             backup::backup_export,
             backup::backup_import,
             discover::discover_picks,
+            lastfm::lastfm_import,
+            stats::stats_overview,
+            stats::stats_artist,
             library::lib_collections,
             library::lib_collection_save,
             library::lib_collection_delete,

@@ -197,6 +197,38 @@ pub fn log_play(p: &PlayIn) -> Result<(), String> {
     .map(|_| ())
 }
 
+/// Scrobble z innej usługi: wykonawca, tytuł, album i czas w ms.
+pub type Scrobble = (String, String, Option<String>, i64);
+
+/// Odtworzenia z innej usługi; ten sam czas i tytuł z tego samego źródła nie wejdą drugi raz.
+pub fn import_plays(source: &str, rows: &[Scrobble]) -> Result<usize, String> {
+    with(|c| {
+        let tx = c.unchecked_transaction()?;
+        let mut n = 0;
+        {
+            let mut q = tx.prepare(
+                "INSERT OR IGNORE INTO plays(title,artist,album,listened,at,source,artist_key,title_key)
+                 VALUES(?1,?2,?3,?4,?5,?6,?7,?8)",
+            )?;
+            for (artist, title, album, at) in rows {
+                // shortcut: scrobble nie mówi, ile słuchano, więc liczymy typowe 3 minuty
+                n += q.execute(params![
+                    title,
+                    artist,
+                    album,
+                    180.0,
+                    at,
+                    source,
+                    artist_key(artist),
+                    title_key(title)
+                ])?;
+            }
+        }
+        tx.commit()?;
+        Ok(n)
+    })
+}
+
 #[tauri::command]
 pub fn db_log_play(play: PlayIn) -> Result<(), String> {
     log_play(&play)
