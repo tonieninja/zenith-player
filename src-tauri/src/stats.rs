@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use rusqlite::{params, Connection};
 use serde::Serialize;
 
@@ -8,6 +10,8 @@ pub struct ArtistStat {
     plays: i64,
     minutes: f64,
     before: i64,
+    #[serde(skip)]
+    key: String,
 }
 
 #[derive(Serialize, Default, Debug)]
@@ -67,7 +71,7 @@ pub fn overview(c: &Connection, days: i64, now: i64) -> rusqlite::Result<Overvie
 
     let artists = |from: i64, to: i64, limit: i64| -> rusqlite::Result<Vec<ArtistStat>> {
         let mut q = c.prepare(&format!(
-            "SELECT MIN(artist), COUNT(*), SUM({MIN}) FROM plays
+            "SELECT MIN(artist), COUNT(*), SUM({MIN}), artist_key FROM plays
              WHERE at >= ?1 AND at < ?2 AND skipped=0 GROUP BY artist_key ORDER BY 3 DESC LIMIT ?3"
         ))?;
         let rows = q.query_map(params![from, to, limit], |r| {
@@ -76,6 +80,7 @@ pub fn overview(c: &Connection, days: i64, now: i64) -> rusqlite::Result<Overvie
                 plays: r.get(1)?,
                 minutes: r.get(2)?,
                 before: 0,
+                key: r.get(3)?,
             })
         })?;
         Ok(rows.flatten().collect())
@@ -84,14 +89,15 @@ pub fn overview(c: &Connection, days: i64, now: i64) -> rusqlite::Result<Overvie
 
     // rosnący: w tym okresie dużo więcej odtworzeń niż w poprzednim tej samej długości
     if days > 0 {
-        let before = artists(prev, since, 500)?;
+        // po kluczu, bo MIN(artist) w obu okresach bywa inną nazwą tego samego wykonawcy („A & B” i „A”)
+        let before: HashMap<String, i64> = artists(prev, since, -1)?
+            .into_iter()
+            .map(|b| (b.key, b.plays))
+            .collect();
         let mut rising: Vec<ArtistStat> = artists(since, i64::MAX, 200)?
             .into_iter()
             .map(|mut a| {
-                a.before = before
-                    .iter()
-                    .find(|b| b.name.eq_ignore_ascii_case(&a.name))
-                    .map_or(0, |b| b.plays);
+                a.before = before.get(&a.key).copied().unwrap_or(0);
                 a
             })
             .filter(|a| a.plays >= 3 && a.plays >= a.before * 2)
@@ -233,6 +239,28 @@ mod tests {
         let all = overview(&c, 0, now).unwrap();
         assert_eq!(all.plays, 6);
         assert!(all.rising.is_empty());
+    }
+
+    #[test]
+    fn rising_compares_the_same_artist_under_another_name() {
+        let c = Connection::open_in_memory().unwrap();
+        c.execute_batch(crate::db::SCHEMA).unwrap();
+        let day = 86_400_000i64;
+        let now = 1_000 * day;
+        let add = |artist: &str, at: i64| {
+            c.execute(
+                "INSERT INTO plays(video_id,title,artist,listened,at,artist_key,title_key)
+                 VALUES('v','Song',?1,200,?2,?3,'song')",
+                params![artist, at, crate::db::artist_key(artist)],
+            )
+            .unwrap();
+        };
+        for i in 0..3 {
+            add("Taco Hemingway & Quebonafide", now - 10 * day - i);
+            add("Taco Hemingway", now - day - i);
+        }
+        let o = overview(&c, 7, now).unwrap();
+        assert!(o.rising.is_empty(), "{:?}", o.rising);
     }
 
     #[test]
