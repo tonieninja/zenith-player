@@ -70,7 +70,8 @@
 }
 
 .lyric-karaoke-base {
-  color: rgba(255, 255, 255, 0.34);
+  /* nieśpiewana część bieżącej linii musi być jaśniejsza od następnej linii, inaczej oko trafia w złą */
+  color: rgba(255, 255, 255, 0.62);
 }
 
 .lyric-karaoke-fill {

@@ -78,7 +78,7 @@
 }
 
 .synced-lyrics-rail .lyric-row.is-next {
-  opacity: 0.5616;
+  opacity: 0.46;
   font-weight: 620;
   transform: translate(0, 3px) scale(0.985);
 }
@@ -97,7 +97,7 @@
 }
 
 .synced-lyrics-rail button.lyric-row.is-next:hover {
-  opacity: 0.6084;
+  opacity: 0.5;
 }
 
 .synced-lyrics-rail .lyric-row-text {
