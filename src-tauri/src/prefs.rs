@@ -114,6 +114,13 @@ pub fn prefs_load(app: AppHandle) -> HashMap<String, String> {
         .unwrap_or_default()
 }
 
+pub fn get(app: &AppHandle, key: &str) -> Option<String> {
+    let raw = std::fs::read_to_string(file(app)?).ok()?;
+    serde_json::from_str::<HashMap<String, String>>(&raw)
+        .ok()?
+        .remove(key)
+}
+
 #[tauri::command]
 pub fn prefs_save(
     app: AppHandle,

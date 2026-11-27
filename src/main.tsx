@@ -3,6 +3,7 @@ window.close = () => {};
 
 import ReactDOM from 'react-dom/client';
 import App from './App';
+import './styles/light.css';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { initAudioBackend } from './audio/engine';
 import { initCoverCache } from './utils/covers';
@@ -12,6 +13,7 @@ import { initSpotifyToken } from './api/spotify';
 import { pluginManager } from './plugins';
 import { rescanLocalFolders } from './components/LocalFilesSetting';
 import { applyTheme } from './utils/themes';
+import { applyAppearance } from './utils/appearance';
 import { applyPanelGap } from './components/PanelGapSetting';
 
 applyPanelGap();
@@ -26,6 +28,8 @@ void Promise.all([
   initFavoritesStore(),
   initSpotifyToken(),
 ]).finally(() => {
+  // localStorage mógł dopiero co wrócić z prefs.json, a z nim wybrany motyw
+  applyAppearance();
   // pełny localStorage przy zapisie stanu wtyczek nie może zostawić pustego okna
   try {
     pluginManager.reloadFromStorage();

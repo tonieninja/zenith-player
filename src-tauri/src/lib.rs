@@ -790,6 +790,7 @@ pub fn run() {
                 eprintln!("[zenith] edit menu unavailable: {e}");
             }
             if let Some(main) = app.get_webview_window("main") {
+                windows::init_window_theme(app.handle(), &main);
                 webview_tuning::tune(&main);
                 // 1280x800 z konfiguracji nie mieści się na 1366x768 ani na 1080p przy skali 150%
                 windows::keep_on_screen(&main);
@@ -979,6 +980,7 @@ pub fn run() {
             windows::ui_keep,
             windows::aux_closed_take,
             windows::app_prepare_shutdown,
+            windows::set_window_light,
             set_tray_labels,
             set_close_to_tray,
             tray_available,

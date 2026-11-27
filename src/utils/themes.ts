@@ -74,16 +74,34 @@ export function currentTheme(): Theme {
   return THEMES.find((t) => t.id === id) ?? THEMES[0];
 }
 
-const glow = (hex: string, a: number) => {
+const rgbOf = (hex: string) => {
   const n = parseInt(hex.slice(1), 16);
-  return `rgba(${n >> 16}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;
+  return [n >> 16, (n >> 8) & 255, n & 255];
 };
+
+const glow = (hex: string, a: number) => `rgba(${rgbOf(hex).join(', ')}, ${a})`;
+
+export const isLightTheme = () => document.documentElement.dataset.theme === 'light';
+
+const luminance = (c: number[]) =>
+  [0.2126, 0.7152, 0.0722].reduce((sum, w, i) => {
+    const v = c[i]! / 255;
+    return sum + w * (v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4);
+  }, 0);
+
+/** Akcent na jasne tło: kolor ciemnieje, aż jego luminancja spadnie do maxLum (0.14 daje ok. 4.5:1). */
+export function inkAccent(rgb: number[], maxLum = 0.14): string {
+  let c = rgb;
+  while (luminance(c) > maxLum) c = c.map((v) => v * 0.94);
+  return `#${c.map((v) => Math.round(v).toString(16).padStart(2, '0')).join('')}`;
+}
 
 /** Barwy motywu; motyw z okładki (ambient glow) nakłada się na nie i wraca do nich po wyłączeniu. */
 export function themeVars(t = currentTheme()) {
+  const light = isLightTheme();
   return {
-    accent: t.accent,
-    accent2: t.accent2,
+    accent: light ? inkAccent(rgbOf(t.accent3)) : t.accent,
+    accent2: light ? inkAccent(rgbOf(t.accent3), 0.2) : t.accent2,
     accent3: t.accent3,
     glow: glow(t.accent2, 0.28),
     mesh1: glow(t.accent2, 0.12),
