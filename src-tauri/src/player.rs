@@ -2,14 +2,20 @@ use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
 
+// przy przesyłaniu na telewizor link googlevideo musi być przypięty do IPv4, które telewizor dzieli z komputerem
+pub static PREFER_V4: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 // jedna pula połączeń na tryb przekierowań; osobny klient na każde UA otwierał osobne TLS do tego samego hosta
 pub fn client(ua: &str, secs: u64, follow: bool) -> Option<Http> {
-    static FOLLOW: OnceLock<reqwest::Client> = OnceLock::new();
-    static MANUAL: OnceLock<reqwest::Client> = OnceLock::new();
-    let cell = if follow { &FOLLOW } else { &MANUAL };
+    static CELLS: [OnceLock<reqwest::Client>; 4] = [const { OnceLock::new() }; 4];
+    let v4 = PREFER_V4.load(std::sync::atomic::Ordering::Relaxed);
+    let cell = &CELLS[usize::from(follow) + 2 * usize::from(v4)];
     let c = crate::stream_proxy::cached_client(cell, || {
         crate::win_proxy::wait();
-        let b = reqwest::Client::builder();
+        let mut b = reqwest::Client::builder();
+        if v4 {
+            b = b.local_address(std::net::IpAddr::from(std::net::Ipv4Addr::UNSPECIFIED));
+        }
         if follow {
             b.build()
         } else {

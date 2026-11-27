@@ -74,7 +74,7 @@ fn cache_fresh(url: &str, fetched_at: u64, now: u64) -> bool {
     }
 }
 
-fn validate_video_id(video_id: &str) -> Result<(), String> {
+pub(crate) fn validate_video_id(video_id: &str) -> Result<(), String> {
     if video_id.len() == 11
         && video_id
             .chars()

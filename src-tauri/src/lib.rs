@@ -1,5 +1,6 @@
 mod auth_store;
 mod backup;
+mod cast;
 mod cover_cache;
 mod db;
 mod deeplink;
@@ -1034,7 +1035,12 @@ pub fn run() {
             discord::discord_clear_presence,
             discord::discord_disconnect,
             discord::discord_status,
-            diag::stream_diagnostics
+            diag::stream_diagnostics,
+            cast::cast_discover,
+            cast::cast_connect,
+            cast::cast_load,
+            cast::cast_cmd,
+            cast::cast_disconnect
         ])
         .build(windows::with_user_webview_args(tauri::generate_context!()))
         .unwrap_or_else(|e| {
