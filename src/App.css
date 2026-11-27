@@ -4780,9 +4780,13 @@ html.has-cover-theme .main-play-pause-circle {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, rgba(99, 102, 241, 0.35), rgba(59, 130, 246, 0.2));
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--accent-1) 35%, transparent),
+    color-mix(in srgb, var(--accent-3) 20%, transparent)
+  );
   border: 1px solid rgba(255, 255, 255, 0.12);
-  color: #c7d2fe;
+  color: color-mix(in srgb, var(--accent-1) 45%, #fff);
 }
 
 .onboarding-title {
@@ -4880,9 +4884,9 @@ html.has-cover-theme .main-play-pause-circle {
 }
 
 .onboarding-btn.secondary {
-  background: rgba(99, 102, 241, 0.25);
-  color: #e0e7ff;
-  border: 1px solid rgba(129, 140, 248, 0.45);
+  background: color-mix(in srgb, var(--accent-1) 25%, transparent);
+  color: color-mix(in srgb, var(--accent-1) 20%, #fff);
+  border: 1px solid color-mix(in srgb, var(--accent-1) 45%, transparent);
 }
 
 .onboarding-btn.ghost {
@@ -5909,7 +5913,7 @@ html.window-occluded *::after {
   color: var(--text-muted);
 }
 .plugins-search:focus-within {
-  border-color: rgba(91, 157, 255, 0.55);
+  border-color: color-mix(in srgb, var(--accent-1) 55%, transparent);
 }
 .plugins-search-clear {
   display: inline-flex;
@@ -5959,8 +5963,8 @@ html.window-occluded *::after {
   width: 26px;
   height: 26px;
   border-radius: 8px;
-  background: rgba(91, 157, 255, 0.14);
-  color: #8fb9ff;
+  background: color-mix(in srgb, var(--accent-1) 14%, transparent);
+  color: var(--accent-1);
   flex: none;
 }
 .plugin-category-head .plugin-category-label {
@@ -5986,8 +5990,8 @@ html.window-occluded *::after {
   margin-bottom: 0;
 }
 .plugin-card.enabled {
-  border-color: rgba(91, 157, 255, 0.28);
-  background: rgba(91, 157, 255, 0.05);
+  border-color: color-mix(in srgb, var(--accent-1) 28%, transparent);
+  background: color-mix(in srgb, var(--accent-1) 5%, transparent);
 }
 .plugin-card-header .plugin-desc {
   display: -webkit-box;
