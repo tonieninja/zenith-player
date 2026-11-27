@@ -5864,6 +5864,7 @@ html.window-occluded *::after {
 
 .local-lib-toolbar .lib-input {
   width: 220px;
+  min-width: 0;
 }
 
 .local-lib-list {

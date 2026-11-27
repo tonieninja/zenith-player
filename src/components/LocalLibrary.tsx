@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { FolderOpen, Plus, Tag, Trash2, X } from 'lucide-react';
+import { FolderOpen, Pencil, Plus, Tag, Trash2, X } from 'lucide-react';
 import type { Track } from '../api/youtube';
 import { listCollections, trackIn, type Collection } from '../api/library';
-import { translations, type Language } from '../i18n';
+import { errorText, translations, type Language } from '../i18n';
 import { ModalOverlay } from './ui/ModalOverlay';
 import { Select } from './ui/Select';
 import { pushToast } from './Toast';
@@ -51,7 +51,7 @@ export function CollectionDialog({
   const save = () =>
     void invoke<number>('lib_collection_save', { id: initial?.id ?? null, name, folder })
       .then((id) => onDone(id, name.trim()))
-      .catch((e) => pushToast(String(e), 'error'));
+      .catch((e) => pushToast(errorText(t, e), 'error'));
   return (
     <ModalOverlay onClick={onClose} onEscape={onClose} testId="collection-dialog">
       <div className="glass-modal-container lib-dialog" onClick={(e) => e.stopPropagation()}>
@@ -76,6 +76,7 @@ export function CollectionDialog({
           <input
             autoFocus
             className="lib-input"
+            aria-label={t.libCollectionName}
             placeholder={t.libCollectionName}
             value={name}
             maxLength={120}
@@ -83,6 +84,7 @@ export function CollectionDialog({
           />
           <input
             className="lib-input"
+            aria-label={t.libFolderOptional}
             placeholder={t.libFolderOptional}
             value={folder}
             maxLength={120}
@@ -131,7 +133,7 @@ export function TagsDialog({
         pushToast(t.libTagsSaved, 'success');
         onClose();
       })
-      .catch((e) => pushToast(String(e), 'error'));
+      .catch((e) => pushToast(errorText(t, e), 'error'));
   return (
     <ModalOverlay onClick={onClose} onEscape={onClose} testId="tags-dialog">
       <div className="glass-modal-container lib-dialog" onClick={(e) => e.stopPropagation()}>
@@ -162,6 +164,7 @@ export function TagsDialog({
           <input
             autoFocus
             className="lib-input"
+            aria-label={t.libTagPlaceholder}
             placeholder={t.libTagPlaceholder}
             value={text}
             maxLength={40}
@@ -214,6 +217,13 @@ export function LocalLibrary({
   const [rows, setRows] = useState<LibTrack[]>([]);
   const [dialog, setDialog] = useState<'new' | Collection | null>(null);
   const [tagging, setTagging] = useState<Track | null>(null);
+  // kosz kasuje kolekcję bez cofnięcia, więc pierwszy klik tylko uzbraja go na 3 s
+  const [armedDelete, setArmedDelete] = useState<number | null>(null);
+  useEffect(() => {
+    if (armedDelete === null) return;
+    const id = window.setTimeout(() => setArmedDelete(null), 3000);
+    return () => window.clearTimeout(id);
+  }, [armedDelete]);
 
   const refreshSide = useCallback(() => {
     void listCollections().then(setCols);
@@ -319,6 +329,7 @@ export function LocalLibrary({
               <h3>{title}</h3>
               <input
                 className="lib-input"
+                aria-label={t.libSearch}
                 placeholder={t.libSearch}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
@@ -342,16 +353,34 @@ export function LocalLibrary({
                 <button
                   type="button"
                   className="np-cancel-btn"
-                  aria-label={t.libDeleteCollection}
-                  title={t.libDeleteCollection}
-                  onClick={() =>
-                    void invoke('lib_collection_delete', { id: current.id }).then(() => {
-                      setView({ kind: 'all' });
-                      refreshSide();
-                    })
-                  }
+                  aria-label={t.libRenameCollection}
+                  title={t.libRenameCollection}
+                  onClick={() => setDialog(current)}
                 >
-                  <Trash2 size={16} />
+                  <Pencil size={16} />
+                </button>
+              )}
+              {current && (
+                <button
+                  type="button"
+                  className="np-cancel-btn"
+                  aria-label={
+                    armedDelete === current.id ? t.libDeleteConfirm : t.libDeleteCollection
+                  }
+                  title={t.libDeleteCollection}
+                  onClick={() => {
+                    if (armedDelete !== current.id) return setArmedDelete(current.id);
+                    setArmedDelete(null);
+                    void invoke('lib_collection_delete', { id: current.id }).then(
+                      () => {
+                        setView({ kind: 'all' });
+                        refreshSide();
+                      },
+                      (e) => pushToast(errorText(t, e), 'error')
+                    );
+                  }}
+                >
+                  {armedDelete === current.id ? t.libDeleteConfirm : <Trash2 size={16} />}
                 </button>
               )}
             </div>
@@ -404,10 +433,13 @@ export function LocalLibrary({
                           void invoke('lib_collection_remove', {
                             id: current.id,
                             videoId: r.id,
-                          }).then(() => {
-                            refreshRows();
-                            refreshSide();
-                          })
+                          }).then(
+                            () => {
+                              refreshRows();
+                              refreshSide();
+                            },
+                            (e) => pushToast(errorText(t, e), 'error')
+                          )
                         }
                       >
                         <X size={15} />

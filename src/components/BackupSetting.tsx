@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { translations, type Language } from '../i18n';
+import { errorText, translations, type Language } from '../i18n';
 import { pushToast } from './Toast';
 
 function prefsSnapshot(): Record<string, string> {
@@ -22,7 +22,7 @@ export function BackupSetting({ lang }: { lang: Language }) {
     try {
       await job();
     } catch (e) {
-      pushToast(`${t.backupFailed}: ${String(e)}`, 'error', 6000);
+      pushToast(`${t.backupFailed}: ${errorText(t, e)}`, 'error', 6000);
     } finally {
       setBusy(false);
     }

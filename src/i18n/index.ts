@@ -317,6 +317,11 @@ const en = {
   errPortBusy: 'the port is taken by another program',
   errNotConnected: 'not connected',
   errCancelled: 'cancelled',
+  errLastfmNoKey: 'add your API key in the Last.fm scrobbler plugin first',
+  errLastfmNoUser: 'enter a Last.fm user name',
+  errImportRunning: 'an import is already running',
+  errNotBackup: 'this file is not a Zenith backup',
+  errBackupTooBig: 'the file is too big',
   dlSaved: 'Saved for offline',
   dlStarted: 'Downloading {title}…',
   ctxDownload: 'Download for offline',
@@ -599,6 +604,7 @@ const en = {
   libSortPlays: 'Most played',
   libSortRecent: 'Recently played',
   libDeleteCollection: 'Delete collection',
+  libDeleteConfirm: 'Delete?',
   libLocalEmpty: 'Nothing here yet. Right-click a song to add it to a collection or tag it.',
   libEditTags: 'Edit tags',
   libRemoveFromCollection: 'Remove from collection',
@@ -1063,6 +1069,11 @@ const pl: Record<keyof typeof en, string> = {
   errPortBusy: 'port jest zajęty przez inny program',
   errNotConnected: 'brak połączenia z kontem',
   errCancelled: 'anulowano',
+  errLastfmNoKey: 'najpierw wpisz klucz API we wtyczce Last.fm scrobbler',
+  errLastfmNoUser: 'wpisz nazwę użytkownika Last.fm',
+  errImportRunning: 'import już trwa',
+  errNotBackup: 'ten plik nie jest kopią zapasową Zenith',
+  errBackupTooBig: 'plik jest za duży',
   dlSaved: 'Zapisano offline',
   dlStarted: 'Pobieram {title}…',
   ctxDownload: 'Pobierz offline',
@@ -1348,6 +1359,7 @@ const pl: Record<keyof typeof en, string> = {
   libSortPlays: 'Najczęściej grane',
   libSortRecent: 'Ostatnio grane',
   libDeleteCollection: 'Usuń kolekcję',
+  libDeleteConfirm: 'Usunąć?',
   libLocalEmpty:
     'Na razie pusto. Kliknij utwór prawym przyciskiem, żeby dodać go do kolekcji albo otagować.',
   libEditTags: 'Edytuj tagi',
@@ -1381,7 +1393,7 @@ const pl: Record<keyof typeof en, string> = {
   statsImportUser: 'Nazwa użytkownika Last.fm',
   statsImportBtn: 'Importuj',
   statsImportDone: 'Wczytano scrobbli: {n}',
-  statsImportProgress: 'Strona {page} z {pages}, dotąd {n} scrobbli',
+  statsImportProgress: 'Strona {page} z {pages}, scrobbli dotąd: {n}',
   statsImportFailed: 'Import przerwany',
   localTitle: 'Muzyka z tego komputera',
   localDesc:
@@ -1525,6 +1537,11 @@ export function errorText(t: typeof en, e: unknown): string {
   if (/already offline/i.test(raw)) return t.errAlreadyOffline;
   if (/no stream|empty download/i.test(raw)) return t.errNoStream;
   if (/cancelled/i.test(raw)) return t.errCancelled;
+  if (/last\.fm api key/i.test(raw)) return t.errLastfmNoKey;
+  if (/last\.fm user name/i.test(raw)) return t.errLastfmNoUser;
+  if (/import already running/i.test(raw)) return t.errImportRunning;
+  if (/not a zenith backup/i.test(raw)) return t.errNotBackup;
+  if (/backup too big/i.test(raw)) return t.errBackupTooBig;
   if (/not connected/i.test(raw)) return t.errNotConnected;
   if (/port \d+.*(10048|in use|busy)/i.test(raw)) return t.errPortBusy;
   if (http) return t.errHttp.replace('{code}', http[1]);

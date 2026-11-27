@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { translations } from '../i18n';
+import { errorText, translations } from '../i18n';
 import { lastfmErrorText } from '../plugins/lastfm';
 import { listenbrainzErrorText } from '../plugins/listenbrainz';
 
@@ -24,6 +24,19 @@ describe('last.fm errors', () => {
     );
     expect(lastfmErrorText('error sending request for url', en)).toBe(en.lfmErrNetwork);
     expect(lastfmErrorText('last.fm 99: weird', en)).toContain('weird');
+  });
+});
+
+describe('backend errors', () => {
+  it('translates the Rust messages of stats, import and backup', () => {
+    const t = translations.pl;
+    expect(errorText(t, 'Set your Last.fm API key in the scrobbler plugin first')).toBe(
+      t.errLastfmNoKey
+    );
+    expect(errorText(t, 'Last.fm user name missing')).toBe(t.errLastfmNoUser);
+    expect(errorText(t, 'import already running')).toBe(t.errImportRunning);
+    expect(errorText(t, 'not a Zenith backup')).toBe(t.errNotBackup);
+    expect(errorText(t, 'backup too big')).toBe(t.errBackupTooBig);
   });
 });
 
