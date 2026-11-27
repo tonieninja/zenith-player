@@ -6097,11 +6097,16 @@ html.window-occluded *::after {
   color: #fff;
 }
 
+/* przewija się sama treść, żeby suwak nie biegł przez nagłówek i zaokrąglone rogi okna */
 .stats-modal {
   width: min(860px, 94vw);
+  overflow: hidden;
 }
 
 .stats-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
   padding: 8px 24px 24px;
   display: flex;
   flex-direction: column;
@@ -6141,6 +6146,21 @@ html.window-occluded *::after {
   display: block;
   width: 100%;
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.stats-bars-axis {
+  position: relative;
+  height: 16px;
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.stats-bars-axis span {
+  position: absolute;
+  top: 0;
+  white-space: nowrap;
 }
 
 .stats-bars-caption {

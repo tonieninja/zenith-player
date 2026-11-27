@@ -40,11 +40,13 @@ function Bars({
   values,
   labels,
   unit,
+  ticks,
   height = 110,
 }: {
   values: number[];
   labels: string[];
   unit: (v: number) => string;
+  ticks: number[];
   height?: number;
 }) {
   const [hover, setHover] = useState<number | null>(null);
@@ -81,6 +83,19 @@ function Bars({
           );
         })}
       </svg>
+      <div className="stats-bars-axis" aria-hidden>
+        {[...new Set(ticks)]
+          .filter((i) => labels[i] !== undefined)
+          .map((i) => {
+            // skrajne etykiety dosuwają się do krawędzi zamiast wystawać poza wykres
+            const p = ((i + 0.5) * w).toFixed(2);
+            return (
+              <span key={i} style={{ left: `${p}%`, transform: `translateX(-${p}%)` }}>
+                {labels[i]}
+              </span>
+            );
+          })}
+      </div>
     </div>
   );
 }
@@ -194,6 +209,7 @@ export function StatsView({
                 values={data.daily.map((d) => d[1])}
                 labels={data.daily.map((d) => d[0])}
                 unit={hours}
+                ticks={[0, Math.floor((data.daily.length - 1) / 2), data.daily.length - 1]}
               />
 
               <div className="stats-two">
@@ -203,12 +219,19 @@ export function StatsView({
                     values={data.hours}
                     labels={data.hours.map((_, h) => `${h}:00`)}
                     unit={hours}
+                    ticks={[0, 6, 12, 18]}
                     height={80}
                   />
                 </div>
                 <div>
                   <h3 className="settings-group-title">{t.statsByWeekday}</h3>
-                  <Bars values={data.weekdays} labels={weekdays} unit={hours} height={80} />
+                  <Bars
+                    values={data.weekdays}
+                    labels={weekdays}
+                    unit={hours}
+                    ticks={weekdays.map((_, i) => i)}
+                    height={80}
+                  />
                 </div>
               </div>
 
