@@ -6038,6 +6038,7 @@ export default function App() {
                       <div className="search-results-list">
                         {sections
                           .flatMap((s) => s.items)
+                          .filter((i) => i.id !== heroTrack?.id)
                           .slice(0, 48)
                           .map((item) => {
                             const ownerSection = sections.find((s) =>
