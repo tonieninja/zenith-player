@@ -151,6 +151,8 @@ import { contextMenuCoords, menuKeyIndex, PopoverMenu } from './components/ui/Po
 import { ModalOverlay, escapeTopModal, modalOpen } from './components/ui/ModalOverlay';
 import { clickOnKey, sliderKeyValue } from './components/ui/keyboard';
 import { YtmRatingButtons } from './components/player/YtmRatingButtons';
+import { CastButton } from './components/player/CastButton';
+import { castCmd, castLoad, castPosition, useCast, type CastDevice } from './hooks/useCast';
 import {
   errorText,
   isDefiniteStreamFailure,
@@ -327,6 +329,7 @@ import {
   RefreshCw,
   Search,
   Mic2,
+  Cast,
   ListMusic,
   Settings2,
   Heart,
@@ -498,6 +501,20 @@ export default function App() {
     return 0.8;
   });
   const [isMuted, setIsMuted] = useState(false);
+  const castEndRef = useRef<(error: string) => void>(() => undefined);
+  const cast = useCast((error) => castEndRef.current(error));
+  const {
+    activeRef: castActiveRef,
+    connect: castConnect,
+    seek: castSeek,
+    setVolume: castSetVolume,
+    setMuted: castSetMuted,
+  } = cast;
+  const castStatusRef = useLatest(cast.status);
+  // w trakcie wczytywania na telewizorze stan poprzedniego utworu nie może trafić na pasek
+  const castBusyRef = useRef(false);
+  const shownVolume = cast.status ? cast.status.volume : volume;
+  const shownMuted = cast.status ? cast.status.muted : isMuted;
   const [coverVolHint, setCoverVolHint] = useState<number | null>(null);
   const coverVolHintTimer = useRef(0);
   const coverWheelRef = useRef<HTMLDivElement | null>(null);
@@ -2100,6 +2117,33 @@ ${lang}`
   );
   const extendRadioRef = useRef<() => Promise<number>>(() => Promise.resolve(0));
 
+  const castTrack = useCallback(
+    async (track: Track, startAt: number, autoPlay: boolean, gen: number) => {
+      castBusyRef.current = true;
+      setBuffering(true);
+      try {
+        await castLoad(track, startAt, autoPlay);
+        if (gen === loadGenRef.current) setIsPlaying(autoPlay);
+      } catch (e) {
+        // nowszy utwór przejął telewizor albo sesja się kończy; komunikat da zakończenie sesji
+        if (gen !== loadGenRef.current || !castActiveRef.current) return;
+        setIsPlaying(false);
+        setBuffering(false);
+        const tr = translations[uiLang()];
+        const device = castStatusRef.current?.device ?? '';
+        pushToast(
+          String(e) === 'not castable'
+            ? tr.castNotCastable
+            : tr.castLoadFailed.replace('{device}', device),
+          'error'
+        );
+      } finally {
+        if (gen === loadGenRef.current) castBusyRef.current = false;
+      }
+    },
+    [castActiveRef, castStatusRef]
+  );
+
   const loadTrack = useCallback(
     async (track: Track, autoPlay = true, fadeSeconds?: number, startAt = 0, adopt = false) => {
       const gen = ++loadGenRef.current;
@@ -2144,6 +2188,12 @@ ${lang}`
       if (switchingTrack || startAt > 0 || knownDuration > 0) {
         progressRef.current = startAt > 0 ? startAt : switchingTrack ? 0 : progressRef.current;
         paintKnown(progressRef.current);
+      }
+      if (castActiveRef.current) {
+        trackSwitchingRef.current = false;
+        audio.abortAll();
+        await castTrack(track, startAt, autoPlay, gen);
+        return;
       }
       if (adopt) {
         // silnik już gra ten utwór (przejście zrobił Rust), więc zostaje tylko stan okna
@@ -2390,6 +2440,8 @@ ${lang}`
     },
     [
       audio,
+      castActiveRef,
+      castTrack,
       crossfadeEnabled,
       resolveStreamUrl,
       hydratePanels,
@@ -2650,6 +2702,15 @@ ${lang}`
 
   const togglePlay = useCallback(async () => {
     if (!currentTrack) return;
+    if (castActiveRef.current) {
+      const player = castStatusRef.current?.player;
+      setIsPlaying(!isPlaying);
+      if (isPlaying) castCmd('pause');
+      else if (player === 'PAUSED') castCmd('play');
+      // po końcu utworu albo błędzie telewizor nie ma już czego wznowić
+      else void loadTrack(currentTrack, true, undefined, progressRef.current);
+      return;
+    }
     const fadeMs = pluginManager.isEnabled('fade-on-pause') ? getFadePauseMs() : 0;
     if (isPlaying) {
       if (fadeMs > 0) {
@@ -2691,7 +2752,7 @@ ${lang}`
         await loadTrack(currentTrack, true, undefined, progressRef.current);
       }
     }
-  }, [audio, currentTrack, isPlaying, volume, loadTrack]);
+  }, [audio, currentTrack, isPlaying, volume, loadTrack, castActiveRef, castStatusRef]);
 
   const radioForRef = useRef<string | null>(null);
   const tailRef = useRef<{ id: string; end: number | null } | null>(null);
@@ -2781,7 +2842,8 @@ ${lang}`
       queueIds: q.map((t) => t.id),
     });
     if (decision.kind === 'restart') {
-      audio.currentTime = 0;
+      if (castActiveRef.current) castSeek(0);
+      else audio.currentTime = 0;
       progressRef.current = 0;
       paintProgressUiRef.current(0);
       return;
@@ -2793,6 +2855,8 @@ ${lang}`
     }
   }, [
     audio,
+    castSeek,
+    castActiveRef,
     currentTrack,
     playByIndex,
     loopMode,
@@ -2802,12 +2866,94 @@ ${lang}`
     queueRef,
   ]);
 
+  castEndRef.current = (error: string) => {
+    const last = castStatusRef.current;
+    if (error && last) {
+      const tr = translations[uiLang()];
+      const msg = last.conn === 'connecting' ? tr.castConnectFailed : tr.castLost;
+      pushToast(msg.replace('{device}', last.device), 'error');
+    }
+    castBusyRef.current = false;
+    setIsPlaying(false);
+    setBuffering(false);
+    // jak w YouTube Music: po rozłączeniu utwór czeka na komputerze w tym samym miejscu, spauzowany
+    if (currentTrack) void loadTrack(currentTrack, false, undefined, progressRef.current);
+  };
+  const castAdvanceRef = useLatest(() => {
+    if (loopMode !== 'one') playNext(true);
+    else if (currentTrack) void loadTrack(currentTrack, true);
+  });
+  const startCast = useCallback(
+    async (device: CastDevice) => {
+      try {
+        await castConnect(device);
+      } catch {
+        pushToast(
+          translations[uiLang()].castConnectFailed.replace('{device}', device.name),
+          'error'
+        );
+        return;
+      }
+      if (!currentTrack) return;
+      const wasPlaying = isPlayingRef.current;
+      audio.pause();
+      void loadTrack(currentTrack, wasPlaying, undefined, progressRef.current);
+    },
+    [audio, castConnect, currentTrack, isPlayingRef, loadTrack]
+  );
+  // telewizor powtarza ten sam stan co kilka sekund, więc koniec utworu i błąd obsługujemy raz
+  const castIdleRef = useRef('');
+  useEffect(() => {
+    const s = cast.status;
+    if (!s || castBusyRef.current) return;
+    const idle = s.player === 'IDLE' ? s.idle : '';
+    const idleBefore = castIdleRef.current;
+    castIdleRef.current = idle;
+    if (idle === 'FINISHED') {
+      if (idleBefore === 'FINISHED') return;
+      setIsPlaying(false);
+      setBuffering(false);
+      castAdvanceRef.current();
+      return;
+    }
+    // IDLE bez powodu to wczytywanie po LOAD; przycisk zostaje, jak był
+    if (s.player === 'PLAYING' || s.player === 'BUFFERING' || s.player === 'PAUSED') {
+      setIsPlaying(s.player !== 'PAUSED');
+      setBuffering(s.player === 'BUFFERING' || s.conn !== 'connected');
+    } else if (idle) {
+      setIsPlaying(false);
+      setBuffering(false);
+      if (idle === 'ERROR' && idleBefore !== 'ERROR') {
+        pushToast(translations[uiLang()].castLoadFailed.replace('{device}', s.device), 'error');
+      }
+    }
+    if (s.duration > 0 && Math.abs(s.duration - durationRef.current) > 0.5) {
+      durationRef.current = s.duration;
+      setDuration(s.duration);
+    }
+    if (!s.player || s.player === 'IDLE') return;
+    const paint = () => {
+      if (progressScrubRef.current) return;
+      const t = castPosition(s);
+      progressRef.current = t;
+      paintProgressUiRef.current(t);
+    };
+    paint();
+    if (s.player !== 'PLAYING') return;
+    const iv = window.setInterval(paint, 500);
+    return () => window.clearInterval(iv);
+  }, [cast.status, castAdvanceRef, durationRef, paintProgressUiRef]);
+
   const toggleMute = useCallback(() => {
+    if (castActiveRef.current) {
+      castSetMuted(!castStatusRef.current?.muted);
+      return;
+    }
     setIsMuted((m) => {
       audio.muted = !m;
       return !m;
     });
-  }, [audio]);
+  }, [audio, castSetMuted, castActiveRef, castStatusRef]);
 
   const cycleLoop = useCallback(() => {
     setLoopMode((m) => (m === 'off' ? 'all' : m === 'all' ? 'one' : 'off'));
@@ -3048,13 +3194,17 @@ ${lang}`
 
   const getLyricProgress = useCallback(
     () =>
-      (audioRef.current?.currentTime ?? progressRef.current) + lyricsSyncOffsetRef.current / 1000,
-    []
+      (castActiveRef.current
+        ? progressRef.current
+        : (audioRef.current?.currentTime ?? progressRef.current)) +
+      lyricsSyncOffsetRef.current / 1000,
+    [castActiveRef]
   );
 
   const seekTo = useCallback(
     (time: number) => {
-      audio.currentTime = time;
+      if (castActiveRef.current) castSeek(time);
+      else audio.currentTime = time;
       progressRef.current = time;
       paintProgressUi(time);
       const idx = getActiveLyricIndex(lyricsRef.current?.synced, time, lyricsSyncOffsetRef.current);
@@ -3077,7 +3227,16 @@ ${lang}`
         });
       }
     },
-    [audio, paintProgressUi, activeTabRef, currentTrackIdRef, isPlayingRef, lyricsRef]
+    [
+      audio,
+      castSeek,
+      castActiveRef,
+      paintProgressUi,
+      activeTabRef,
+      currentTrackIdRef,
+      isPlayingRef,
+      lyricsRef,
+    ]
   );
 
   const previewScrub = useCallback(
@@ -3108,6 +3267,10 @@ ${lang}`
 
   const setVolumeTo = useCallback(
     (ratio: number) => {
+      if (castActiveRef.current) {
+        castSetVolume(ratio);
+        return;
+      }
       setVolume(ratio);
       rampVolume(audio, ratio, pluginManager.isEnabled('smooth-volume'));
       if (pluginManager.isEnabled('remember-volume')) saveRememberedVolume(ratio);
@@ -3116,7 +3279,7 @@ ${lang}`
         setIsMuted(false);
       }
     },
-    [audio, isMuted]
+    [audio, castSetVolume, castActiveRef, isMuted]
   );
 
   const handleVolumeClick = useCallback(
@@ -3128,7 +3291,7 @@ ${lang}`
   );
 
   const volumeBlockRef = useRef<HTMLDivElement | null>(null);
-  const volumeNowRef = useLatest(isMuted ? 0 : volume);
+  const volumeNowRef = useLatest(shownMuted ? 0 : shownVolume);
   const setVolumeToRef = useLatest(setVolumeTo);
   useEffect(() => {
     const el = volumeBlockRef.current;
@@ -3143,6 +3306,11 @@ ${lang}`
   }, [setVolumeToRef, volumeNowRef]);
 
   const coverWheelHandler = useLatest((e: WheelEvent) => {
+    if (castActiveRef.current) {
+      const next = applyWheelVolume(volumeNowRef.current, e);
+      if (next !== volumeNowRef.current) setVolumeToRef.current(next);
+      return;
+    }
     // wspólny przelicznik: poziomy gest touchpada nie może podgłaśniać, a drobny krok to nie pełny skok
     const next = applyWheelVolume(volumeRef.current, e);
     if (next === volumeRef.current) return;
@@ -3443,7 +3611,10 @@ ${lang}`
       }
       advance();
     };
-    const onPlay = () => setIsPlaying(true);
+    // silnik lokalny zatrzymany na czas przesyłania; stan przycisku podaje telewizor
+    const onPlay = () => {
+      if (!castActiveRef.current) setIsPlaying(true);
+    };
     let startTicker = 0;
     const onPlaying = () => {
       setIsPlaying(true);
@@ -3461,6 +3632,7 @@ ${lang}`
     };
     // spauzowany zastój nie dostanie już canplay, a kręcący się wskaźnik rysowałby klatki bez końca
     const onPause = () => {
+      if (castActiveRef.current) return;
       setIsPlaying(false);
       setBuffering(false);
     };
@@ -3585,6 +3757,7 @@ ${lang}`
     };
   }, [
     audio,
+    castActiveRef,
     queueIndex,
     queue.length,
     playNext,
@@ -4217,6 +4390,7 @@ ${lang}`
 
   useEffect(() => {
     registerSleepTimerCallback(() => {
+      if (castActiveRef.current) castCmd('pause');
       audio.pause();
       setIsPlaying(false);
     });
@@ -4260,6 +4434,7 @@ ${lang}`
     registerKeyboardHandler(onHotkey);
   }, [
     audio,
+    castActiveRef,
     durationRef,
     isPlayingRef,
     playNextRef,
@@ -4651,6 +4826,7 @@ ${lang}`
   useEffect(() => {
     if (!remoteEnabled) return;
     const setVol = (v: number) => {
+      if (castActiveRef.current) return castSetVolume(v);
       setVolume(v);
       rampVolume(audio, v, pluginManager.isEnabled('smooth-volume'));
       if (pluginManager.isEnabled('remember-volume')) saveRememberedVolume(v);
@@ -4769,6 +4945,8 @@ ${lang}`
     };
   }, [
     remoteEnabled,
+    castActiveRef,
+    castSetVolume,
     audio,
     currentTrackIdRef,
     cycleLoopRef,
@@ -6658,6 +6836,12 @@ ${lang}`
                         {currentTrack.artist}
                       </span>
                     )}
+                    {cast.status && (
+                      <span className="player-cast-line">
+                        <Cast size={12} aria-hidden />
+                        <span>{t.castingTo.replace('{device}', cast.status.device)}</span>
+                      </span>
+                    )}
                   </div>
                 </>
               )}
@@ -6848,17 +7032,26 @@ ${lang}`
               >
                 <Mic2 size={20} />
               </button>
+              <CastButton
+                status={cast.status}
+                devices={cast.devices}
+                scanning={cast.scanning}
+                onScan={() => void cast.scan()}
+                onPick={(d) => void startCast(d)}
+                onStop={cast.disconnect}
+                t={t}
+              />
               <div className="volume-control-block" ref={volumeBlockRef} data-testid="volume-block">
                 <button
                   type="button"
-                  className={`extra-icon-btn${isMuted || volume === 0 ? ' volume-muted-icon' : ''}`}
-                  aria-label={isMuted || volume === 0 ? t.unmute : t.mute}
-                  title={isMuted || volume === 0 ? t.unmute : t.mute}
+                  className={`extra-icon-btn${shownMuted || shownVolume === 0 ? ' volume-muted-icon' : ''}`}
+                  aria-label={shownMuted || shownVolume === 0 ? t.unmute : t.mute}
+                  title={shownMuted || shownVolume === 0 ? t.unmute : t.mute}
                   onClick={toggleMute}
                 >
-                  {isMuted || volume === 0 ? (
+                  {shownMuted || shownVolume === 0 ? (
                     <VolumeX size={20} />
-                  ) : volume < 0.5 ? (
+                  ) : shownVolume < 0.5 ? (
                     <Volume1 size={20} />
                   ) : (
                     <Volume2 size={20} />
@@ -6871,8 +7064,8 @@ ${lang}`
                   aria-label={t.volume}
                   aria-valuemin={0}
                   aria-valuemax={100}
-                  aria-valuenow={isMuted ? 0 : Math.round(volume * 100)}
-                  aria-valuetext={`${isMuted ? 0 : Math.round(volume * 100)}%`}
+                  aria-valuenow={shownMuted ? 0 : Math.round(shownVolume * 100)}
+                  aria-valuetext={`${shownMuted ? 0 : Math.round(shownVolume * 100)}%`}
                   onPointerDown={(e) => {
                     if (e.button !== 0) return;
                     e.currentTarget.setPointerCapture(e.pointerId);
@@ -6882,19 +7075,19 @@ ${lang}`
                     if (e.currentTarget.hasPointerCapture(e.pointerId)) handleVolumeClick(e);
                   }}
                   onKeyDown={(e) => {
-                    const next = sliderKeyValue(e.key, isMuted ? 0 : volume, 0.05, 1);
+                    const next = sliderKeyValue(e.key, shownMuted ? 0 : shownVolume, 0.05, 1);
                     if (next === null) return;
                     e.preventDefault();
                     setVolumeTo(Math.round(next * 100) / 100);
                   }}
                 >
                   <div
-                    className={`volume-bar-fill ${isMuted ? 'muted' : ''}`}
-                    style={{ width: `${isMuted ? 0 : volume * 100}%` }}
+                    className={`volume-bar-fill ${shownMuted ? 'muted' : ''}`}
+                    style={{ width: `${shownMuted ? 0 : shownVolume * 100}%` }}
                   ></div>
                 </div>
                 <span className="volume-pct">
-                  {isMuted ? '0%' : `${Math.round(volume * 100)}%`}
+                  {shownMuted ? '0%' : `${Math.round(shownVolume * 100)}%`}
                 </span>
               </div>
               <button

@@ -72,6 +72,8 @@ export function PopoverMenu({
   emptyLabel,
   align = 'right',
   triggerClassName = '',
+  header,
+  onOpen,
 }: {
   trigger: ReactNode;
   items: PopoverItem[];
@@ -80,6 +82,8 @@ export function PopoverMenu({
   emptyLabel?: string;
   align?: 'left' | 'right';
   triggerClassName?: string;
+  header?: ReactNode;
+  onOpen?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [coords, setCoords] = useState<PopoverCoords | null>(null);
@@ -164,13 +168,19 @@ export function PopoverMenu({
         onKeyDown={onListKey}
         style={{
           position: 'fixed',
-          top: coords.dropUp ? undefined : coords.top,
+          // arkusz ustawia top pod przyciskiem, a z nim i bottom lista otwarta w górę ma zero wysokości
+          top: coords.dropUp ? 'auto' : coords.top,
           bottom: coords.dropUp ? coords.bottom : undefined,
           left: coords.left,
           right: 'auto',
           minWidth: coords.minWidth,
         }}
       >
+        {header && (
+          <li className="zen-popover-header" role="presentation">
+            {header}
+          </li>
+        )}
         {items.length === 0 && emptyLabel && (
           <li className="zen-select-option is-empty" role="presentation">
             {emptyLabel}
@@ -216,6 +226,7 @@ export function PopoverMenu({
         title={ariaLabel}
         onClick={(e) => {
           e.stopPropagation();
+          if (!open) onOpen?.();
           if (!open && rootRef.current) {
             setCoords(
               popoverMenuCoords(rootRef.current.getBoundingClientRect(), items.length, align)
