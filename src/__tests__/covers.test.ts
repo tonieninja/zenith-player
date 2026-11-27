@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isPlaceholderCover, letterCover, localCover } from '../utils/covers';
+import { coverAttrs, isPlaceholderCover, letterCover, localCover } from '../utils/covers';
 
 const svgOf = (u: string) => decodeURIComponent(u.split(',')[1]);
 
@@ -32,5 +32,21 @@ describe('letterCover', () => {
     expect(isPlaceholderCover('https://ui-avatars.com/api/?name=a')).toBe(true);
     expect(isPlaceholderCover('https://i.ytimg.com/vi/abc/hqdefault.jpg')).toBe(false);
     expect(isPlaceholderCover(undefined)).toBe(false);
+  });
+});
+
+describe('coverAttrs', () => {
+  const tr = {
+    id: 'x',
+    cover: 'c=w226-h226',
+    coverSmall: 's=w120-h120',
+    coverLarge: 'l=w544-h544',
+  };
+
+  it('gives cards the medium cover so they stay sharp without the 544 px file', () => {
+    expect(coverAttrs(tr, 'medium').src).toBe('c=w226-h226');
+    expect(coverAttrs(tr, 'small').src).toBe('s=w120-h120');
+    expect(coverAttrs(tr, 'large').src).toBe('l=w544-h544');
+    expect(coverAttrs({ id: 'x', coverLarge: 'l' }, 'medium').src).toBe('l');
   });
 });

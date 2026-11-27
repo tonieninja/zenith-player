@@ -706,7 +706,7 @@ button.nav-item {
 .explore-top-nav {
   display: flex;
   gap: 8px;
-  padding: 20px clamp(24px, 4vw, 48px) 8px;
+  padding: 20px var(--content-gutter) 8px;
 }
 
 .explore-nav-btn {
@@ -737,7 +737,7 @@ button.nav-item {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
   gap: 16px;
-  padding: 0 48px 32px;
+  padding: 0 var(--content-gutter);
 }
 
 .mood-genre-card {
@@ -902,7 +902,7 @@ button.nav-item {
   display: flex;
   align-items: center;
   justify-content: flex-start;
-  padding: 22px clamp(16px, 3vw, 52px) 12px;
+  padding: 22px var(--content-gutter) 12px;
   gap: 10px;
   min-width: 0;
 }
@@ -949,7 +949,7 @@ button.nav-item {
   transform: scale(1.12);
 }
 
-.yt-arrow-disabled {
+.yt-arrow:disabled {
   opacity: 0.22;
   cursor: default;
   pointer-events: none;
@@ -1022,6 +1022,8 @@ button.nav-item {
 }
 
 .yt-scroll-track {
+  /* stała szerokość z liczby miejsc, żeby półka z 4 pozycjami nie miała większych kart niż pełna */
+  --card-w: calc((100% - 2 * (var(--content-gutter) - 10px)) / var(--cols, 8));
   display: flex;
   flex-direction: row;
   align-items: flex-start;
@@ -1032,9 +1034,8 @@ button.nav-item {
 }
 
 .yt-card {
-  flex: 1 1 0;
+  flex: 0 1 var(--card-w);
   min-width: 0;
-  max-width: 210px;
   display: flex;
   flex-direction: column;
   gap: 0;
@@ -1045,12 +1046,13 @@ button.nav-item {
   box-sizing: border-box;
 }
 
+/* karta ma 10 px wewnętrznego marginesu, więc okładka staje w linii z tytułem półki */
 .yt-card:first-child {
-  margin-left: clamp(12px, 3vw, 52px);
+  margin-left: calc(var(--content-gutter) - 10px);
 }
 
 .yt-card:last-child {
-  margin-right: clamp(12px, 3vw, 52px);
+  margin-right: calc(var(--content-gutter) - 10px);
 }
 
 .yt-card:hover {
@@ -1069,11 +1071,17 @@ button.nav-item {
   margin-bottom: 10px;
 }
 
-.yt-section-video .yt-card {
+/* karta 16:9 jest szersza, a flex-shrink zmniejsza karty proporcjonalnie, więc okładki w półce mają jedną wysokość */
+.yt-card-wide {
+  flex-basis: calc((var(--card-w) - 20px) * 16 / 9 + 20px);
+}
+
+.yt-section-video .yt-card-wide {
+  flex-basis: var(--card-w);
   max-width: 320px;
 }
 
-.yt-section-video .yt-card-thumb {
+.yt-card-wide .yt-card-thumb {
   aspect-ratio: 16 / 9;
 }
 
@@ -1152,10 +1160,12 @@ button.nav-item {
   font-size: 12px;
   font-weight: 500;
   color: var(--text-muted);
-  white-space: nowrap;
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  text-overflow: ellipsis;
-  display: block;
+  word-break: break-word;
 }
 
 .startup-splash {
@@ -2772,10 +2782,9 @@ button.modal-close-icon {
 .explore-section-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  gap: 10px;
   min-width: 0;
-  padding: 32px clamp(16px, 3vw, 48px) 16px;
+  padding: 22px var(--content-gutter) 12px;
 }
 
 .explore-header-right {
@@ -2786,12 +2795,12 @@ button.modal-close-icon {
 }
 
 .explore-section-title {
-  font-size: clamp(18px, 2.2vw, 28px);
+  font-size: clamp(18px, 1.6vw, 22px);
   font-weight: 900;
-  letter-spacing: -0.6px;
+  letter-spacing: -0.4px;
   color: var(--text-primary);
   min-width: 0;
-  flex: 1;
+  flex: 0 1 auto;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2804,14 +2813,14 @@ button.modal-close-icon {
   gap: 2px 6px;
   width: 100%;
   box-sizing: border-box;
-  padding: 0 clamp(12px, 2.5vw, 40px);
+  padding: 0 calc(var(--content-gutter) - 10px);
 }
 
 .explore-trending-row {
   display: flex;
   align-items: center;
-  gap: 14px;
-  padding: 10px 14px;
+  gap: 10px;
+  padding: 8px 10px;
   border-radius: 10px;
   cursor: pointer;
   background: transparent;
@@ -4165,7 +4174,7 @@ button.modal-close-icon {
   font-weight: 900;
   margin-bottom: 24px;
   letter-spacing: -1px;
-  padding: 0 clamp(24px, 4vw, 48px);
+  padding: 0 var(--content-gutter);
 }
 
 .moods-genres-subheading {
@@ -4173,11 +4182,11 @@ button.modal-close-icon {
   font-weight: 800;
   margin-bottom: 16px;
   margin-top: 32px;
-  padding: 0 clamp(24px, 4vw, 48px);
+  padding: 0 var(--content-gutter);
 }
 
 .moods-genres-subheading--spaced {
-  margin-top: 48px;
+  margin-top: 40px;
 }
 
 html.has-cover-theme .glass-static-backdrop.has-track {

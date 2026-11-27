@@ -59,11 +59,16 @@ type CoverTrack = {
   coverLarge?: string;
 };
 
-export function coverAttrs(track: CoverTrack, size: 'thumb' | 'small' | 'large' = 'small') {
+export function coverAttrs(
+  track: CoverTrack,
+  size: 'thumb' | 'small' | 'medium' | 'large' = 'small'
+) {
   const src = localCover(
     size === 'large'
       ? track.coverLarge || track.cover || track.coverSmall || ''
-      : track.coverSmall || track.cover || track.coverLarge || ''
+      : size === 'medium'
+        ? track.cover || track.coverLarge || track.coverSmall || ''
+        : track.coverSmall || track.cover || track.coverLarge || ''
   );
   const cached = cachedCoverUrl(src, size === 'large' ? 544 : size === 'thumb' ? 120 : 240);
   return {

@@ -1,10 +1,11 @@
 import { memo, useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
-import { BarChart3, ChevronLeft, ChevronRight, Flame, Play, Smile } from 'lucide-react';
+import { BarChart3, Flame, Play, Smile } from 'lucide-react';
 import type { Section, Track } from '../api/youtube';
-import { type Language, currentT } from '../i18n';
+import type { Language } from '../i18n';
 import { usePager } from '../hooks/usePager';
 import { useResponsivePageSize } from '../hooks/useResponsivePageSize';
 import { coverAttrs } from '../utils/covers';
+import { PagerArrows } from './feed/FeedCarousel';
 import { getExploreLayout } from '../i18n/plugins';
 import { preBlur, preBlurred } from '../utils/preBlur';
 
@@ -103,7 +104,7 @@ export const LibrarySkeleton = memo(function LibrarySkeleton() {
 
 const EXPLORE_TRENDING_MIN = 12;
 const EXPLORE_TRENDING_ROWS = 3;
-const EXPLORE_TRENDING_COL_W = 200;
+const EXPLORE_TRENDING_COL_W = 300;
 
 const ExploreTrendingShelf = memo(function ExploreTrendingShelf({
   section,
@@ -115,7 +116,7 @@ const ExploreTrendingShelf = memo(function ExploreTrendingShelf({
   const { ref: listRef, pageSize: cols } = useResponsivePageSize<HTMLElement>(
     EXPLORE_TRENDING_COL_W,
     10,
-    4
+    2
   );
   const pageSize = Math.max(EXPLORE_TRENDING_MIN, cols * EXPLORE_TRENDING_ROWS);
   const pg = usePager(section.items, pageSize);
@@ -124,24 +125,7 @@ const ExploreTrendingShelf = memo(function ExploreTrendingShelf({
     <section className="explore-section" ref={listRef}>
       <div className="explore-section-header">
         <h2 className="explore-section-title">{section.title}</h2>
-        <div className="explore-header-right">
-          <button
-            type="button"
-            className={'yt-arrow' + (!pg.canPrev ? ' yt-arrow-disabled' : '')}
-            onClick={pg.prev}
-            aria-label={currentT().previousTrack}
-          >
-            <ChevronLeft size={18} />
-          </button>
-          <button
-            type="button"
-            className={'yt-arrow' + (!pg.canNext ? ' yt-arrow-disabled' : '')}
-            onClick={pg.next}
-            aria-label={currentT().nextTrack}
-          >
-            <ChevronRight size={18} />
-          </button>
-        </div>
+        <PagerArrows pg={pg} className="explore-header-right" />
       </div>
       <div
         key={pg.epoch}
