@@ -122,6 +122,7 @@ import {
   itemClickPlan,
   sidebarClickPlan,
   ctxTrackAttr,
+  hitsPlayIcon,
   parseCtxTrackAttr,
   withCollectionMeta,
   isVideoTrackId,
@@ -2508,12 +2509,12 @@ ${lang}`
   );
 
   const handleItemClick = useCallback(
-    async (track: Track, sectionTitle?: string, sectionItems?: Track[]) => {
-      const plan = itemClickPlan(track);
+    async (track: Track, sectionTitle?: string, sectionItems?: Track[], play = false) => {
+      const plan = itemClickPlan(track, play);
       if (plan.kind === 'browse-page') {
-        // rustowy parser karuzel nie zna strony albumu i zrobiłby z niej sekcję z jednym utworem
-        if (track.type === 'album') void openCollectionPage(track);
-        else openBrowsePage(track);
+        // parser karuzel nie zna strony albumu ani playlisty i zrobiłby z niej sekcję z jednym utworem
+        if (track.type === 'artist' || track.type === 'profile') openBrowsePage(track);
+        else void openCollectionPage(track);
         return;
       }
       if (plan.kind === 'play-collection') {
@@ -2556,24 +2557,24 @@ ${lang}`
     [openPlayer, loadTrack, handleCollectionClick, openBrowsePage, openCollectionPage]
   );
 
-  const playArtist = useCallback(
-    (mode: ArtistPlayMode) => {
-      const h = artistPage?.header;
-      if (!artistPage || !h) return;
-      const sourceId = artistPage.id;
+  const playArtistFrom = useCallback(
+    (page: ArtistPageState, pageSections: Section[], mode: ArtistPlayMode) => {
+      const h = page.header;
+      if (!h) return;
+      const sourceId = page.id;
       if (mode === 'radio' && h.radioId) {
-        void handleCollectionClick(artistSongsTrack(artistPage, h.radioId), { sourceId });
+        void handleCollectionClick(artistSongsTrack(page, h.radioId), { sourceId });
         return;
       }
       if (h.songsId) {
-        void handleCollectionClick(artistSongsTrack(artistPage, h.songsId), {
+        void handleCollectionClick(artistSongsTrack(page, h.songsId), {
           sourceId,
           shuffle: mode === 'shuffle',
         });
         return;
       }
       // wykonawca z kilkoma utworami nie ma listy „Pokaż wszystkie”, zostają najpopularniejsze
-      const top = sections.find((s) => s.title === h.songsTitle)?.items ?? [];
+      const top = pageSections.find((s) => s.title === h.songsTitle)?.items ?? [];
       const list = mode === 'shuffle' ? smartShuffle(top) : top;
       if (!list.length) return;
       // ostatnio otwarty album o tej samej nazwie włączyłby tryb albumu dla przypadkowych utworów
@@ -2584,7 +2585,24 @@ ${lang}`
         originalQueueRef.current = top;
       }
     },
-    [artistPage, sections, handleCollectionClick, handleItemClick]
+    [handleCollectionClick, handleItemClick]
+  );
+  const playArtist = useCallback(
+    (mode: ArtistPlayMode) => {
+      if (artistPage) playArtistFrom(artistPage, sections, mode);
+    },
+    [artistPage, sections, playArtistFrom]
+  );
+  // najlepszy wynik wyszukiwania gra wykonawcę bez wchodzenia na jego stronę, jak w YouTube Music
+  const playArtistItem = useCallback(
+    (avatar: Track, mode: ArtistPlayMode) => {
+      void getArtistPage(avatar.id, lang).then(
+        (page) =>
+          playArtistFrom({ id: avatar.id, avatar, header: page.header }, page.sections, mode),
+        () => pushToast(translations[lang].loadFailed, 'error')
+      );
+    },
+    [lang, playArtistFrom]
   );
 
   const showArtistSongs = useCallback(() => {
@@ -5218,7 +5236,12 @@ ${lang}`
   // FeedHero jest w memo; lambda w JSX psułaby je przy każdym znaku wpisanym w wyszukiwarkę
   const playHomeHero = useCallback(() => {
     if (homeHeroTrack) {
-      void handleItemClick(homeHeroTrack, t.quickPicks, quickPicks.length ? quickPicks : undefined);
+      void handleItemClick(
+        homeHeroTrack,
+        t.quickPicks,
+        quickPicks.length ? quickPicks : undefined,
+        true
+      );
     }
   }, [homeHeroTrack, handleItemClick, t.quickPicks, quickPicks]);
 
@@ -5316,7 +5339,7 @@ ${lang}`
     (item: Track) => {
       if (item.type === 'artist' && item.id.startsWith('UC')) {
         void getArtistPage(item.id, lang).catch(() => undefined);
-      } else if (item.type === 'album' || itemClickPlan(item).kind === 'play-collection') {
+      } else if (itemClickPlan(item, true).kind === 'play-collection') {
         prefetchPlaylist(item.id, lang);
       }
     },
@@ -6239,8 +6262,13 @@ ${lang}`
                                     key={item.id}
                                     data-ctx-track={ctxTrackAttr(item)}
                                     className={`search-result-row search-result-type-${item.type}`}
-                                    onClick={() =>
-                                      handleItemClick(item, section.title, section.items)
+                                    onClick={(e) =>
+                                      handleItemClick(
+                                        item,
+                                        section.title,
+                                        section.items,
+                                        hitsPlayIcon(e)
+                                      )
                                     }
                                   >
                                     <div className="search-result-cover-wrap">
@@ -6390,9 +6418,20 @@ ${lang}`
                     {activeTab === 'search' && heroTrack && (
                       <HeroSection
                         track={heroTrack}
-                        onPlay={() =>
+                        onOpen={() =>
                           handleItemClick(heroTrack, sections[0]?.title, sections[0]?.items)
                         }
+                        onPlay={(mode) =>
+                          heroTrack.type === 'artist'
+                            ? playArtistItem(heroTrack, mode)
+                            : handleItemClick(
+                                heroTrack,
+                                sections[0]?.title,
+                                sections[0]?.items,
+                                true
+                              )
+                        }
+                        onHover={prefetchItem}
                         t={t}
                       />
                     )}
@@ -6411,8 +6450,13 @@ ${lang}`
                                 key={item.id}
                                 data-ctx-track={ctxTrackAttr(item)}
                                 className={`search-result-row search-result-type-${item.type}`}
-                                onClick={() =>
-                                  handleItemClick(item, ownerSection?.title, ownerSection?.items)
+                                onClick={(e) =>
+                                  handleItemClick(
+                                    item,
+                                    ownerSection?.title,
+                                    ownerSection?.items,
+                                    hitsPlayIcon(e)
+                                  )
                                 }
                               >
                                 <div className="search-result-cover-wrap">

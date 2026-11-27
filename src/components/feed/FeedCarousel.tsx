@@ -5,12 +5,12 @@ import { usePager } from '../../hooks/usePager';
 import { useResponsivePageSize } from '../../hooks/useResponsivePageSize';
 import { coverAttrs } from '../../utils/covers';
 import { currentT } from '../../i18n';
-import { ctxTrackAttr, isPrimaryButton } from '../../utils/tracks';
+import { ctxTrackAttr, hitsPlayIcon, isPrimaryButton } from '../../utils/tracks';
 import { clickOnKey } from '../ui/keyboard';
 
 export const PAGE_SIZE = 8;
 
-type ItemClick = (t: Track, st?: string, si?: Track[]) => void;
+type ItemClick = (t: Track, st?: string, si?: Track[], play?: boolean) => void;
 type ItemHover = (t: Track) => void;
 
 // strzałka bez disabled łapała fokus z Tab, a półka mieszcząca się na jednej stronie nie potrzebuje ich wcale
@@ -75,6 +75,7 @@ const AlbumCard = memo(function AlbumCard({
   );
   // teledysk w kwadracie pokazywał czarne pasy z hqdefault, więc dostaje kartę 16:9 także w półce mieszanej
   const wide = track.cover.includes('i.ytimg.com/vi/');
+  const playIcon = <Play size={22} fill="currentColor" />;
   return (
     <div
       className={`yt-card yt-card-${track.type}${wide ? ' yt-card-wide' : ''}`}
@@ -102,9 +103,24 @@ const AlbumCard = memo(function AlbumCard({
           {...coverAttrs(track, devicePixelRatio >= 2 ? 'large' : 'medium')}
         />
         <div className="yt-card-overlay">
-          <div className="yt-card-play-btn">
-            <Play size={22} fill="currentColor" />
-          </div>
+          {track.type === 'artist' || track.type === 'profile' ? (
+            <div className="yt-card-play-btn">{playIcon}</div>
+          ) : (
+            // klik w kartę otwiera stronę albumu lub playlisty, a ten przycisk gra ją od razu
+            <button
+              type="button"
+              className="yt-card-play-btn"
+              tabIndex={-1}
+              aria-label={`${currentT().play}: ${track.title}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                window.clearTimeout(hoverTimer.current);
+                onClick(track, sectionTitle, sectionItems, true);
+              }}
+            >
+              {playIcon}
+            </button>
+          )}
         </div>
       </div>
       <div className="yt-card-info">
@@ -139,7 +155,7 @@ const ListRow = memo(function ListRow({
       type="button"
       className={`search-result-row yt-list-row search-result-type-${track.type}`}
       data-ctx-track={ctxTrackAttr(track)}
-      onClick={() => onClick(track, sectionTitle, sectionItems)}
+      onClick={(e) => onClick(track, sectionTitle, sectionItems, hitsPlayIcon(e))}
     >
       <div className="search-result-cover-wrap">
         <img

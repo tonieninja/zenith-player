@@ -11,7 +11,13 @@ import {
   saveHomeSnapshot,
   loadHomeSnapshot,
 } from '../utils/feed';
-import { browseMoodId, isViewingPlaylist, itemClickPlan, sidebarClickPlan } from '../utils/tracks';
+import {
+  browseMoodId,
+  hitsPlayIcon,
+  isViewingPlaylist,
+  itemClickPlan,
+  sidebarClickPlan,
+} from '../utils/tracks';
 
 describe('search / feed item identity', () => {
   it('opens an artist page rather than playing the overlay song (Instant Crush)', () => {
@@ -92,8 +98,33 @@ describe('optimistic click routing', () => {
     expect(itemClickPlan({ id: 'UCabc', type: 'artist' }).kind).toBe('browse-page');
     expect(itemClickPlan({ id: 'UCabc', type: 'profile' }).kind).toBe('browse-page');
     expect(itemClickPlan({ id: 'MPREb_x', type: 'album' }).kind).toBe('browse-page');
-    expect(itemClickPlan({ id: 'VLPLxxxx', type: 'playlist' }).kind).toBe('play-collection');
+    expect(itemClickPlan({ id: 'VLPLxxxx', type: 'playlist' }).kind).toBe('browse-page');
     expect(itemClickPlan({ id: 'dQw4w9WgXcQ', type: 'track' }).kind).toBe('play-track');
+  });
+
+  it('opens playlists like YouTube Music, while the play button plays them at once', () => {
+    expect(itemClickPlan({ id: 'VLRDCLAK5uy_k1Wu8', type: 'playlist' }).kind).toBe('browse-page');
+    expect(itemClickPlan({ id: 'VLRDTMAK5uyEnergy', type: 'playlist' }).kind).toBe('browse-page');
+    expect(itemClickPlan({ id: 'MPSPPLxyz', type: 'podcast' }).kind).toBe('browse-page');
+    expect(itemClickPlan({ id: 'VLPLxxxx', type: 'playlist' }, true).kind).toBe('play-collection');
+    expect(itemClickPlan({ id: 'MPREb_x', type: 'album' }, true).kind).toBe('play-collection');
+    expect(itemClickPlan({ id: 'UCabc', type: 'artist' }, true).kind).toBe('browse-page');
+    expect(itemClickPlan({ id: 'dQw4w9WgXcQ', type: 'track' }, true).kind).toBe('play-track');
+    // radio od utworu lub wykonawcy nie ma strony, więc dalej gra od razu
+    expect(itemClickPlan({ id: 'VLRDAMVMdQw4w9WgXcQ', type: 'playlist' }).kind).toBe(
+      'play-collection'
+    );
+    expect(itemClickPlan({ id: 'RDEMni3jl65KF37F9JYsJM8DGg', type: 'playlist' }).kind).toBe(
+      'play-collection'
+    );
+  });
+
+  it('plays only when the cover icon of a row is clicked', () => {
+    const row = document.createElement('button');
+    row.innerHTML = '<div class="search-result-play-icon"><svg></svg></div><span>t</span>';
+    expect(hitsPlayIcon({ target: row.querySelector('svg') })).toBe(true);
+    expect(hitsPlayIcon({ target: row.querySelector('span') })).toBe(false);
+    expect(hitsPlayIcon({ target: null })).toBe(false);
   });
 
   it('opens sidebar playlists and episodes-for-later as a page', () => {
@@ -103,7 +134,9 @@ describe('optimistic click routing', () => {
     expect(sidebarClickPlan({ id: 'VLRDTMAK5uyEnergy', type: 'playlist' }).kind).toBe(
       'browse-page'
     );
-    expect(itemClickPlan({ id: 'VLPLxxxx', type: 'playlist' }).kind).toBe('play-collection');
+    expect(sidebarClickPlan({ id: 'VLRDAMVMdQw4w9WgXcQ', type: 'playlist' }).kind).toBe(
+      'browse-page'
+    );
   });
 
   it('classifies generated mix / supermix browse ids as playlists', () => {

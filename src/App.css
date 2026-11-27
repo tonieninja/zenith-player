@@ -821,6 +821,16 @@ button.nav-item {
   border-radius: 50%;
 }
 
+.hero-open {
+  cursor: pointer;
+}
+
+.hero-title-link:hover {
+  text-decoration: underline;
+  text-decoration-thickness: 3px;
+  text-underline-offset: 8px;
+}
+
 .hero-text-block {
   display: flex;
   flex-direction: column;
@@ -1207,6 +1217,9 @@ button.nav-item {
 .yt-card-play-btn {
   width: 42px;
   height: 42px;
+  padding: 0;
+  border: 0;
+  cursor: pointer;
   border-radius: 50%;
   background: #ffffff;
   color: #07070b;
@@ -2817,6 +2830,11 @@ button.modal-close-icon {
 }
 .search-result-row:hover .search-result-play-icon {
   opacity: 1;
+}
+/* wykonawcy nie da się odtworzyć z wiersza, klik zawsze otwiera jego stronę */
+.search-result-type-artist .search-result-play-icon,
+.search-result-type-profile .search-result-play-icon {
+  display: none;
 }
 .search-result-meta {
   display: flex;

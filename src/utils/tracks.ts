@@ -62,6 +62,11 @@ export function parseCtxTrackAttr(raw: string | undefined | null): Track | null 
   return null;
 }
 
+// miniatura w wierszu działa jak przycisk odtwarzania, a reszta wiersza otwiera stronę albumu lub playlisty
+export function hitsPlayIcon(e: { target: EventTarget | null }): boolean {
+  return !!(e.target as Element | null)?.closest?.('.search-result-play-icon');
+}
+
 export const BROWSE_MOOD_PREFIX = 'browse:';
 
 export type ItemClickKind = 'play-track' | 'browse-page' | 'play-collection';
@@ -97,12 +102,20 @@ export function sidebarClickPlan(track: Pick<Track, 'id' | 'type'>): { kind: Ite
   return itemClickPlan(track);
 }
 
-export function itemClickPlan(track: Pick<Track, 'id' | 'type'>): { kind: ItemClickKind } {
-  if (track.type === 'artist' || track.type === 'profile' || track.type === 'album') {
-    return { kind: 'browse-page' };
-  }
-  if (track.type === 'playlist' || track.type === 'podcast') {
-    return { kind: 'play-collection' };
+// radio od utworu lub wykonawcy (RDAMVM, RDEM…) to sama kolejka bez strony; mieszanki RDTMAK i RDCLAK ją mają
+export function hasCollectionPage(id: string): boolean {
+  const plain = toPlainPlaylistId(id);
+  return !plain.startsWith('RD') || /^RD(CLAK|TMAK)/.test(plain);
+}
+
+// klik otwiera stronę kolekcji jak w YouTube Music, a przycisk odtwarzania (play) gra ją od razu
+export function itemClickPlan(
+  track: Pick<Track, 'id' | 'type'>,
+  play = false
+): { kind: ItemClickKind } {
+  if (track.type === 'artist' || track.type === 'profile') return { kind: 'browse-page' };
+  if (track.type === 'album' || track.type === 'playlist' || track.type === 'podcast') {
+    return { kind: play || !hasCollectionPage(track.id) ? 'play-collection' : 'browse-page' };
   }
   if (track.type === 'track' || /^[\w-]{11}$/.test(track.id)) return { kind: 'play-track' };
   return { kind: 'play-collection' };
