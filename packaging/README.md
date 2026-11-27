@@ -44,9 +44,9 @@ appstream warnings as errors.
 Doesn't work in the sandbox: the DualSense over hidraw (needs `--device=all`) and its udev rule, `zenith://`
 links (the app registers them outside the sandbox) and Discord presence (needs the Discord socket).
 
-**Before submitting:** Flathub's requirements say manifests must not contain AI-generated or AI-assisted
-content, and AI-generated material in the app or its packaging has to be disclosed in the submission.
-Answer that question yourself before opening the PR.
+**Before submitting:** read Flathub's current submission requirements and answer the questions in the
+submission form yourself before opening the PR. The manifest asks for `xdg-config/autostart` only for
+Start with the system; drop it if a reviewer prefers the Background portal.
 
 ## AUR
 

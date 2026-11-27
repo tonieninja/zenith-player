@@ -17,6 +17,7 @@
     "--device=dri",
     "--filesystem=xdg-music:ro",
     "--filesystem=xdg-run/tray-icon:create",
+    "--filesystem=xdg-config/autostart:create",
     "--talk-name=org.kde.StatusNotifierWatcher",
     "--own-name=org.mpris.MediaPlayer2.zenith",
     "--own-name=com.zenithplayer.desktop.SingleInstance"
