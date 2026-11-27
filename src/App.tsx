@@ -124,15 +124,7 @@ import { LyricsSourcesSettings } from './components/LyricsSourcesSettings';
 import { BackupSetting } from './components/BackupSetting';
 import { ThemeSetting } from './components/ThemeSetting';
 import { LocalFilesSetting } from './components/LocalFilesSetting';
-import { StatsView } from './components/StatsView';
-import {
-  addToCollection,
-  CollectionDialog,
-  listCollections,
-  LocalLibrary,
-  TagsDialog,
-  type Collection,
-} from './components/LocalLibrary';
+import { addToCollection, listCollections, type Collection } from './api/library';
 import { PanelGapSetting } from './components/PanelGapSetting';
 import { AudioOutputSettings } from './components/AudioOutputSettings';
 import { PlainLyrics } from './components/PlainLyrics';
@@ -355,6 +347,18 @@ const PluginsPanel = lazy(() =>
 );
 const PlaylistManager = lazy(() =>
   import('./components/PlaylistManager').then((m) => ({ default: m.PlaylistManager }))
+);
+const StatsView = lazy(() =>
+  import('./components/StatsView').then((m) => ({ default: m.StatsView }))
+);
+const LocalLibrary = lazy(() =>
+  import('./components/LocalLibrary').then((m) => ({ default: m.LocalLibrary }))
+);
+const TagsDialog = lazy(() =>
+  import('./components/LocalLibrary').then((m) => ({ default: m.TagsDialog }))
+);
+const CollectionDialog = lazy(() =>
+  import('./components/LocalLibrary').then((m) => ({ default: m.CollectionDialog }))
 );
 
 const appWindow = getCurrentWindow();
@@ -6825,41 +6829,43 @@ export default function App() {
         </ModalOverlay>
       )}
 
-      {localLibOpen && (
-        <LocalLibrary
-          lang={lang}
-          onClose={() => setLocalLibOpen(false)}
-          onPlay={(tracks, index, title) => {
-            setLocalLibOpen(false);
-            if (tracks[index]) void handleItemClick(tracks[index], title, tracks);
-          }}
-        />
-      )}
-      {statsOpen && (
-        <StatsView
-          lang={lang}
-          onClose={() => setStatsOpen(false)}
-          onPlay={(track) => {
-            setStatsOpen(false);
-            void handleItemClick(track);
-          }}
-        />
-      )}
-      {tagTrack && <TagsDialog lang={lang} track={tagTrack} onClose={() => setTagTrack(null)} />}
-      {newCollectionFor && (
-        <CollectionDialog
-          lang={lang}
-          onClose={() => setNewCollectionFor(null)}
-          onDone={(id, name) => {
-            const track = newCollectionFor;
-            setNewCollectionFor(null);
-            void addToCollection(id, track).then(
-              () => pushToast(t.ctxAddedToCollection.replace('{name}', name), 'success'),
-              (e) => pushToast(errorText(t, e), 'error')
-            );
-          }}
-        />
-      )}
+      <Suspense fallback={null}>
+        {localLibOpen && (
+          <LocalLibrary
+            lang={lang}
+            onClose={() => setLocalLibOpen(false)}
+            onPlay={(tracks, index, title) => {
+              setLocalLibOpen(false);
+              if (tracks[index]) void handleItemClick(tracks[index], title, tracks);
+            }}
+          />
+        )}
+        {statsOpen && (
+          <StatsView
+            lang={lang}
+            onClose={() => setStatsOpen(false)}
+            onPlay={(track) => {
+              setStatsOpen(false);
+              void handleItemClick(track);
+            }}
+          />
+        )}
+        {tagTrack && <TagsDialog lang={lang} track={tagTrack} onClose={() => setTagTrack(null)} />}
+        {newCollectionFor && (
+          <CollectionDialog
+            lang={lang}
+            onClose={() => setNewCollectionFor(null)}
+            onDone={(id, name) => {
+              const track = newCollectionFor;
+              setNewCollectionFor(null);
+              void addToCollection(id, track).then(
+                () => pushToast(t.ctxAddedToCollection.replace('{name}', name), 'success'),
+                (e) => pushToast(errorText(t, e), 'error')
+              );
+            }}
+          />
+        )}
+      </Suspense>
       {pmOpen && (
         <Suspense fallback={null}>
           <PlaylistManager

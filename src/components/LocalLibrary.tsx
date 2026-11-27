@@ -2,17 +2,11 @@ import { useCallback, useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { FolderOpen, Plus, Tag, Trash2, X } from 'lucide-react';
 import type { Track } from '../api/youtube';
+import { listCollections, trackIn, type Collection } from '../api/library';
 import { translations, type Language } from '../i18n';
 import { ModalOverlay } from './ui/ModalOverlay';
 import { Select } from './ui/Select';
 import { pushToast } from './Toast';
-
-export interface Collection {
-  id: number;
-  name: string;
-  folder: string;
-  count: number;
-}
 
 interface LibTrack {
   id: string;
@@ -28,20 +22,6 @@ interface LibTrack {
 }
 
 type Sort = 'default' | 'title' | 'artist' | 'plays' | 'recent';
-
-export const trackIn = (t: Track) => ({
-  id: t.id,
-  title: t.title,
-  artist: t.artist,
-  album: t.album ?? null,
-  durationSec: t.durationSec ?? null,
-  cover: t.coverSmall || t.cover || null,
-});
-
-export const listCollections = () => invoke<Collection[]>('lib_collections').catch(() => []);
-
-export const addToCollection = (id: number, t: Track) =>
-  invoke('lib_collection_add', { id, track: trackIn(t) });
 
 const toTrack = (t: LibTrack): Track => ({
   id: t.id,
