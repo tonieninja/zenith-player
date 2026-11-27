@@ -295,6 +295,7 @@ import { smartShuffle } from './utils/smartShuffle';
 import {
   loadHiddenShelves,
   loadHomeSnapshot,
+  QUICK_PICKS_SHELF,
   saveHiddenShelves,
   saveHomeSnapshot,
   shelfKey,
@@ -1181,9 +1182,28 @@ ${language}`;
   );
 
   useEffect(() => saveHiddenShelves(hiddenShelves), [hiddenShelves]);
-  const hideShelf = useCallback(
-    (s: Section) => setHiddenShelves((prev) => ({ ...prev, [shelfKey(s)]: s.title })),
+  const showShelf = useCallback(
+    (key: string) =>
+      setHiddenShelves((prev) => {
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      }),
     []
+  );
+  const hideShelf = useCallback(
+    (s: Section) => {
+      const key = shelfKey(s);
+      setHiddenShelves((prev) => ({ ...prev, [key]: s.title }));
+      // oko stoi tuż przy strzałce „dalej”, więc przypadkowe ukrycie musi dać się cofnąć od razu
+      pushToast(
+        t.shelfHidden.replace('{name}', () => s.title),
+        'info',
+        5000,
+        { label: t.undo, labelKey: 'undo', onClick: () => showShelf(key) }
+      );
+    },
+    [t, showShelf]
   );
 
   useEffect(() => {
@@ -6344,7 +6364,7 @@ ${lang}`
 
                     {activeTab === 'home' && (
                       <QuickPicks
-                        tracks={hiddenShelves[t.quickPicks.toLowerCase()] ? [] : quickPicks}
+                        tracks={hiddenShelves[QUICK_PICKS_SHELF] ? [] : quickPicks}
                         onItemClick={handleItemClick}
                         onHide={hideShelf}
                         t={t}
@@ -6954,18 +6974,24 @@ ${lang}`
               <LocalFilesSetting lang={lang} />
               <BackupSetting lang={lang} />
               {Object.keys(hiddenShelves).length > 0 && (
-                <div className="settings-row-item settings-toggle-row">
-                  <div className="settings-account-info">
-                    <span className="setting-label">{t.hiddenShelves}</span>
-                    <span className="plugin-desc">{Object.values(hiddenShelves).join(', ')}</span>
-                  </div>
-                  <button
-                    type="button"
-                    className="lang-option-btn settings-action-btn"
-                    onClick={() => setHiddenShelves({})}
-                  >
-                    {t.hiddenShelvesRestore}
-                  </button>
+                <div className="settings-row-item local-files-row">
+                  <span className="setting-label">{t.hiddenShelves}</span>
+                  {Object.entries(hiddenShelves).map(([key, title]) => {
+                    const name = key === QUICK_PICKS_SHELF ? t.quickPicks : title;
+                    return (
+                      <div key={key} className="local-files-folder">
+                        <span title={name}>{name}</span>
+                        <button
+                          type="button"
+                          className="np-cancel-btn"
+                          aria-label={`${t.hiddenShelvesRestore}: ${name}`}
+                          onClick={() => showShelf(key)}
+                        >
+                          {t.hiddenShelvesRestore}
+                        </button>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
               <h3 className="settings-group-title">{PLUGIN_CATEGORY_LABELS.playback[lang]}</h3>

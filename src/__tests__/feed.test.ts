@@ -6,6 +6,7 @@ import {
   tidyByline,
   upsertSections,
   shelfKey,
+  QUICK_PICKS_SHELF,
   loadHiddenShelves,
   saveHiddenShelves,
   saveHomeSnapshot,
@@ -246,6 +247,19 @@ describe('hidden home shelves', () => {
       'FEmusic_new_releases'
     );
     expect(shelfKey(shelf(' Party Music '))).toBe('party music');
+  });
+
+  it('keeps a fixed key for quick picks and tells shelves with one target apart by params', () => {
+    expect(shelfKey(shelf('Szybki wybór', 1, { id: QUICK_PICKS_SHELF }))).toBe(QUICK_PICKS_SHELF);
+    const mood = (params: string) =>
+      shelfKey(shelf('x', 1, { more: { browseId: 'FEmusic_moods_and_genres_category', params } }));
+    expect(mood('a')).not.toBe(mood('b'));
+  });
+
+  it('moves a quick picks key saved under the translated title', () => {
+    localStorage.setItem('zenith_home_hidden', JSON.stringify({ 'szybki wybór': 'Szybki wybór' }));
+    expect(loadHiddenShelves()).toEqual({ [QUICK_PICKS_SHELF]: 'Szybki wybór' });
+    localStorage.removeItem('zenith_home_hidden');
   });
 
   it('survives a restart and clears the key when empty', () => {

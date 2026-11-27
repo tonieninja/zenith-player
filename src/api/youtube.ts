@@ -283,6 +283,8 @@ export interface Track {
 }
 
 export interface Section {
+  /** Stały klucz półki, której tytuł zależy od języka, a YTM nie daje jej celu „Więcej”. */
+  id?: string;
   title: string;
   items: Track[];
   more?: { browseId: string; params?: string };

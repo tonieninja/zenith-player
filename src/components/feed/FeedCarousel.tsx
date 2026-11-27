@@ -5,6 +5,7 @@ import { usePager } from '../../hooks/usePager';
 import { useResponsivePageSize } from '../../hooks/useResponsivePageSize';
 import { coverAttrs } from '../../utils/covers';
 import { currentT } from '../../i18n';
+import { QUICK_PICKS_SHELF } from '../../utils/feed';
 import { ctxTrackAttr, isPrimaryButton } from '../../utils/tracks';
 import { clickOnKey } from '../ui/keyboard';
 
@@ -312,7 +313,7 @@ export const QuickPicks = memo(function QuickPicks({
   t: Record<string, string>;
 }) {
   const section = useMemo<Section>(
-    () => ({ title: t.quickPicks, items: tracks, layout: 'list' }),
+    () => ({ id: QUICK_PICKS_SHELF, title: t.quickPicks, items: tracks, layout: 'list' }),
     [t.quickPicks, tracks]
   );
   if (!tracks.length) return null;
