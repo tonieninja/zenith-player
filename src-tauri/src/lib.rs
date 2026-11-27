@@ -1,4 +1,5 @@
 mod auth_store;
+mod autostart;
 mod backup;
 mod cover_cache;
 mod db;
@@ -749,6 +750,13 @@ pub fn run() {
     // GTK3 wysyła prgname jako Wayland app_id, a KWin szuka ikony w <app_id>.desktop, czyli Zenith.desktop z paczki
     #[cfg(target_os = "linux")]
     webkit2gtk::glib::set_prgname(Some("Zenith"));
+    let mut ctx = windows::with_user_webview_args(tauri::generate_context!());
+    // start z autostartu do zasobnika: okno schowane w setup zdążyłoby mignąć
+    if autostart::launched_minimized(&std::env::args().collect::<Vec<_>>()) {
+        if let Some(w) = ctx.config_mut().app.windows.first_mut() {
+            w.visible = false;
+        }
+    }
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
             // link zenith:// z przeglądarki uruchamia drugą instancję, która oddaje go tutaj
@@ -813,6 +821,16 @@ pub fn run() {
             if let Err(e) = setup_tray(app) {
                 if debug_log_enabled() {
                     eprintln!("[zenith] tray unavailable: {e}");
+                }
+            }
+            if autostart::launched_minimized(&std::env::args().collect::<Vec<_>>()) {
+                if let Some(main) = app.get_webview_window("main") {
+                    // bez zasobnika (np. GNOME bez rozszerzenia) nie byłoby jak wrócić do okna
+                    if TRAY_READY.load(Ordering::SeqCst) {
+                        wv2_mem::set_low(&main, true);
+                    } else {
+                        let _ = main.show();
+                    }
                 }
             }
             apply_global_shortcuts(app.handle(), GLOBAL_HOTKEYS_ON.load(Ordering::SeqCst));
@@ -981,6 +999,8 @@ pub fn run() {
             windows::aux_closed_take,
             windows::app_prepare_shutdown,
             windows::set_window_light,
+            autostart::autostart_get,
+            autostart::autostart_set,
             set_tray_labels,
             set_close_to_tray,
             tray_available,
@@ -1038,7 +1058,7 @@ pub fn run() {
             discord::discord_status,
             diag::stream_diagnostics
         ])
-        .build(windows::with_user_webview_args(tauri::generate_context!()))
+        .build(ctx)
         .unwrap_or_else(|e| {
             #[cfg(windows)]
             webview2_check::fatal(&e.to_string());

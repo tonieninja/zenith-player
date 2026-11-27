@@ -664,6 +664,10 @@ const en = {
   appearanceLight: 'Light',
   appearanceSystem: 'System',
   themeTitle: 'Accent color',
+  autostartTitle: 'Start with the system',
+  autostartDesc: 'Zenith opens when you sign in to your computer.',
+  autostartMinimized: 'Start in the tray',
+  autostartMinimizedDesc: 'Starts hidden in the tray, without opening the window.',
   themeDesc:
     'The accent color for buttons, the progress bar and highlights. With ambient cover glow on, the cover sets it while a song plays.',
   backupTitle: 'Backup',
@@ -1436,6 +1440,10 @@ const pl: Record<keyof typeof en, string> = {
   appearanceLight: 'Jasny',
   appearanceSystem: 'Systemowy',
   themeTitle: 'Kolor akcentu',
+  autostartTitle: 'Uruchamiaj razem z systemem',
+  autostartDesc: 'Zenith otwiera się po zalogowaniu do komputera.',
+  autostartMinimized: 'Uruchamiaj w zasobniku',
+  autostartMinimizedDesc: 'Startuje schowany w zasobniku, bez otwierania okna.',
   themeDesc:
     'Kolor przycisków, paska postępu i wyróżnień. Przy włączonej poświacie z okładki ustawia go okładka grającego utworu.',
   backupTitle: 'Kopia zapasowa',
