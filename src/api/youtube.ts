@@ -548,7 +548,8 @@ export const GENRES = [
 const imageCache = new Map<string, number>();
 const browseCache = new Map<string, { data: Section[]; ts: number }>();
 const librarySectionCache = new Map<string, { at: number; sections: Section[] }>();
-const searchCache = new Map<string, { data: Section[]; ts: number }>();
+const searchCache = new Map<string, { data: SearchPage; ts: number }>();
+const suggestCache = new Map<string, SearchSuggestions>();
 const IMAGE_CACHE_LIMIT = 12;
 const BROWSE_CACHE_LIMIT = 6;
 const SEARCH_CACHE_LIMIT = 8;
@@ -604,6 +605,7 @@ export function clearCaches() {
   imageCache.clear();
   browseCache.clear();
   searchCache.clear();
+  suggestCache.clear();
   lyricsCache.clear();
   browseEpoch += 1;
   // po wylogowaniu kolejne konto nie może dostać biblioteki ani playlist poprzedniego
@@ -1320,22 +1322,117 @@ async function fetchBrowseUncached(
 
 const SONGS_PARAMS = 'EgWKAQIIAWoKEAMQBBAJEAoQBQ==';
 
-async function searchRequest(q: string, lang: Language, params?: string): Promise<Section[]> {
-  const body: Record<string, unknown> = { ...buildClientContext(lang), query: q };
-  if (params) body.params = params;
+export interface SearchChip {
+  title: string;
+  params: string;
+}
+
+export interface SearchPage {
+  sections: Section[];
+  chips: SearchChip[];
+}
+
+export interface SearchSuggestion {
+  query: string;
+  runs: { text: string; bold: boolean }[];
+}
+
+export interface SearchSuggestions {
+  texts: SearchSuggestion[];
+  items: Track[];
+}
+
+async function ytmPost(action: string, lang: Language, body: Record<string, unknown>, ms: number) {
   const response = await fetchWithTimeout(
-    ytmUrl('search'),
+    ytmUrl(action),
     {
       method: 'POST',
       headers: await buildAuthHeaders(lang),
-      body: JSON.stringify(body),
+      body: JSON.stringify({ ...buildClientContext(lang), ...body }),
     },
+    ms
+  );
+  if (!response.ok) throw new Error(`${action} HTTP ${response.status}`);
+  const data = JSON.parse(await response.text());
+  if (data?.error) throw new Error(`${action}: ${data.error.message || 'api error'}`);
+  return data;
+}
+
+const searchBody = (q: string, params?: string) => (params ? { query: q, params } : { query: q });
+
+async function searchRequest(q: string, lang: Language, params?: string): Promise<Section[]> {
+  return parseShelves(
+    await ytmPost('search', lang, searchBody(q, params), 10000),
+    translations[lang]
+  );
+}
+
+// chip „Wyczyść filtry” nie ma ani tekstu, ani params, więc odpada sam
+export function parseSearchChips(data: unknown): SearchChip[] {
+  const chips = findRenderer(data, 'chipCloudRenderer')?.chips;
+  return (Array.isArray(chips) ? chips : []).flatMap((c: any) => {
+    const r = c?.chipCloudChipRenderer;
+    const title = extractFirstText(r?.text);
+    const params = r?.navigationEndpoint?.searchEndpoint?.params;
+    return title && typeof params === 'string' && params ? [{ title, params }] : [];
+  });
+}
+
+export function parseSearchSuggestions(data: any, lang: Language): SearchSuggestions {
+  const texts: SearchSuggestion[] = [];
+  const rows: unknown[] = [];
+  for (const section of data?.contents ?? []) {
+    for (const c of section?.searchSuggestionsSectionRenderer?.contents ?? []) {
+      // historia konta przychodzi jako historySuggestionRenderer o tym samym kształcie
+      const s = c?.searchSuggestionRenderer ?? c?.historySuggestionRenderer;
+      const query = s?.navigationEndpoint?.searchEndpoint?.query;
+      if (typeof query === 'string' && query) {
+        const runs = (s.suggestion?.runs ?? []).map((r: any) => ({
+          text: String(r?.text ?? ''),
+          bold: Boolean(r?.bold),
+        }));
+        texts.push({ query, runs: runs.length ? runs : [{ text: query, bold: false }] });
+      } else if (c?.musicResponsiveListItemRenderer) rows.push(c);
+    }
+  }
+  const items = parseShelves({ musicShelfRenderer: { contents: rows } }, translations[lang]);
+  return { texts, items: items.flatMap((s) => s.items) };
+}
+
+export async function getSearchSuggestions(
+  input: string,
+  lang: Language
+): Promise<SearchSuggestions> {
+  const q = input.trim();
+  const key = `${q.toLowerCase()}:${lang}`;
+  const hit = suggestCache.get(key);
+  if (hit) return hit;
+  const data = parseSearchSuggestions(
+    await ytmPost('music/get_search_suggestions', lang, { input: q }, 6000),
+    lang
+  );
+  suggestCache.set(key, data);
+  pruneOldest(suggestCache, 60);
+  return data;
+}
+
+/** Strona wyników jednego chipa; `next` to token kolejnej strony albo null na końcu listy. */
+export async function searchFilterPage(
+  query: string,
+  params: string,
+  lang: Language,
+  continuation?: string | null
+): Promise<{ items: Track[]; next: string | null }> {
+  const data = await ytmPost(
+    'search',
+    lang,
+    continuation ? { continuation } : searchBody(query.trim(), params),
     10000
   );
-  if (!response.ok) throw new Error(`search HTTP ${response.status}`);
-  const data = JSON.parse(await response.text());
-  if (data?.error) throw new Error(`search: ${data.error.message || 'api error'}`);
-  return parseShelves(data, translations[lang]);
+  // odpowiedź na token powtarza w `contents` nagłówek pierwszej strony, wyniki są tylko w continuationContents
+  const root = continuation ? data?.continuationContents : data;
+  const sections = parseShelves(root, translations[lang]);
+  return { items: sections.flatMap((s) => s.items), next: findContinuationToken(root) };
 }
 
 // import listy: 429 albo strona weryfikacji ma zatrzymać import, a nie liczyć się jako brak dopasowania
@@ -1400,12 +1497,16 @@ export async function findSongTwins(track: Track, lang: Language): Promise<strin
   }
 }
 
-// Enter i debounce potrafią zapytać o to samo w tej samej chwili; drugie wywołanie czeka na pierwsze
-const searchInflight = new Map<string, Promise<Section[]>>();
+// Enter, zmiana języka i ponowienie potrafią zapytać o to samo naraz; drugie wywołanie czeka na pierwsze
+const searchInflight = new Map<string, Promise<SearchPage>>();
 
 export async function searchMusic(query: string, lang: Language): Promise<Section[]> {
+  return (await searchMusicPage(query, lang)).sections;
+}
+
+export async function searchMusicPage(query: string, lang: Language): Promise<SearchPage> {
   const q = query.trim();
-  if (!q) return [];
+  if (!q) return { sections: [], chips: [] };
   const cacheKey = `${q.toLowerCase()}:${lang}`;
   const cached = searchCache.get(cacheKey);
   if (cached && Date.now() - cached.ts < 60000) return cached.data;
@@ -1417,20 +1518,28 @@ export async function searchMusic(query: string, lang: Language): Promise<Sectio
   return task;
 }
 
-async function runSearch(q: string, lang: Language, cacheKey: string): Promise<Section[]> {
+async function runSearch(q: string, lang: Language, cacheKey: string): Promise<SearchPage> {
   const t = translations[lang];
   let failed = 0;
+  let chips: SearchChip[] = [];
   const run = (params?: string) =>
-    searchRequest(q, lang, params).catch(() => {
-      failed += 1;
-      return [] as Section[];
-    });
+    ytmPost('search', lang, searchBody(q, params), 10000).then(
+      (json) => {
+        if (!params) chips = parseSearchChips(json);
+        return parseShelves(json, t);
+      },
+      () => {
+        failed += 1;
+        return [] as Section[];
+      }
+    );
   const [mixed, songs] = await Promise.all([run(), run(SONGS_PARAMS)]);
   const merged = mergeSearchSections(mixed, songs, t);
-  const data = merged.length > 0 ? merged : await searchFallback(q, t);
+  const sections = merged.length > 0 ? merged : await searchFallback(q, t);
   // bez sieci oba zapytania padają i lista jest pusta; „brak wyników” wmówiłby, że utworu nie ma
-  if (!data.length && failed === 2) throw new Error('search failed');
-  if (data.length > 0) {
+  if (!sections.length && failed === 2) throw new Error('search failed');
+  const data = { sections, chips };
+  if (sections.length > 0) {
     searchCache.set(cacheKey, { data, ts: Date.now() });
     pruneOldest(searchCache, SEARCH_CACHE_LIMIT);
   }

@@ -1,4 +1,4 @@
-import type { ArtistHeader, LibraryCategory, Section, Track } from '../api/youtube';
+import type { ArtistHeader, LibraryCategory, SearchChip, Section, Track } from '../api/youtube';
 import type { ViewTab } from '../types/views';
 
 const KEY = 'zenith_ui_snapshot';
@@ -17,6 +17,7 @@ export interface UiSnapshot {
   exploreSections: Section[];
   quickPicks: Track[];
   searchQuery: string;
+  searchChips?: SearchChip[];
   libCategory: LibraryCategory;
   panelTab: 'upnext' | 'related';
   collection: Track | null;
