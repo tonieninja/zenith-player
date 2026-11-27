@@ -446,8 +446,6 @@ button.nav-item {
   overflow-y: auto;
   overflow-x: hidden;
   margin-bottom: 8px;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
 }
 
 .section-title {
@@ -593,8 +591,6 @@ button.nav-item {
   overflow-x: hidden;
   scroll-behavior: smooth;
   scrollbar-gutter: stable;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.28) transparent;
   padding: 18px 0 40px clamp(8px, 1.5vw, 24px);
   min-height: 0;
   min-width: 0;
@@ -1448,8 +1444,6 @@ button.nav-item {
   max-height: 280px;
   overflow-y: auto;
   padding-right: 8px;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
 }
 
 .up-next-empty {
@@ -1799,7 +1793,6 @@ button.nav-item {
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
-  scrollbar-width: thin;
 }
 
 @keyframes slideUpFade {
@@ -3036,8 +3029,6 @@ button.modal-close-icon {
   max-height: 280px;
   overflow-y: auto;
   padding-right: 8px;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
 }
 
 .related-section {
