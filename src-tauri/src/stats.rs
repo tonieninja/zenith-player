@@ -38,6 +38,9 @@ pub struct Overview {
 // przesłuchane minuty nie mogą przekroczyć długości utworu (pozycja po przewinięciu bywa większa)
 const MIN: &str = "MIN(listened, COALESCE(duration, listened)) / 60.0";
 const LOCAL: &str = "datetime(at / 1000, 'unixepoch', 'localtime')";
+// „+” odbiera planerowi indeks wykonawcy: bez tego czyta całą historię w kolejności grupowania zamiast zakresu dat
+const TOP_TRACKS: &str = "SELECT MAX(video_id), MIN(title), MIN(artist), COUNT(*) FROM plays
+     WHERE at >= ?1 AND skipped=0 GROUP BY +artist_key, title_key ORDER BY 4 DESC LIMIT 25";
 
 pub fn overview(c: &Connection, days: i64, now: i64) -> rusqlite::Result<Overview> {
     let since = if days > 0 { now - days * 86_400_000 } else { 0 };
@@ -98,10 +101,7 @@ pub fn overview(c: &Connection, days: i64, now: i64) -> rusqlite::Result<Overvie
         o.rising = rising;
     }
 
-    let mut q = c.prepare(
-        "SELECT MAX(video_id), MIN(title), MIN(artist), COUNT(*) FROM plays
-         WHERE at >= ?1 AND skipped=0 GROUP BY artist_key, title_key ORDER BY 4 DESC LIMIT 25",
-    )?;
+    let mut q = c.prepare(TOP_TRACKS)?;
     o.top_tracks = q
         .query_map(params![since], |r| {
             Ok(TrackStat {
@@ -233,5 +233,14 @@ mod tests {
         let all = overview(&c, 0, now).unwrap();
         assert_eq!(all.plays, 6);
         assert!(all.rising.is_empty());
+    }
+
+    #[test]
+    fn top_tracks_read_only_the_period() {
+        let c = Connection::open_in_memory().unwrap();
+        c.execute_batch(crate::db::SCHEMA).unwrap();
+        crate::db::upgrade(&c).unwrap();
+        let plan = crate::db::query_plan(&c, TOP_TRACKS);
+        assert!(plan.contains("SEARCH plays USING INDEX plays_at"), "{plan}");
     }
 }
