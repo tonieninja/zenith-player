@@ -381,8 +381,8 @@ button.nav-item {
   background: transparent;
   border: none;
   text-align: left;
-  color: inherit;
-  font: inherit;
+  font-family: inherit;
+  line-height: inherit;
 }
 
 .nav-item {
@@ -400,7 +400,15 @@ button.nav-item {
 }
 
 .nav-item svg {
+  flex-shrink: 0;
   transition: transform 0.2s var(--ease-spring);
+}
+
+.nav-item span {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .nav-item:hover:not(.active) {
@@ -5070,6 +5078,25 @@ html.has-cover-theme .main-play-pause-circle {
 .main-column {
   overflow: hidden;
   overflow: clip;
+}
+
+/* w niskim oknie sekcja playlist spadała do zera i chowała Ulubione oraz Statystyki, więc przewija się cały pasek */
+@media (max-height: 660px) {
+  .sidebar {
+    overflow-y: auto;
+  }
+  .playlists-section {
+    flex: none;
+    overflow: visible;
+  }
+}
+
+/* suwak zabiera 8 px z wąskiego paska ikon i ucinał napis ZENITH */
+@media (max-height: 660px) and (max-width: 768px) {
+  .sidebar {
+    padding-left: 8px;
+    padding-right: 8px;
+  }
 }
 
 .search-input:focus,
