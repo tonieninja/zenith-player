@@ -165,7 +165,8 @@ fn read_tags(path: &Path) -> Tags {
         .and_then(|e| e.to_str())
         .unwrap_or("")
         .to_ascii_lowercase();
-    let mut t = symphonia_tags(path);
+    // panika symphonii na uszkodzonym pliku zamknęłaby aplikację przy każdym starcie (skan rusza sam)
+    let mut t = std::panic::catch_unwind(|| symphonia_tags(path)).unwrap_or_default();
     if (t.artist.is_none() || t.title.is_none()) && (ext == "opus" || ext == "ogg") {
         let mut head = vec![0u8; 256 * 1024];
         if let Ok(mut f) = std::fs::File::open(path) {
@@ -439,6 +440,19 @@ mod tests {
         let v = vorbis_comments(&head);
         assert_eq!(v.artist.as_deref(), Some("Air"));
         assert_eq!(v.title.as_deref(), Some("La femme d'argent"));
+    }
+
+    #[test]
+    fn truncated_webm_named_opus_falls_back_to_the_file_name() {
+        let mut b =
+            std::fs::read(Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/tone.webm"))
+                .unwrap();
+        b.truncate(b.len() / 2);
+        let p = std::env::temp_dir().join(format!("Air - Kyoto {}.opus", std::process::id()));
+        std::fs::write(&p, b).unwrap();
+        let t = read_tags(&p);
+        let _ = std::fs::remove_file(&p);
+        assert_eq!(t.artist.as_deref(), Some("Air"));
     }
 
     #[test]

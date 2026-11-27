@@ -69,7 +69,8 @@ windows = { version = "0.62", features = ["Win32_UI_Shell", "Win32_System_Com", 
 windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_Security_Cryptography", "Win32_System_Registry", "Win32_UI_WindowsAndMessaging", "Win32_Networking_WinHttp", "Win32_System_LibraryLoader", "Win32_Security_WinTrust", "Win32_UI_Shell", "Win32_System_Threading"] }
 
 [profile.release]
-panic = "abort"
+# catch_unwind wokół symphonii działa tylko przy unwind; z abort uszkodzony plik zamyka aplikację
+panic = "unwind"
 codegen-units = 1
 lto = true
 opt-level = 3
