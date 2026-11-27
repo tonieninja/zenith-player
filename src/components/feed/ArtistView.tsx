@@ -79,12 +79,17 @@ export const ArtistView = memo(function ArtistView({
       <section className="artist-hero" aria-labelledby="artist-name">
         {header.banner && (
           <img
+            // nowy węzeł dla nowego banera, bo display: none po błędzie poprzedniego artysty zostałby na elemencie
+            key={header.banner}
             className="artist-hero-banner"
             src={header.banner}
             alt=""
             aria-hidden
             decoding="async"
             fetchPriority="high"
+            onError={(e) => {
+              e.currentTarget.style.display = 'none';
+            }}
           />
         )}
         <div className="artist-hero-scrim" />
