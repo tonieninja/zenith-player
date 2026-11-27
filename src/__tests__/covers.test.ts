@@ -60,4 +60,17 @@ describe('coverAttrs', () => {
     imgErr({ currentTarget: img } as unknown as React.SyntheticEvent<HTMLImageElement>);
     expect(img.src).toBe('https://i.ytimg.com/vi/abcdefghijk/hqdefault.jpg');
   });
+
+  it('ends on a placeholder it recognises, so a failing fallback cannot loop', () => {
+    const img = document.createElement('img');
+    img.src = 'https://lh3.googleusercontent.com/x=s100';
+    const err = () =>
+      imgErr({ currentTarget: img } as unknown as React.SyntheticEvent<HTMLImageElement>);
+    err();
+    expect(isPlaceholderCover(img.src)).toBe(true);
+    expect(decodeURIComponent(img.src)).not.toContain('>?<');
+    const placeholder = img.src;
+    err();
+    expect(img.src).toBe(placeholder);
+  });
 });

@@ -29,7 +29,12 @@ export function localCover(url: string): string {
   );
 }
 
-const FALLBACK_AVATAR = letterCover('?', '#111827', '#6b7280');
+// nuta zamiast „?”, który wyglądał jak zepsuty obrazek; prefiks LETTER_COVER, by isPlaceholderCover ją rozpoznał
+const FALLBACK_AVATAR =
+  LETTER_COVER +
+  encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="#161821"/><g transform="translate(32 32) scale(1.5)" fill="none" stroke="#6b7280" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></g></svg>'
+  );
 
 const YTIMG = 'https://i.ytimg.com/vi/';
 

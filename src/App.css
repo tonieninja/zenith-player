@@ -4379,6 +4379,11 @@ html.has-cover-theme .main-play-pause-circle {
   padding: 0;
 }
 
+/* przesunięcie z kolumny „Następne” wypychało wiersz poza listę szuflady, aż pod suwak */
+.queue-drawer-item:hover {
+  transform: none;
+}
+
 .queue-drawer-select {
   flex: 1;
   display: flex;
