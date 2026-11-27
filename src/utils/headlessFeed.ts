@@ -95,6 +95,13 @@ export async function headlessToggleLike(track: Track, want?: boolean): Promise<
   const body = JSON.stringify(next.slice(0, FAVORITES_MAX));
   localStorage.setItem(FAVS, body);
   persistFavorites(body);
+  // z tabeli ocen czytają gust, inteligentna kolejka i odkrywanie, a nie z listy ulubionych
+  void invoke('db_rate', {
+    videoId: track.id,
+    rating: liked ? 1 : 0,
+    title: track.title,
+    artist: track.artist,
+  }).catch(() => undefined);
   const m = await youtubeApi();
   // bez zalogowania ocena się nie uda, a ulubione i tak zostają zapisane
   await m.setTrackRating(track.id, liked ? 'LIKE' : 'INDIFFERENT', lang()).catch(() => undefined);

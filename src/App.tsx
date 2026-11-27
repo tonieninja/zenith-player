@@ -168,7 +168,7 @@ import {
 } from './plugins/abLoop';
 import { sponsorBlockJump } from './plugins/sponsorBlock';
 import { downloadTrack } from './plugins/offlineDownloads';
-import { playLogSwitch, playLogTick } from './utils/playLog';
+import { playLogRepeat, playLogSwitch, playLogTick } from './utils/playLog';
 import { discoverSection } from './plugins/discover';
 import { registerAutoPauseCallback } from './plugins/autoPauseBlur';
 import { Select } from './components/ui/Select';
@@ -3234,6 +3234,7 @@ ${lang}`
       }
       const advance = () => {
         if (loopMode === 'one') {
+          playLogRepeat();
           audio.currentTime = 0;
           audio.play().catch(() => setIsPlaying(false));
           return;
@@ -3813,7 +3814,11 @@ ${lang}`
       .then((fn) => {
         unlisten = fn;
       });
-    listen('zenith-app-quitting', () => persistQueueNow()).then((fn) => {
+    listen('zenith-app-quitting', () => {
+      // przy chowaniu do zasobnika i zwalnianiu okna gra dalej Rust i to on zapisze ten utwór
+      playLogSwitch(null);
+      persistQueueNow();
+    }).then((fn) => {
       unlistenQuit = fn;
     });
     let unlistenHidden: (() => void) | undefined;
@@ -6479,6 +6484,7 @@ ${lang}`
               setQueueIndex(newIndex);
               if (next.length === 0) {
                 ++loadGenRef.current;
+                playLogSwitch(null);
                 audio.pause();
                 audio.src = '';
                 setCurrentTrack(null);
