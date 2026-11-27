@@ -444,7 +444,8 @@ export function PluginsPanel({
               onChange={(m) => {
                 setSleepMins(m);
                 setSleepTimerMinutes(m);
-                rearmSleepTimer();
+                // ustawienia widać też przy wyłączonej wtyczce, a uzbrojony licznik zatrzymałby muzykę
+                if (pluginStates['sleep-timer']) rearmSleepTimer();
               }}
             />
           </div>
