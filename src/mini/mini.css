@@ -131,6 +131,13 @@ html.opaque-window .mini-root {
   min-width: 0;
 }
 
+/* bez przycisków sterowania czipy z prawego rogu wchodziły na „Lubię to” */
+.mini-root:is(:hover, :has(.mini-chips :focus-visible))
+  .mini-main:not(:has(.mini-controls))
+  .mini-title-row {
+  padding-right: 36px;
+}
+
 .mini-title {
   flex: 1;
   min-width: 0;

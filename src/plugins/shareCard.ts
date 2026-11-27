@@ -50,11 +50,12 @@ export async function generateShareCard(
   ctx.fillStyle = '#ffffff';
   ctx.font = 'bold 52px "Segoe UI", system-ui, sans-serif';
   ctx.textAlign = 'center';
-  wrapText(ctx, info.title, W / 2, coverY + coverSize + 80, W - 120, 60);
+  // dwa wiersze tytułu i wykonawca pod ostatnim, żeby nic nie wchodziło na pasek postępu
+  const titleEnd = wrapText(ctx, info.title, W / 2, coverY + coverSize + 80, W - 120, 60, 2);
 
   ctx.fillStyle = 'rgba(255,255,255,0.55)';
   ctx.font = '600 32px "Segoe UI", system-ui, sans-serif';
-  ctx.fillText(info.artist, W / 2, coverY + coverSize + 160);
+  ctx.fillText(fitLine(ctx, info.artist, W - 160), W / 2, titleEnd + 64);
 
   const barY = H - 180;
   const barW = W - 160;
@@ -63,7 +64,8 @@ export async function generateShareCard(
   roundRect(ctx, 80, barY, barW, 8, 4);
   ctx.fill();
   const fillGrad = ctx.createLinearGradient(80, 0, 80 + barW, 0);
-  fillGrad.addColorStop(0, '#a78bfa');
+  const accent = getComputedStyle(document.documentElement).getPropertyValue('--accent-1').trim();
+  fillGrad.addColorStop(0, accent || '#a78bfa');
   fillGrad.addColorStop(1, '#fff');
   ctx.fillStyle = fillGrad;
   roundRect(ctx, 80, barY, barW * pct, 8, 4);
@@ -99,28 +101,41 @@ function roundRect(
   ctx.closePath();
 }
 
-function wrapText(
-  ctx: CanvasRenderingContext2D,
+type TextCtx = Pick<CanvasRenderingContext2D, 'measureText' | 'fillText'>;
+
+/** Najwyżej maxLines wierszy, nadmiar kończy wielokropek; zwraca linię bazową ostatniego wiersza. */
+export function wrapText(
+  ctx: TextCtx,
   text: string,
   x: number,
   y: number,
   maxW: number,
-  lineH: number
-) {
-  const words = text.split(' ');
+  lineH: number,
+  maxLines: number
+): number {
+  const lines: string[] = [];
   let line = '';
-  let cy = y;
-  for (const word of words) {
+  for (const word of text.split(' ')) {
     const test = line ? `${line} ${word}` : word;
     if (ctx.measureText(test).width > maxW && line) {
-      ctx.fillText(line, x, cy);
+      lines.push(line);
       line = word;
-      cy += lineH;
     } else {
       line = test;
     }
   }
-  ctx.fillText(line, x, cy);
+  lines.push(line);
+  const shown = lines.slice(0, maxLines);
+  shown[shown.length - 1] = lines.slice(shown.length - 1).join(' ');
+  shown.forEach((l, i) => ctx.fillText(fitLine(ctx, l, maxW), x, y + i * lineH));
+  return y + (shown.length - 1) * lineH;
+}
+
+export function fitLine(ctx: TextCtx, text: string, maxW: number): string {
+  if (ctx.measureText(text).width <= maxW) return text;
+  let cut = text;
+  while (cut && ctx.measureText(`${cut}…`).width > maxW) cut = cut.slice(0, -1);
+  return `${cut.trimEnd()}…`;
 }
 
 export async function copyShareCardToClipboard(info: NowPlayingInfo): Promise<boolean> {

@@ -71,6 +71,7 @@ export function miniSize(show: MiniLayout): { w: number; h: number } {
   const btns = [show.prev && 34, show.play && 40, show.next && 34].filter(Boolean) as number[];
   // padding okna 28, okładka z odstępem 68, tytuł 176; sterowanie: przyciski, odstępy 6, margines 14 i odstęp 12
   const controls = btns.length ? btns.reduce((a, b) => a + b, 0) + (btns.length - 1) * 6 + 26 : 0;
-  const h = (show.seek ? 96 : 82) + (show.lyrics ? 56 : 0);
+  // z tekstem wiersz wyznacza okładka 56 px (pasek postępu mieści się obok), więc wysokość nie zależy od paska
+  const h = show.lyrics ? 152 : show.seek ? 96 : 82;
   return { w: 28 + 68 + 176 + controls, h };
 }

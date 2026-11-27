@@ -6773,12 +6773,13 @@ ${lang}`
                 </div>
                 <button
                   type="button"
-                  className={`lang-option-btn remember-login-toggle${lightLyrics ? ' active' : ''}`}
-                  aria-pressed={lightLyrics}
+                  role="switch"
+                  className={`plugin-toggle${lightLyrics ? ' on' : ''}`}
+                  aria-checked={lightLyrics}
                   aria-labelledby="set-light-lyrics-label"
                   onClick={() => setLightLyrics(!lightLyrics)}
                 >
-                  {lightLyrics ? t.toggleOn : t.toggleOff}
+                  <span className="plugin-toggle-knob" />
                 </button>
               </div>
               <div className="settings-row-item settings-toggle-row">
@@ -6790,12 +6791,13 @@ ${lang}`
                 </div>
                 <button
                   type="button"
-                  className={`lang-option-btn remember-login-toggle${romanize ? ' active' : ''}`}
-                  aria-pressed={romanize}
+                  role="switch"
+                  className={`plugin-toggle${romanize ? ' on' : ''}`}
+                  aria-checked={romanize}
                   aria-labelledby="set-romanize-label"
                   onClick={() => romanizeLyrics.set(!romanize)}
                 >
-                  {romanize ? t.toggleOn : t.toggleOff}
+                  <span className="plugin-toggle-knob" />
                 </button>
               </div>
               <div className="settings-row-item settings-toggle-row">
@@ -6807,12 +6809,13 @@ ${lang}`
                 </div>
                 <button
                   type="button"
-                  className={`lang-option-btn remember-login-toggle${translateLyricsOn ? ' active' : ''}`}
-                  aria-pressed={translateLyricsOn}
+                  role="switch"
+                  className={`plugin-toggle${translateLyricsOn ? ' on' : ''}`}
+                  aria-checked={translateLyricsOn}
                   aria-labelledby="set-translate-label"
                   onClick={() => translateLyrics.set(!translateLyricsOn)}
                 >
-                  {translateLyricsOn ? t.toggleOn : t.toggleOff}
+                  <span className="plugin-toggle-knob" />
                 </button>
               </div>
               <PluginsPanel
@@ -6856,8 +6859,9 @@ ${lang}`
                 </div>
                 <button
                   type="button"
-                  className={`lang-option-btn remember-login-toggle${rememberLogin ? ' active' : ''}`}
-                  aria-pressed={rememberLogin}
+                  role="switch"
+                  className={`plugin-toggle${rememberLogin ? ' on' : ''}`}
+                  aria-checked={rememberLogin}
                   aria-labelledby="set-remember-label"
                   onClick={async () => {
                     const next = !rememberLogin;
@@ -6870,7 +6874,7 @@ ${lang}`
                     }
                   }}
                 >
-                  {rememberLogin ? t.toggleOn : t.toggleOff}
+                  <span className="plugin-toggle-knob" />
                 </button>
               </div>
               <div className="settings-row-item settings-toggle-row">
@@ -6882,8 +6886,9 @@ ${lang}`
                 </div>
                 <button
                   type="button"
-                  className={`lang-option-btn remember-login-toggle${ageBypass ? ' active' : ''}`}
-                  aria-pressed={ageBypass}
+                  role="switch"
+                  className={`plugin-toggle${ageBypass ? ' on' : ''}`}
+                  aria-checked={ageBypass}
                   aria-labelledby="set-age-bypass-label"
                   data-testid="age-bypass-toggle"
                   onClick={() => {
@@ -6891,7 +6896,7 @@ ${lang}`
                     setAgeBypass(!ageBypass);
                   }}
                 >
-                  {ageBypass ? t.toggleOn : t.toggleOff}
+                  <span className="plugin-toggle-knob" />
                 </button>
               </div>
               {isNativeAudio() && <AudioOutputSettings lang={lang} />}

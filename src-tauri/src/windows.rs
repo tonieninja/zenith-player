@@ -883,7 +883,8 @@ pub async fn open_mini_player(app: AppHandle) -> Result<(), String> {
         .inner_size(w, h)
         .min_inner_size(272.0, 82.0)
         .position(x, y)
-        .resizable(true);
+        // rozmiar wylicza miniSize z widocznych części; układ się nie skaluje, a każda zmiana i tak go nadpisywała
+        .resizable(false);
     let win = style_aux_window(builder)
         .build()
         .map_err(|e| e.to_string())?;

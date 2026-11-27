@@ -283,15 +283,6 @@ export function PlaylistManager({
     void refreshLists();
   }, [refreshLists]);
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape' || e.defaultPrevented || isTypingEvent(e)) return;
-      if (!confirmDelete && !spotifyOpen && !importOpen) onClose();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose, confirmDelete, spotifyOpen, importOpen]);
-
   const active = useMemo(
     () => (activeId && lists?.find((p) => samePlaylist(p.id, activeId))) || null,
     [lists, activeId]
@@ -304,6 +295,18 @@ export function PlaylistManager({
     (form.title.trim() !== (details.title || active.title) ||
       form.description !== details.description ||
       (!!details.privacy && form.privacy !== details.privacy));
+
+  // okienka Spotify obsługują Escape same; przy niezapisanych zmianach Escape nie zamyka, tak jak klik obok
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || e.defaultPrevented || isTypingEvent(e)) return;
+      if (spotifyOpen || importOpen) return;
+      if (confirmDelete) setConfirmDelete(false);
+      else if (!dirty) onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose, confirmDelete, spotifyOpen, importOpen, dirty]);
   const shown = useMemo(
     () => filterAndSort(lists ?? [], query, sort, kind === 'all' ? undefined : [kind]),
     [lists, query, sort, kind]
@@ -929,7 +932,7 @@ export function PlaylistManager({
             <div className="pm-dialog" role="alertdialog" onClick={(e) => e.stopPropagation()}>
               <p>{fill(t.pmDeleteConfirm, { name: active.title })}</p>
               <div className="pm-dialog-actions">
-                <button className="pm-btn" onClick={() => setConfirmDelete(false)}>
+                <button className="pm-btn" autoFocus onClick={() => setConfirmDelete(false)}>
                   {t.pmCancel}
                 </button>
                 <button className="pm-btn pm-btn-danger" disabled={busy} onClick={doDelete}>
@@ -965,6 +968,23 @@ export function PlaylistManager({
   );
 }
 
+// fokus na okienko i Escape jak klik w tło; w trakcie dopasowywania close jest puste, więc nic się nie dzieje
+function useSpotifyDialog(close: (() => void) | undefined) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const closeRef = useLatest(close);
+  useEffect(() => ref.current?.focus(), []);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || e.defaultPrevented || !closeRef.current) return;
+      e.preventDefault();
+      closeRef.current();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [closeRef]);
+  return ref;
+}
+
 function SpotifyExport({
   lang,
   name,
@@ -981,6 +1001,7 @@ function SpotifyExport({
   const t = translations[lang];
   const [connected, setConnected] = useState(isSpotifyConnected());
   const [phase, setPhase] = useState<'idle' | 'matching' | 'done'>('idle');
+  const dialogRef = useSpotifyDialog(phase === 'matching' ? undefined : onClose);
   const [progress, setProgress] = useState({ done: 0, total: entries.length });
   const [result, setResult] = useState<ExportResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -1004,6 +1025,8 @@ function SpotifyExport({
   return (
     <div className="pm-dialog-backdrop" onClick={phase === 'matching' ? undefined : onClose}>
       <div
+        ref={dialogRef}
+        tabIndex={-1}
         className="pm-dialog pm-spotify"
         role="dialog"
         aria-label={t.pmSpotify}
@@ -1150,6 +1173,7 @@ function SpotifyImport({
   const [lists, setLists] = useState<SpotifyPlaylist[] | null>(null);
   const [pick, setPick] = useState('');
   const [phase, setPhase] = useState<'idle' | 'matching' | 'done'>('idle');
+  const dialogRef = useSpotifyDialog(phase === 'matching' ? undefined : onClose);
   const [progress, setProgress] = useState({ done: 0, total: 0 });
   const [result, setResult] = useState<(ImportResult & { total: number }) | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -1198,6 +1222,8 @@ function SpotifyImport({
   return (
     <div className="pm-dialog-backdrop" onClick={phase === 'matching' ? undefined : onClose}>
       <div
+        ref={dialogRef}
+        tabIndex={-1}
         className="pm-dialog pm-spotify"
         role="dialog"
         aria-label={t.pmSpotifyImport}
