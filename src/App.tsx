@@ -4408,8 +4408,8 @@ ${lang}`
       else if (action === 'seek-forward')
         seekToRef.current(Math.min(durationRef.current, progressRef.current + 10));
       else if (action === 'seek-back') seekToRef.current(Math.max(0, progressRef.current - 10));
-      else if (action === 'volume-up') applyVolume(volumeRef.current + 0.05);
-      else if (action === 'volume-down') applyVolume(volumeRef.current - 0.05);
+      else if (action === 'volume-up') applyVolume(volumeBase() + 0.05);
+      else if (action === 'volume-down') applyVolume(volumeBase() - 0.05);
       else if (action === 'mute') toggleMuteRef.current();
       else if (action === 'like') toggleSaveRef.current();
       else if (action === 'toggle-shuffle') toggleShuffleRef.current();
@@ -4424,8 +4424,11 @@ ${lang}`
         if (Number.isFinite(v)) applyVolume(v);
       }
     };
+    const volumeBase = () =>
+      (castActiveRef.current ? castStatusRef.current?.volume : undefined) ?? volumeRef.current;
     const applyVolume = (raw: number) => {
       const v = Math.min(1, Math.max(0, raw));
+      if (castActiveRef.current) return castSetVolume(v);
       setVolume(v);
       rampVolume(audio, v, pluginManager.isEnabled('smooth-volume'));
       if (pluginManager.isEnabled('remember-volume')) saveRememberedVolume(v);
@@ -4435,6 +4438,8 @@ ${lang}`
   }, [
     audio,
     castActiveRef,
+    castSetVolume,
+    castStatusRef,
     durationRef,
     isPlayingRef,
     playNextRef,
