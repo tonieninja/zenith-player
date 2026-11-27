@@ -144,6 +144,8 @@ export async function stopRemote() {
   stops += 1;
   running = false;
   lastPayload = '';
+  window.clearTimeout(pushTimer);
+  pushTimer = 0;
   const l = listening;
   listening = null;
   void l?.then((off) => off());
