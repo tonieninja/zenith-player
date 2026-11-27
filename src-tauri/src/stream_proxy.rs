@@ -440,7 +440,7 @@ async fn proxy_stream(
 ) -> Result<Response, StatusCode> {
     check_path(&token, &id)?;
     // adres /zenith/ z prefetchu żyje dłużej niż moment pobrania utworu; bez sieci musi grać z dysku
-    if crate::downloads::is_downloaded(&id) {
+    if crate::downloads::has_file(&id) {
         return serve_offline(Path((token, id)), headers).await;
     }
 

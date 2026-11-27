@@ -228,6 +228,15 @@ pub fn file_for(id: &str) -> Option<PathBuf> {
     p.is_file().then_some(p)
 }
 
+/// Pobrany plik albo plik z lokalnej biblioteki przypięty do tego id.
+pub fn source_for(id: &str) -> Option<PathBuf> {
+    file_for(id).or_else(|| crate::local_files::bound(id))
+}
+
+pub fn has_file(id: &str) -> bool {
+    source_for(id).is_some()
+}
+
 pub fn is_downloaded(id: &str) -> bool {
     index().lock().map(|m| m.contains_key(id)).unwrap_or(false) && file_for(id).is_some()
 }
@@ -564,6 +573,10 @@ pub fn sniff_mime(head: &[u8]) -> &'static str {
         "audio/mp4"
     } else if head.len() >= 4 && &head[..4] == b"OggS" {
         "audio/ogg"
+    } else if head.len() >= 4 && &head[..4] == b"fLaC" {
+        "audio/flac"
+    } else if head.len() >= 12 && &head[..4] == b"RIFF" && &head[8..12] == b"WAVE" {
+        "audio/wav"
     } else if head.len() >= 3
         && (&head[..3] == b"ID3" || (head[0] == 0xFF && head[1] & 0xE0 == 0xE0))
     {
@@ -599,7 +612,7 @@ const SLICE_MAX: u64 = 8 * 1024 * 1024;
 pub type Slice = (u16, Vec<u8>, u64, u64, u64, &'static str);
 
 pub fn read_slice(id: &str, range: Option<&str>) -> Option<Slice> {
-    let path = file_for(id)?;
+    let path = source_for(id)?;
     let mut f = std::fs::File::open(path).ok()?;
     let len = f.metadata().ok()?.len();
     let mut head = [0u8; 12];

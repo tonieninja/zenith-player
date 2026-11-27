@@ -633,6 +633,14 @@ const en = {
   statsImportDone: 'Imported {n} scrobbles',
   statsImportProgress: 'Page {page} of {pages}, {n} scrobbles so far',
   statsImportFailed: 'Import stopped',
+  localTitle: 'Music on this computer',
+  localDesc:
+    'Folders with FLAC, MP3, Opus, M4A or WAV files. When a song in YouTube Music matches a file by artist, title and length, Zenith plays the file; playlists, covers and stats stay the same.',
+  localCount: '{n} files indexed',
+  localScanning: 'Scanning: {seen} of {total} files',
+  localPathPlaceholder: 'Folder path, for example D:\\Music or ~/Music',
+  localAdd: 'Add folder',
+  localRemove: 'Remove folder',
   backupTitle: 'Backup',
   discoverRow: 'Outside your usual',
   backupDesc:
@@ -1372,6 +1380,14 @@ const pl: Record<keyof typeof en, string> = {
   statsImportDone: 'Wczytano scrobbli: {n}',
   statsImportProgress: 'Strona {page} z {pages}, dotąd {n} scrobbli',
   statsImportFailed: 'Import przerwany',
+  localTitle: 'Muzyka z tego komputera',
+  localDesc:
+    'Foldery z plikami FLAC, MP3, Opus, M4A albo WAV. Gdy utwór z YouTube Music pasuje do pliku wykonawcą, tytułem i długością, Zenith gra plik; playlisty, okładki i statystyki zostają bez zmian.',
+  localCount: 'Zaindeksowane pliki: {n}',
+  localScanning: 'Skanowanie: {seen} z {total} plików',
+  localPathPlaceholder: 'Ścieżka folderu, np. D:\\Muzyka albo ~/Muzyka',
+  localAdd: 'Dodaj folder',
+  localRemove: 'Usuń folder',
   backupTitle: 'Kopia zapasowa',
   discoverRow: 'Spoza twojej bańki',
   backupDesc:

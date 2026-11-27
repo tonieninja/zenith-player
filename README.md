@@ -53,6 +53,7 @@ And the rest:
 - Playlists you can edit, merge and reorder, synced back to YouTube Music, plus local folders for the sidebar
 - My library on your computer: collections in folders and tags for any song, searched and sorted by title, artist, plays or last played
 - Listening stats: time over days, hours and weekdays, a taste map of your artists, top songs and who is on the rise, with your whole Last.fm history imported if you like
+- Your own FLAC, MP3 and Opus files: add a folder and any YouTube Music song that matches a file by artist, title and length plays from the disk, with the same playlists, covers and stats
 - Artist pages with Play all, which plays every song of the artist like a playlist
 - Queue with drag and drop, shuffle, loop, and a radio that keeps going after the last track. It skips remixes and sped-up copies of the song you just heard, tracks you skipped or disliked, and anything played in the last two days
 - Speed with the pitch kept, A-B loop, sleep timer, bass boost and a limiter so loud presets don't clip

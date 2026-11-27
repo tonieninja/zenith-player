@@ -1043,6 +1043,14 @@ pub fn zaudio_set_output_device(name: Option<String>) {
 
 #[tauri::command]
 pub fn zaudio_plan(plan: Value) {
+    // kolejka bez okna sama dobiera lokalne pliki, bo JS nie przypnie ich przy starcie utworu
+    let queue = plan["queue"].as_array().cloned().unwrap_or_default();
+    std::thread::spawn(move || {
+        for t in queue.iter().take(500) {
+            let s = |k: &str| t[k].as_str().unwrap_or("");
+            crate::local_files::bind(s("id"), s("artist"), s("title"), t["durationSec"].as_f64());
+        }
+    });
     headless::set_plan(plan);
 }
 

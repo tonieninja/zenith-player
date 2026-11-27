@@ -122,6 +122,7 @@ import { SyncedLyricsRail } from './components/SyncedLyricsRail';
 import { LyricsSourceBar } from './components/LyricsSourceBar';
 import { LyricsSourcesSettings } from './components/LyricsSourcesSettings';
 import { BackupSetting } from './components/BackupSetting';
+import { LocalFilesSetting } from './components/LocalFilesSetting';
 import { StatsView } from './components/StatsView';
 import {
   addToCollection,
@@ -2037,6 +2038,14 @@ export default function App() {
           foregroundResolvingRef.current = true;
           let streamUrl: string | null;
           try {
+            // plik z lokalnej biblioteki wygrywa ze streamem; Rust podaje wtedy adres do dysku
+            const local = await invoke<boolean>('local_bind', {
+              id: track.id,
+              artist: track.artist,
+              title: track.title,
+              duration: track.durationSec ?? null,
+            }).catch(() => false);
+            if (local) streamCacheRef.current.delete(track.id);
             streamUrl = await resolveStreamUrl(track.id);
           } finally {
             foregroundResolvingRef.current = false;
@@ -6633,6 +6642,7 @@ export default function App() {
               </div>
               {isNativeAudio() && <AudioOutputSettings lang={lang} />}
               <PanelGapSetting lang={lang} />
+              <LocalFilesSetting lang={lang} />
               <BackupSetting lang={lang} />
               <h3 className="settings-group-title">{PLUGIN_CATEGORY_LABELS.playback[lang]}</h3>
               <PluginsPanel

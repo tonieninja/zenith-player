@@ -395,7 +395,7 @@ async fn resolve(
 ) -> Result<Option<String>, String> {
     validate_video_id(&video_id)?;
     // także przy fresh: ścieżki błędów odtwarzania wołają fresh, a bez sieci pobrany plik to jedyne źródło
-    if crate::downloads::is_downloaded(&video_id) {
+    if crate::downloads::has_file(&video_id) {
         crate::stream_proxy::ensure_ready().await?;
         if let Some(u) = crate::stream_proxy::offline_url(&video_id) {
             return Ok(Some(u));

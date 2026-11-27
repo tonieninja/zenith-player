@@ -14,6 +14,7 @@ mod jsc;
 mod lastfm;
 mod library;
 mod listenbrainz;
+mod local_files;
 mod login_nav;
 #[cfg(target_os = "linux")]
 mod mpris;
@@ -932,6 +933,10 @@ pub fn run() {
             lastfm::lastfm_import,
             stats::stats_overview,
             stats::stats_artist,
+            local_files::local_scan,
+            local_files::local_status,
+            local_files::local_forget,
+            local_files::local_bind,
             library::lib_collections,
             library::lib_collection_save,
             library::lib_collection_delete,

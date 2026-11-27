@@ -6146,3 +6146,26 @@ html.window-occluded *::after {
     grid-template-columns: 1fr;
   }
 }
+
+.local-files-row {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.local-files-folder {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 4px 4px 12px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  font-size: 13px;
+}
+
+.local-files-folder span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

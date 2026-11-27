@@ -52,6 +52,7 @@ fn open(path: &Path) -> Option<Connection> {
     let _ = c.execute_batch("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;");
     c.execute_batch(SCHEMA).ok()?;
     crate::library::migrate(&c);
+    crate::local_files::migrate(&c);
     Some(c)
 }
 

@@ -10,9 +10,11 @@ import { initFavoritesStore } from './utils/favorites';
 import { initPrefsMirror } from './utils/prefsMirror';
 import { initSpotifyToken } from './api/spotify';
 import { pluginManager } from './plugins';
+import { rescanLocalFolders } from './components/LocalFilesSetting';
 import { applyPanelGap } from './components/PanelGapSetting';
 
 applyPanelGap();
+rescanLocalFolders();
 
 void initCoverCache();
 
