@@ -1,5 +1,5 @@
 import { memo, useCallback, useMemo } from 'react';
-import { ChevronLeft, ChevronRight, Play } from 'lucide-react';
+import { ChevronLeft, ChevronRight, EyeOff, Play } from 'lucide-react';
 import type { Section, Track } from '../../api/youtube';
 import { usePager } from '../../hooks/usePager';
 import { useResponsivePageSize } from '../../hooks/useResponsivePageSize';
@@ -119,11 +119,13 @@ export const SectionRow = memo(function SectionRow({
   sectionIndex,
   onItemClick,
   onMore,
+  onHide,
 }: {
   section: Section;
   sectionIndex: number;
   onItemClick: ItemClick;
   onMore?: (section: Section) => void;
+  onHide?: (section: Section) => void;
 }) {
   const t = currentT();
   const list = section.layout === 'list';
@@ -196,6 +198,17 @@ export const SectionRow = memo(function SectionRow({
               </button>
             </>
           )}
+          {onHide && (
+            <button
+              type="button"
+              className="yt-arrow yt-section-hide"
+              onClick={() => onHide(section)}
+              aria-label={t.hideShelf}
+              title={t.hideShelf}
+            >
+              <EyeOff size={15} />
+            </button>
+          )}
         </div>
       </div>
       {grid ? (
@@ -254,10 +267,12 @@ export const SectionRow = memo(function SectionRow({
 export const QuickPicks = memo(function QuickPicks({
   tracks,
   onItemClick,
+  onHide,
   t,
 }: {
   tracks: Track[];
   onItemClick: ItemClick;
+  onHide?: (section: Section) => void;
   t: Record<string, string>;
 }) {
   const section = useMemo<Section>(
@@ -265,5 +280,7 @@ export const QuickPicks = memo(function QuickPicks({
     [t.quickPicks, tracks]
   );
   if (!tracks.length) return null;
-  return <SectionRow section={section} sectionIndex={0} onItemClick={onItemClick} />;
+  return (
+    <SectionRow section={section} sectionIndex={0} onItemClick={onItemClick} onHide={onHide} />
+  );
 });

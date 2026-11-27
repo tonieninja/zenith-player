@@ -166,6 +166,30 @@ export function upsertSections(cur: Section[], incoming: Section[]): Section[] {
   return changed ? next : cur;
 }
 
+// browseId „Więcej” nie zależy od języka, więc ukryta półka zostaje ukryta po zmianie języka
+export const shelfKey = (s: Section) => s.more?.browseId ?? s.title.toLowerCase().trim();
+
+const HIDDEN_SHELVES_KEY = 'zenith_home_hidden';
+
+export function loadHiddenShelves(): Record<string, string> {
+  try {
+    const v = JSON.parse(localStorage.getItem(HIDDEN_SHELVES_KEY) || '{}');
+    return v && typeof v === 'object' && !Array.isArray(v) ? v : {};
+  } catch {
+    return {};
+  }
+}
+
+export function saveHiddenShelves(hidden: Record<string, string>) {
+  try {
+    if (Object.keys(hidden).length)
+      localStorage.setItem(HIDDEN_SHELVES_KEY, JSON.stringify(hidden));
+    else localStorage.removeItem(HIDDEN_SHELVES_KEY);
+  } catch {
+    /* bez zapisu ukrycie działa do końca sesji */
+  }
+}
+
 export interface HomeSnapshot {
   key: string;
   sections: Section[];

@@ -5,6 +5,9 @@ import {
   bylineFromRuns,
   tidyByline,
   upsertSections,
+  shelfKey,
+  loadHiddenShelves,
+  saveHiddenShelves,
   saveHomeSnapshot,
   loadHomeSnapshot,
 } from '../utils/feed';
@@ -234,6 +237,24 @@ describe('home shelves merge', () => {
   it('keeps the same array when nothing changed', () => {
     const cur = [shelf('A'), shelf('B')];
     expect(upsertSections(cur, [cur[1]])).toBe(cur);
+  });
+});
+
+describe('hidden home shelves', () => {
+  it('keys by the "more" target when there is one, else by title', () => {
+    expect(shelfKey(shelf('New releases', 1, { more: { browseId: 'FEmusic_new_releases' } }))).toBe(
+      'FEmusic_new_releases'
+    );
+    expect(shelfKey(shelf(' Party Music '))).toBe('party music');
+  });
+
+  it('survives a restart and clears the key when empty', () => {
+    saveHiddenShelves({ 'party music': 'Party music' });
+    expect(loadHiddenShelves()).toEqual({ 'party music': 'Party music' });
+    saveHiddenShelves({});
+    expect(localStorage.getItem('zenith_home_hidden')).toBeNull();
+    localStorage.setItem('zenith_home_hidden', '[1]');
+    expect(loadHiddenShelves()).toEqual({});
   });
 });
 

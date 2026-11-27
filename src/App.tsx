@@ -292,8 +292,11 @@ import {
 import { resetOnboarding, shouldShowOnboarding } from './utils/onboarding';
 import { smartShuffle } from './utils/smartShuffle';
 import {
+  loadHiddenShelves,
   loadHomeSnapshot,
+  saveHiddenShelves,
   saveHomeSnapshot,
+  shelfKey,
   stableOrderSections,
   upsertSections,
 } from './utils/feed';
@@ -441,6 +444,7 @@ export default function App() {
   const [homeChips, setHomeChips] = useState<HomeChip[]>([]);
   const [homeHasMore, setHomeHasMore] = useState(false);
   const [homeMoreTick, setHomeMoreTick] = useState(0);
+  const [hiddenShelves, setHiddenShelves] = useState(loadHiddenShelves);
   const [activeMood, setActiveMood] = useState<string | null>(null);
   const [browseTitle, setBrowseTitle] = useState<string | null>(null);
   const [artistPage, setArtistPage] = useState<ArtistPageState | null>(null);
@@ -1155,6 +1159,12 @@ export default function App() {
         .catch(() => undefined);
     },
     [lang, loadHome]
+  );
+
+  useEffect(() => saveHiddenShelves(hiddenShelves), [hiddenShelves]);
+  const hideShelf = useCallback(
+    (s: Section) => setHiddenShelves((prev) => ({ ...prev, [shelfKey(s)]: s.title })),
+    []
   );
 
   useEffect(() => {
@@ -5208,19 +5218,20 @@ export default function App() {
     [openMoodsGenres, openCollectionPage, openBrowsePage]
   );
 
-  const sectionRows = useMemo(
-    () =>
-      stableOrderSections(activeTab === 'home' ? homeSections : sections).map((section, idx) => (
-        <SectionRow
-          key={`${section.title}-${idx}`}
-          section={section}
-          sectionIndex={idx}
-          onItemClick={handleItemClick}
-          onMore={openShelfMore}
-        />
-      )),
-    [activeTab, homeSections, sections, handleItemClick, openShelfMore]
-  );
+  const sectionRows = useMemo(() => {
+    const home = activeTab === 'home';
+    const shown = home ? homeSections.filter((s) => !hiddenShelves[shelfKey(s)]) : sections;
+    return stableOrderSections(shown).map((section, idx) => (
+      <SectionRow
+        key={`${section.title}-${idx}`}
+        section={section}
+        sectionIndex={idx}
+        onItemClick={handleItemClick}
+        onMore={openShelfMore}
+        onHide={home ? hideShelf : undefined}
+      />
+    ));
+  }, [activeTab, homeSections, sections, handleItemClick, hiddenShelves, openShelfMore, hideShelf]);
 
   return (
     <div className="zenith-app">
@@ -6148,7 +6159,12 @@ export default function App() {
                     )}
 
                     {activeTab === 'home' && (
-                      <QuickPicks tracks={quickPicks} onItemClick={handleItemClick} t={t} />
+                      <QuickPicks
+                        tracks={hiddenShelves[t.quickPicks.toLowerCase()] ? [] : quickPicks}
+                        onItemClick={handleItemClick}
+                        onHide={hideShelf}
+                        t={t}
+                      />
                     )}
 
                     {activeTab === 'search' && heroTrack && (
@@ -6796,6 +6812,21 @@ export default function App() {
               <PanelGapSetting lang={lang} />
               <LocalFilesSetting lang={lang} />
               <BackupSetting lang={lang} />
+              {Object.keys(hiddenShelves).length > 0 && (
+                <div className="settings-row-item settings-toggle-row">
+                  <div className="settings-account-info">
+                    <span className="setting-label">{t.hiddenShelves}</span>
+                    <span className="plugin-desc">{Object.values(hiddenShelves).join(', ')}</span>
+                  </div>
+                  <button
+                    type="button"
+                    className="lang-option-btn settings-action-btn"
+                    onClick={() => setHiddenShelves({})}
+                  >
+                    {t.hiddenShelvesRestore}
+                  </button>
+                </div>
+              )}
               <h3 className="settings-group-title">{PLUGIN_CATEGORY_LABELS.playback[lang]}</h3>
               <PluginsPanel
                 lang={lang}

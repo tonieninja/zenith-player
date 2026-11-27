@@ -977,6 +977,17 @@ button.nav-item {
   border-color: rgba(255, 255, 255, 0.35);
 }
 
+/* ukrywanie to rzadka czynność, więc przycisk nie zaśmieca nagłówka, dopóki kursor nie jest nad półką */
+.yt-section-hide {
+  opacity: 0;
+  color: var(--text-muted);
+}
+
+.yt-section:hover .yt-section-hide,
+.yt-section-hide:focus-visible {
+  opacity: 1;
+}
+
 .yt-section-arrows {
   display: flex;
   gap: 4px;
