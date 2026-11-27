@@ -2849,8 +2849,13 @@ button.modal-close-icon {
   .player-view-inner {
     grid-template-columns: 1fr;
   }
+  /* Mikrofon otwiera ten widok dla tekstu, więc w wąskim oknie tekst idzie przed okładką. */
   .player-col-lyrics {
-    display: none;
+    order: -1;
+  }
+  .lyrics-panel-full {
+    height: max(280px, calc(100vh - 190px));
+    min-height: 0;
   }
 }
 @media (max-width: 768px) {
