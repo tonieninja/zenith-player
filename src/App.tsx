@@ -3385,9 +3385,10 @@ ${lang}`
         autoFadePendingRef.current = false;
         return;
       }
+      // natywny silnik powtarza utwór sam, więc advance() dla „jeden utwór” biegnie tylko awaryjnie
+      if (loopMode === 'one') playLogRepeat();
       const advance = () => {
         if (loopMode === 'one') {
-          playLogRepeat();
           audio.currentTime = 0;
           audio.play().catch(() => setIsPlaying(false));
           return;
