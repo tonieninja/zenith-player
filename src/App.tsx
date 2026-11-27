@@ -4750,7 +4750,8 @@ export default function App() {
         id: refs.albumId,
         type: 'album',
         title: refs.album || '',
-        artist: track.artist,
+        // wiersz wyszukiwania ma w artyście też album, a nagłówek dopisuje go jeszcze raz
+        artist: track.artist.split(' • ')[0],
         cover: track.cover,
         coverSmall: track.coverSmall,
         coverLarge: track.coverLarge,
