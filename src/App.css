@@ -3742,6 +3742,13 @@ button.modal-close-icon {
   animation: fadeSlideUp 0.5s var(--ease-standard) backwards;
 }
 
+/* w niskim oknie hero zasłaniał wszystkie półki, a powtarza tylko pierwszy utwór z Szybkiego wyboru */
+@media (max-height: 600px) {
+  .feed-hero {
+    display: none;
+  }
+}
+
 .feed-hero-bg {
   position: absolute;
   inset: 0;
