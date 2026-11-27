@@ -211,6 +211,8 @@ html.window-occluded * {
   outline: none;
   font-size: 14px;
   width: 100%;
+  min-width: 0;
+  text-overflow: ellipsis;
   font-weight: 600;
   letter-spacing: 0.2px;
 }
@@ -2581,7 +2583,7 @@ button.modal-close-icon {
     display: none;
   }
   .titlebar-search {
-    max-width: 160px;
+    max-width: 240px;
   }
   .titlebar-pill-btn {
     padding: 7px 10px;
@@ -5964,6 +5966,22 @@ html.window-occluded *::after {
 
 .local-lib-toolbar .lib-input {
   width: 220px;
+  text-overflow: ellipsis;
+}
+
+/* w wąskim oknie tytuł listy zjeżdżał do „W…”, więc dostaje własny wiersz, a pole wyszukiwania resztę szerokości */
+@media (max-width: 860px) {
+  .local-lib-toolbar {
+    flex-wrap: wrap;
+  }
+  .local-lib-toolbar h3 {
+    flex: 1 0 100%;
+  }
+  .local-lib-toolbar .lib-input {
+    flex: 1 1 160px;
+    width: auto;
+    min-width: 0;
+  }
 }
 
 .local-lib-list {
