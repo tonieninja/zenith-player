@@ -521,11 +521,6 @@ button.nav-item {
   justify-content: space-between;
 }
 
-.remember-login-toggle {
-  flex-shrink: 0;
-  min-width: 88px;
-}
-
 .settings-account-info {
   display: flex;
   flex-direction: column;
@@ -6504,11 +6499,9 @@ html.window-occluded *::after {
 }
 
 .theme-swatches {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
+  display: grid;
+  grid-template-columns: repeat(4, 26px);
   gap: 8px;
-  max-width: 180px;
 }
 
 .theme-swatch {

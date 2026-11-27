@@ -103,12 +103,13 @@ export function LyricsSourcesSettings({ lang }: { lang: Language }) {
         </div>
         <button
           type="button"
-          className={`lang-option-btn remember-login-toggle${upgrade ? ' active' : ''}`}
-          aria-pressed={upgrade}
+          role="switch"
+          className={`plugin-toggle${upgrade ? ' on' : ''}`}
+          aria-checked={upgrade}
           aria-labelledby="set-lyrics-upgrade-label"
           onClick={() => lyricsUpgrade.set(!upgrade)}
         >
-          {upgrade ? t.toggleOn : t.toggleOff}
+          <span className="plugin-toggle-knob" />
         </button>
       </div>
     </div>
