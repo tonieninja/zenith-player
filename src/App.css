@@ -5373,6 +5373,22 @@ html.has-cover-theme .main-play-pause-circle {
   min-height: calc(15px * 1.65 * 4);
 }
 
+/* Ostatni krok z czterema przyciskami był wyższy niż okno 460 px i wychodził poza ekran. */
+@media (max-height: 560px) {
+  .onboarding-card {
+    min-height: 0;
+    max-height: calc(100vh - 24px);
+    overflow-y: auto;
+    padding-block: 24px 20px;
+  }
+  .onboarding-hero-icon {
+    display: none;
+  }
+  .onboarding-actions {
+    gap: 8px;
+  }
+}
+
 .onboarding-tour-card.docked {
   top: 36vh;
   left: calc(var(--sidebar-w, 240px) + (100vw - var(--sidebar-w, 240px)) / 2);

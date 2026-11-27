@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Compass,
   Headphones,
@@ -139,6 +140,15 @@ export function Onboarding({ lang, open, onClose, onSignIn, libAuthed }: Onboard
     return () => window.removeEventListener('keydown', onKey, true);
   }, [open, phase, finish, skipTour]);
 
+  const blocking = open && phase !== 'tour';
+  // zgoda i powitanie blokują aplikację pod spodem; bez inert Tab i Enter trafiały np. w „Zaloguj się”
+  useEffect(() => {
+    if (!blocking) return;
+    const app = document.querySelector('.zenith-app');
+    app?.setAttribute('inert', '');
+    return () => app?.removeAttribute('inert');
+  }, [blocking]);
+
   useLayoutEffect(() => {
     if (!open || phase !== 'tour') return;
     const target = TOUR_TARGETS[step]?.id;
@@ -157,7 +167,7 @@ export function Onboarding({ lang, open, onClose, onSignIn, libAuthed }: Onboard
   if (!open) return null;
 
   if (phase === 'legal') {
-    return (
+    return createPortal(
       <div
         className={`onboarding-root ${leaving ? 'leaving' : ''}`}
         role="dialog"
@@ -196,7 +206,8 @@ export function Onboarding({ lang, open, onClose, onSignIn, libAuthed }: Onboard
             </button>
           </div>
         </div>
-      </div>
+      </div>,
+      document.body
     );
   }
 
@@ -205,7 +216,7 @@ export function Onboarding({ lang, open, onClose, onSignIn, libAuthed }: Onboard
     const Icon = WELCOME_ICONS[current.icon];
     const isLast = step === WELCOME_STEPS.length - 1;
 
-    return (
+    return createPortal(
       <div
         className={`onboarding-root ${leaving ? 'leaving' : ''}`}
         role="dialog"
@@ -274,7 +285,8 @@ export function Onboarding({ lang, open, onClose, onSignIn, libAuthed }: Onboard
             )}
           </div>
         </div>
-      </div>
+      </div>,
+      document.body
     );
   }
 
