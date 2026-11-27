@@ -5924,7 +5924,13 @@ export default function App() {
                   activeTab === 'mood' && browseIdFromMood(activeMood)?.startsWith('UC') ? (
                     <ArtistSkeleton />
                   ) : (
-                    <FeedSkeleton />
+                    <FeedSkeleton
+                      variant={
+                        activeTab === 'home' || activeTab === 'explore' || activeTab === 'search'
+                          ? activeTab
+                          : 'mood'
+                      }
+                    />
                   )
                 ) : !tabHasFeedContent && activeTab !== 'moods_genres' ? (
                   activeTab === 'mood' && activeMood === FAVORITES_ID ? (

@@ -4016,15 +4016,16 @@ button.modal-close-icon {
 }
 
 .artist-skeleton {
-  padding: 16px var(--content-gutter) 48px;
+  padding-bottom: 48px;
 }
 
-.artist-skeleton-hero {
-  flex: none;
-  aspect-ratio: auto;
-  height: clamp(240px, 34vh, 380px);
-  border-radius: 24px;
-  margin-bottom: 24px;
+.artist-skeleton > .library-skeleton,
+.artist-skeleton > .skeleton-cards-row {
+  margin: 0 var(--content-gutter);
+}
+
+.artist-skeleton .artist-hero-text {
+  flex: 1;
 }
 
 @media (max-width: 768px) {
@@ -4050,11 +4051,90 @@ button.modal-close-icon {
 }
 
 .feed-skeleton {
-  padding: 24px var(--content-gutter) 48px;
+  padding: 0 0 48px;
 }
 
-.skeleton-section {
-  margin-bottom: 32px;
+.skeleton-block {
+  --skeleton-sweep: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.03),
+    rgba(255, 255, 255, 0.08),
+    rgba(255, 255, 255, 0.03)
+  );
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.skeleton-chip {
+  flex-shrink: 0;
+  width: 92px;
+  height: 36px;
+  border-radius: 10px;
+}
+
+.explore-top-nav .skeleton-chip {
+  width: 130px;
+  height: 38px;
+  border-radius: 999px;
+}
+
+/* wysokość strzałek 32 px, których szkielet nie ma */
+.yt-section-head .skeleton-line.skeleton-title {
+  margin: 5px 0;
+}
+
+.skeleton-text {
+  color: transparent;
+  border-radius: 8px;
+  box-shadow: none;
+  text-shadow: none;
+}
+
+.feed-skeleton .hero-text-block {
+  flex: 1;
+}
+
+.feed-hero-eyebrow.skeleton-text,
+.hero-badge.skeleton-text {
+  width: 120px;
+}
+
+.feed-hero-title.skeleton-text,
+.hero-title-massive.skeleton-text {
+  width: 60%;
+}
+
+.feed-hero-artist.skeleton-text,
+.hero-artist-name.skeleton-text,
+.artist-hero-meta.skeleton-text {
+  width: 30%;
+}
+
+.artist-hero-name.skeleton-text {
+  width: 45%;
+}
+
+/* trzy linie opisu przy line-height 1.55 */
+.artist-hero-description.skeleton-text {
+  height: 4.65em;
+}
+
+.artist-hero-more.skeleton-text {
+  width: 60px;
+}
+
+.feed-hero-play.skeleton-text {
+  width: 130px;
+  height: 44px;
+  border-radius: 999px;
+}
+
+.search-results-list .library-skeleton {
+  padding: 0;
+  gap: 0;
+}
+
+.search-results-list .library-skeleton-row {
+  padding: 10px 14px;
 }
 
 .skeleton-line {
@@ -4133,6 +4213,7 @@ button.modal-close-icon {
 .skeleton-line,
 .skeleton-card,
 .skeleton-cover,
+.skeleton-block,
 .pm-skeleton span {
   position: relative;
   overflow: hidden;
@@ -4142,6 +4223,7 @@ button.modal-close-icon {
 .skeleton-line::after,
 .skeleton-card::after,
 .skeleton-cover::after,
+.skeleton-block::after,
 .pm-skeleton span::after {
   content: '';
   position: absolute;
