@@ -325,10 +325,21 @@ html.opaque-window #root {
   color: rgba(255, 255, 255, 0.92);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  max-height: 40vh;
+  /* pięć wierszy zamiast 40vh: okno bierze wysokość z panelu, więc vh zamykało się w dwóch liniach */
+  max-height: calc(var(--fs) * 0.72 * 1.55 * 5);
   overflow-y: auto;
   width: 100%;
   text-align: center;
+}
+
+/* cienki suwak jak w panelu tekstu zamiast systemowego ze strzałkami */
+.overlay-plain::-webkit-scrollbar {
+  width: 6px;
+}
+
+.overlay-plain::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
 }
 
 .overlay-root.second-screen .overlay-plain {
@@ -360,6 +371,13 @@ html.opaque-window #root {
   justify-content: center;
 }
 
+/* drugi ekran czyta się z daleka, a 13 px na panelu całego monitora ginęło */
+.overlay-root.second-screen .overlay-idle {
+  gap: 14px;
+  font-size: clamp(16px, 2vw, 26px);
+  color: rgba(255, 255, 255, 0.62);
+}
+
 .overlay-idle-sub {
   font-size: 12px;
   letter-spacing: 0.2px;
@@ -370,4 +388,9 @@ html.opaque-window #root {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.overlay-root.second-screen .overlay-idle-sub {
+  font-size: clamp(14px, 1.5vw, 20px);
+  white-space: normal;
 }
