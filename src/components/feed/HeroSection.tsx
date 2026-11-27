@@ -1,5 +1,5 @@
 import { memo } from 'react';
-import { Play, Radio, Shuffle } from 'lucide-react';
+import { Play, Radio, Shuffle, UserRound } from 'lucide-react';
 import type { Track } from '../../api/youtube';
 import { coverAttrs } from '../../utils/covers';
 import { clickOnKey } from '../ui/keyboard';
@@ -19,6 +19,7 @@ export const HeroSection = memo(function HeroSection({
   t: Record<string, string>;
 }) {
   const artist = track.type === 'artist';
+  const profile = track.type === 'profile';
   return (
     <section className="hero-section" onPointerEnter={onHover && (() => onHover(track))}>
       <div className="hero-content-wrapper">
@@ -29,7 +30,7 @@ export const HeroSection = memo(function HeroSection({
           width={200}
           height={200}
           alt=""
-          className={`hero-cover-art hero-open${artist ? ' is-artist' : ''}`}
+          className={`hero-cover-art hero-open${artist || profile ? ' is-artist' : ''}`}
           onClick={onOpen}
           {...coverAttrs(track, 'large')}
         />
@@ -62,6 +63,11 @@ export const HeroSection = memo(function HeroSection({
                   <Radio size={18} /> {t.artistRadio}
                 </button>
               </>
+            ) : profile ? (
+              // profilu nie da się odtworzyć, „Odtwórz” tylko udawałoby, że coś zagra
+              <button type="button" className="feed-hero-play" onClick={onOpen}>
+                <UserRound size={20} /> {t.openProfile}
+              </button>
             ) : (
               <button type="button" className="feed-hero-play" onClick={() => onPlay('all')}>
                 <Play size={20} fill="currentColor" /> {t.play}

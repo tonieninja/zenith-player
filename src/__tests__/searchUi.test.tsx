@@ -10,6 +10,8 @@ vi.mock('@tauri-apps/api/event', () => ({
 }));
 vi.mock('@tauri-apps/plugin-http', () => ({ fetch: vi.fn() }));
 
+import type { Track } from '../api/youtube';
+import { HeroSection } from '../components/feed/HeroSection';
 import { SearchBox } from '../components/search/SearchBox';
 import { translations } from '../i18n';
 
@@ -73,5 +75,21 @@ describe('search box', () => {
     expect(onSearch).toHaveBeenCalledWith('two');
     expect(el.value).toBe('two');
     expect(host.querySelector('.search-suggest')).toBeNull();
+  });
+});
+
+describe('search top result', () => {
+  it('offers Open instead of Play for a profile', async () => {
+    const onOpen = vi.fn();
+    const onPlay = vi.fn();
+    const profile = { id: 'UCx', type: 'profile', title: 'Someone', artist: '' } as Track;
+    await act(async () => {
+      root.render(<HeroSection track={profile} onOpen={onOpen} onPlay={onPlay} t={t} />);
+    });
+    const buttons = [...host.querySelectorAll('button')];
+    expect(buttons.map((b) => b.textContent?.trim())).toEqual([t.openProfile]);
+    await act(async () => buttons[0].click());
+    expect(onOpen).toHaveBeenCalledTimes(1);
+    expect(onPlay).not.toHaveBeenCalled();
   });
 });
