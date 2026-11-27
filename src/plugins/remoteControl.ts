@@ -85,12 +85,17 @@ export async function forgetRemoteDevices(): Promise<RemoteInfo | null> {
 }
 
 let lastLyricsKey = '';
+// tekst przychodzi raz na utwór, zanim serwer zdąży wystartować; bez tego telefon nie widział go do następnego utworu
+let lyricsBeforeStart: Parameters<typeof pushRemoteLyrics> | null = null;
 export function pushRemoteLyrics(
   trackId: string | null,
   synced: { time: number; text: string }[] | undefined,
   plain: string | null | undefined
 ) {
-  if (!running) return;
+  if (!running) {
+    lyricsBeforeStart = [trackId, synced, plain];
+    return;
+  }
   const key = `${trackId}|${synced?.length ?? 0}|${plain?.length ?? 0}|${synced?.[0]?.text ?? ''}`;
   if (key === lastLyricsKey) return;
   lastLyricsKey = key;
@@ -132,6 +137,8 @@ export async function startRemote(handler: (c: RemoteCommand) => void): Promise<
   running = true;
   lastPayload = '';
   lastLyricsKey = '';
+  if (lyricsBeforeStart) pushRemoteLyrics(...lyricsBeforeStart);
+  lyricsBeforeStart = null;
   return info;
 }
 
@@ -144,6 +151,8 @@ export async function stopRemote() {
   stops += 1;
   running = false;
   lastPayload = '';
+  window.clearTimeout(pushTimer);
+  pushTimer = 0;
   const l = listening;
   listening = null;
   void l?.then((off) => off());

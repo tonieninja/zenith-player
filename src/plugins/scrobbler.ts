@@ -112,7 +112,8 @@ export function createScrobbler(o: ScrobblerOptions): Scrobbler {
     }
   };
   const maybeScrobble = () => {
-    if (!cur || cur.done) return;
+    // bez wykonawcy lub tytułu Last.fm i ListenBrainz odrzucają odsłuch na stałe, a kolejka ponawiałaby go bez końca
+    if (!cur || cur.done || !cur.info.artist.trim() || !cur.info.title.trim()) return;
     const d = cur.info.duration;
     if (!(d > 30) || cur.listened < scrobbleThreshold(d)) return;
     cur.done = true;

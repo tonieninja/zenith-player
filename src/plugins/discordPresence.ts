@@ -5,6 +5,7 @@ export const DEFAULT_CLIENT_ID = '1514342633374486709';
 
 const MIN_UPDATE_INTERVAL_MS = 4000;
 const RETRY_MS = 15000;
+const BUSY_RETRY_MS = 1000;
 
 export function getDiscordClientId(): string {
   const own = localStorage.getItem('zenith_discord_client_id')?.trim() ?? '';
@@ -39,16 +40,20 @@ function send(info: NowPlayingInfo) {
       trackUrl: `https://music.youtube.com/watch?v=${info.id}`,
       context: info.context || null,
     },
-  }).catch(() => {
+  }).catch((e: unknown) => {
     lastSentKey = '';
     // Discord włączony po Zenith albo zrestartowany: bez ponowienia status czekałby na następny utwór
     if (sentAt !== lastSentAt || retryTimer) return;
-    retryTimer = setTimeout(() => {
-      retryTimer = null;
-      if (sentAt !== lastSentAt) return;
-      const shift = info.isPlaying ? (Date.now() - sentAt) / 1000 : 0;
-      send({ ...info, position: info.position + shift });
-    }, RETRY_MS);
+    retryTimer = setTimeout(
+      () => {
+        retryTimer = null;
+        if (sentAt !== lastSentAt) return;
+        const shift = info.isPlaying ? (Date.now() - sentAt) / 1000 : 0;
+        send({ ...info, position: info.position + shift });
+      },
+      // „busy” to poprzednia aktualizacja jeszcze w drodze; 15 s zostawiałoby na Discordzie stary stan, np. pauzę
+      e === 'busy' ? BUSY_RETRY_MS : RETRY_MS
+    );
   });
 }
 

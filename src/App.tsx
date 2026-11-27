@@ -4654,6 +4654,7 @@ export default function App() {
   }, [audio, pluginStates]);
 
   const remoteEnabled = Boolean(pluginStates['remote-control']);
+  const sleepTimerOn = Boolean(pluginStates['sleep-timer']);
   const cycleLoopRef = useLatest(cycleLoop);
   const handleItemClickRef = useLatest(handleItemClick);
   // pusta kolejka nie ma „po bieżącym”, więc utwór po prostu zaczyna grać; true znaczy, że trafił do kolejki
@@ -4722,6 +4723,8 @@ export default function App() {
     queue,
     queueIndex,
     remoteSnapRef,
+    // wyłącznik włączony w aplikacji ma od razu pokazać odliczanie na telefonie
+    sleepTimerOn,
   ]);
   useEffect(() => {
     if (!remoteEnabled) return;

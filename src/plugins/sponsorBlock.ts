@@ -13,6 +13,8 @@ export interface Segment {
 }
 
 const cache = new Map<string, Segment[]>();
+// czas nieudanego zapytania zamiast timera, który przeżyłby wyłączenie wtyczki
+const failedAt = new Map<string, number>();
 const kept = new Set<Segment>();
 let lastId = '';
 let lastJump = Number.NaN;
@@ -47,6 +49,7 @@ async function load(id: string) {
   cache.set(id, []);
   if (cache.size > 300) {
     cache.clear();
+    failedAt.clear();
     cache.set(id, []);
   }
   try {
@@ -57,7 +60,7 @@ async function load(id: string) {
     cache.set(id, parseSegments(await res.json(), id));
   } catch {
     // offline nie może pytać co 250 ms, a po minucie warto spróbować jeszcze raz
-    setTimeout(() => cache.delete(id), RETRY_MS);
+    failedAt.set(id, Date.now());
   }
 }
 
@@ -74,6 +77,10 @@ export function sponsorBlockJump(id: string, t: number, d: number): number | nul
     lastId = id;
     lastJump = Number.NaN;
     kept.clear();
+  }
+  if (Date.now() - (failedAt.get(id) ?? Infinity) >= RETRY_MS) {
+    failedAt.delete(id);
+    cache.delete(id);
   }
   const segs = cache.get(id);
   if (!segs) {
@@ -106,6 +113,7 @@ export const sponsorBlockPlugin: ZenithPlugin = {
 
 export function resetSponsorBlockForTests() {
   cache.clear();
+  failedAt.clear();
   kept.clear();
   lastId = '';
   lastJump = Number.NaN;

@@ -21,6 +21,7 @@ type Role = 'host' | 'guest' | '';
 let onSync: ((state: RoomState) => void) | null = null;
 let onStatus: ((msg: string) => void) | null = null;
 let guestSocket: WebSocket | null = null;
+let leaveGen = 0;
 
 function setRole(role: Role, code: string, port?: number) {
   if (code) localStorage.setItem(ROOM_CODE_KEY, code);
@@ -71,10 +72,14 @@ export async function joinRoom(code: string): Promise<boolean> {
   const cleaned = code.trim().toUpperCase();
   if (!/^[A-Z0-9]{6}$/.test(cleaned)) return false;
   await leaveRoom();
+  const gen = leaveGen;
+  // wyjście albo wyłączenie wtyczki w trakcie dołączania wygrywa; gniazdo należy już do kogoś innego
+  const left = () => gen !== leaveGen;
   onStatus?.('connecting');
 
   try {
     const ok = await invoke<boolean>('room_join', { code: cleaned });
+    if (left()) return false;
     if (!ok) {
       onStatus?.('error');
       return false;
@@ -85,6 +90,7 @@ export async function joinRoom(code: string): Promise<boolean> {
     } catch {
       port = Number(localStorage.getItem(ROOM_PORT_KEY) || 18765);
     }
+    if (left()) return false;
     const ws = new WebSocket(`ws://127.0.0.1:${port}/ws?code=${encodeURIComponent(cleaned)}`);
     guestSocket = ws;
     await new Promise<void>((resolve, reject) => {
@@ -98,6 +104,10 @@ export async function joinRoom(code: string): Promise<boolean> {
         reject(new Error('ws error'));
       };
     });
+    if (left()) {
+      ws.close();
+      return false;
+    }
     ws.onmessage = (ev) => {
       let state: RoomState | null;
       try {
@@ -112,6 +122,7 @@ export async function joinRoom(code: string): Promise<boolean> {
     onStatus?.('joined');
     return true;
   } catch {
+    if (left()) return false;
     // gniazdo po timeoucie mogłoby się jeszcze otworzyć i wisieć bez właściciela
     dropGuestSocket();
     setRole('', '');
@@ -129,6 +140,7 @@ function dropGuestSocket() {
 }
 
 export async function leaveRoom() {
+  leaveGen += 1;
   dropGuestSocket();
   if (isRoomHost()) await invoke('room_leave');
   setRole('', '');

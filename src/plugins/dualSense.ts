@@ -200,7 +200,9 @@ export const dualSensePlugin: ZenithPlugin = {
   defaultEnabled: false,
   async onEnable() {
     await startHid();
-    startGamepad();
+    // wyłączenie w trakcie startu HID zostawiłoby interwał Gamepad API bez właściciela
+    if (!unlistenStatus) return;
+    if (!hidConnected) startGamepad();
     showBase();
   },
   async onDisable() {

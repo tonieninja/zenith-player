@@ -38,6 +38,26 @@ describe('discord presence', () => {
     expect(pos).toBeLessThan(26);
   });
 
+  it('resends an update that met the previous one still in flight within a second', async () => {
+    invoke.mockRejectedValueOnce('busy').mockResolvedValue(undefined);
+    discordPresencePlugin.onNowPlaying?.({ ...info, isPlaying: false });
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(updates()).toHaveLength(2);
+    expect(updates()[1][1].payload.isPlaying).toBe(false);
+  });
+
+  it('keeps retrying until Discord is started and then stops', async () => {
+    invoke.mockRejectedValue('no discord');
+    discordPresencePlugin.onNowPlaying?.({ ...info, isPlaying: false });
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(updates()).toHaveLength(5);
+    invoke.mockResolvedValue(undefined);
+    await vi.advanceTimersByTimeAsync(15_000);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(updates()).toHaveLength(6);
+    expect(updates()[5][1].payload).toMatchObject({ isPlaying: false, position: 10 });
+  });
+
   it('does not retry after the plugin is turned off', async () => {
     invoke.mockRejectedValueOnce('no discord').mockResolvedValue(undefined);
     discordPresencePlugin.onNowPlaying?.(info);

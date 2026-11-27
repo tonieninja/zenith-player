@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const m = vi.hoisted(() => ({ listens: 0, calls: [] as string[] }));
+const m = vi.hoisted(() => ({ listens: 0, calls: [] as string[], pushed: [] as string[] }));
 vi.mock('@tauri-apps/api/event', () => ({
   listen: vi.fn(async () => {
     m.listens += 1;
@@ -9,14 +9,15 @@ vi.mock('@tauri-apps/api/event', () => ({
   emit: vi.fn(async () => {}),
 }));
 vi.mock('@tauri-apps/api/core', () => ({
-  invoke: vi.fn(async (cmd: string) => {
+  invoke: vi.fn(async (cmd: string, args?: { payload?: string }) => {
     m.calls.push(cmd);
+    if (cmd === 'remote_push') m.pushed.push(args!.payload!);
     if (cmd === 'remote_start') await new Promise((r) => setTimeout(r, 5));
     return { url: '', port: 1 };
   }),
 }));
 
-import { startRemote, stopRemote } from '../plugins/remoteControl';
+import { pushRemoteLyrics, startRemote, stopRemote } from '../plugins/remoteControl';
 
 const stops = () => m.calls.filter((c) => c === 'remote_stop').length;
 
@@ -25,6 +26,7 @@ describe('phone remote start and stop', () => {
     await stopRemote();
     m.listens = 0;
     m.calls = [];
+    m.pushed = [];
   });
 
   it('listens once when started twice in a row', async () => {
@@ -45,5 +47,13 @@ describe('phone remote start and stop', () => {
     const b = startRemote(() => {});
     await Promise.all([a, b]);
     expect(stops()).toBe(1);
+  });
+
+  it('sends lyrics loaded before the server was up once it starts', async () => {
+    pushRemoteLyrics('abcdefghijk', [{ time: 1.5, text: 'line' }], null);
+    expect(m.pushed).toHaveLength(0);
+    await startRemote(() => {});
+    expect(m.pushed).toHaveLength(1);
+    expect(JSON.parse(m.pushed[0])).toMatchObject({ type: 'lyrics', trackId: 'abcdefghijk' });
   });
 });

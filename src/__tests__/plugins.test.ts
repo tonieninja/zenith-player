@@ -332,6 +332,11 @@ describe('plugin search', () => {
     expect(pluginQueryMatches(names, 'petla')).toBe(true);
   });
 
+  it('finds Polish names typed without Polish letters', () => {
+    expect(pluginQueryMatches(['Wyłącznik czasowy'], 'wylacznik')).toBe(true);
+    expect(pluginQueryMatches(['Normalizacja głośności'], 'GŁOŚNOŚĆ')).toBe(true);
+  });
+
   it('does not match an unrelated query', () => {
     expect(pluginQueryMatches(names, 'equalizer')).toBe(false);
   });
