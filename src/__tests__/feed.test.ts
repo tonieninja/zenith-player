@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import type { Section, Track } from '../api/youtube';
-import { resolveFeedItem, bylineFromRuns, tidyByline, upsertSections } from '../utils/feed';
+import {
+  resolveFeedItem,
+  bylineFromRuns,
+  tidyByline,
+  upsertSections,
+  saveHomeSnapshot,
+  loadHomeSnapshot,
+} from '../utils/feed';
 import { browseMoodId, isViewingPlaylist, itemClickPlan, sidebarClickPlan } from '../utils/tracks';
 
 describe('search / feed item identity', () => {
@@ -227,5 +234,20 @@ describe('home shelves merge', () => {
   it('keeps the same array when nothing changed', () => {
     const cur = [shelf('A'), shelf('B')];
     expect(upsertSections(cur, [cur[1]])).toBe(cur);
+  });
+});
+
+describe('home snapshot for a cold start', () => {
+  it('is read back only for the same language and sign-in state, trimmed', () => {
+    const sections = Array.from({ length: 10 }, (_, i) => shelf(`S${i}`, 20));
+    saveHomeSnapshot({ key: 'FEmusic_home:pl:0', sections, quickPicks: [track('q')], chips: [] });
+    const snap = loadHomeSnapshot('FEmusic_home:pl:0')!;
+    expect(snap.sections).toHaveLength(8);
+    expect(snap.sections[0].items).toHaveLength(12);
+    expect(snap.quickPicks).toHaveLength(1);
+    expect(loadHomeSnapshot('FEmusic_home:pl:1')).toBeNull();
+    expect(loadHomeSnapshot('FEmusic_home:en:0')).toBeNull();
+    localStorage.setItem('zenith_home_cache_v1', '{broken');
+    expect(loadHomeSnapshot('FEmusic_home:pl:0')).toBeNull();
   });
 });

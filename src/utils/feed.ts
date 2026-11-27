@@ -1,4 +1,4 @@
-import type { Section, Track } from '../api/youtube';
+import type { HomeChip, Section, Track } from '../api/youtube';
 
 export type FeedItemIdentity = { id: string; type: Track['type'] };
 
@@ -164,4 +164,37 @@ export function upsertSections(cur: Section[], incoming: Section[]): Section[] {
     }
   }
   return changed ? next : cur;
+}
+
+export interface HomeSnapshot {
+  key: string;
+  sections: Section[];
+  quickPicks: Track[];
+  chips: HomeChip[];
+}
+
+const HOME_SNAPSHOT_KEY = 'zenith_home_cache_v1';
+
+export function saveHomeSnapshot(snap: HomeSnapshot) {
+  try {
+    const sections = snap.sections.slice(0, 8).map((s) => ({ ...s, items: s.items.slice(0, 12) }));
+    localStorage.setItem(HOME_SNAPSHOT_KEY, JSON.stringify({ ...snap, sections }));
+  } catch {
+    /* pełny localStorage: start pokaże splash do odpowiedzi sieci, jak bez migawki */
+  }
+}
+
+/** Ostatnia Główna dla tego języka i stanu logowania, żeby start nie czekał na sieć. */
+export function loadHomeSnapshot(key: string): HomeSnapshot | null {
+  try {
+    const v = JSON.parse(localStorage.getItem(HOME_SNAPSHOT_KEY) || 'null');
+    const ok =
+      v?.key === key &&
+      Array.isArray(v.sections) &&
+      Array.isArray(v.quickPicks) &&
+      Array.isArray(v.chips);
+    return ok ? v : null;
+  } catch {
+    return null;
+  }
 }

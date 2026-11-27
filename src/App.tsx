@@ -58,6 +58,7 @@ import {
   getWatchRelated,
   getRadioTracks,
   getHomeNextPage,
+  homeFeedKey,
   type HomeChip,
   getTrackRefs,
   getRelatedTracks,
@@ -290,7 +291,12 @@ import {
 } from './utils/appUpdate';
 import { resetOnboarding, shouldShowOnboarding } from './utils/onboarding';
 import { smartShuffle } from './utils/smartShuffle';
-import { stableOrderSections, upsertSections } from './utils/feed';
+import {
+  loadHomeSnapshot,
+  saveHomeSnapshot,
+  stableOrderSections,
+  upsertSections,
+} from './utils/feed';
 import { streamCacheSet } from './utils/streamCache';
 import {
   installMaximizeStateHandler,
@@ -967,10 +973,13 @@ export default function App() {
   );
 
   const showSplashRef = useLatest(showSplash);
+  const splashFedRef = useRef(false);
   const startBackgroundPrefetch = useCallback(
     (tracks: Track[]) => {
       // ten stan rysuje tylko pasek ekranu startowego; później każde wejście na Główną dokładałoby 3 rendery
-      if (!showSplashRef.current) return;
+      if (!showSplashRef.current || splashFedRef.current) return;
+      // migawka z poprzedniego startu już karmi splash; odpowiedź sieci zaczęłaby ładowanie okładek od zera
+      splashFedRef.current = true;
       if (!tracks || tracks.length === 0) {
         setPrefetchComplete(true);
         return;
@@ -994,8 +1003,24 @@ export default function App() {
     [showSplashRef]
   );
 
-  // klucz (język i stan logowania) wyświetlonej Głównej; pusty, dopóki nic nie przyszło z sieci
+  // klucz (język i stan logowania) Głównej z sieci; pusty, gdy widać migawkę albo nic
   const homeKeyRef = useRef('');
+  const quickFromCacheRef = useRef(false);
+  const homeEmptyRef = useLatest(homeSections.length === 0 && quickPicks.length === 0);
+
+  const showCachedHome = useCallback(
+    async (language: Language, seq: number) => {
+      const snap = loadHomeSnapshot(await homeFeedKey(language).catch(() => ''));
+      // sieć mogła odpowiedzieć szybciej niż odczyt ciasteczek
+      if (!snap || seq !== feedSeqRef.current.home || homeKeyRef.current) return;
+      quickFromCacheRef.current = snap.quickPicks.length > 0;
+      setHomeSections(snap.sections);
+      setQuickPicks(snap.quickPicks);
+      setHomeChips(snap.chips);
+      startBackgroundPrefetch([...snap.quickPicks, ...snap.sections.flatMap((s) => s.items)]);
+    },
+    [startBackgroundPrefetch]
+  );
 
   const loadHome = useCallback(
     (language: Language = lang, navigate = true) => {
@@ -1007,11 +1032,12 @@ export default function App() {
         setActiveMood(null);
         setBrowseEmptyKind(null);
       }
+      if (homeEmptyRef.current) void showCachedHome(language, dataSeq);
       const safety = window.setTimeout(() => setFeedTabLoading('home', false), 8000);
       getHomeFeed(language)
         .then((feed) => {
           if (dataSeq !== feedSeqRef.current.home) return;
-          // pusta odpowiedź to zwykle brak sieci: zostaje to, co już widać
+          // pusta odpowiedź to zwykle brak sieci: zostaje to, co już widać, choćby migawka
           if (!feed.sections.length && !feed.quickPicks.length) {
             startBackgroundPrefetch([]);
             return;
@@ -1032,7 +1058,10 @@ export default function App() {
               setHomeSections((cur) => (cur.some((s) => s.title === r.title) ? cur : [...cur, r]));
             });
           }
-          setQuickPicks((prev) => (feed.quickPicks.length || fresh ? feed.quickPicks : prev));
+          if (feed.quickPicks.length || !quickFromCacheRef.current) {
+            quickFromCacheRef.current = false;
+            setQuickPicks((prev) => (feed.quickPicks.length || fresh ? feed.quickPicks : prev));
+          }
           setHomeChips(feed.chips);
           setHomeHasMore(feed.more);
           const items = [...feed.quickPicks, ...base.flatMap((s) => s.items)];
@@ -1048,7 +1077,15 @@ export default function App() {
           if (dataSeq === feedSeqRef.current.home) setFeedTabLoading('home', false);
         });
     },
-    [lang, navigateTo, setFeedTabLoading, prefetchStream, startBackgroundPrefetch]
+    [
+      lang,
+      navigateTo,
+      setFeedTabLoading,
+      prefetchStream,
+      startBackgroundPrefetch,
+      showCachedHome,
+      homeEmptyRef,
+    ]
   );
 
   const homeMoreBusyRef = useRef(false);
@@ -1061,10 +1098,14 @@ export default function App() {
         homeMoreFailsRef.current = 0;
         if (page.key !== homeKeyRef.current) return;
         if (page.quickPicks.length) {
+          const stale = quickFromCacheRef.current;
+          quickFromCacheRef.current = false;
           const box = document.querySelector<HTMLElement>('.content-area .sections-container');
           const scroller = box?.closest<HTMLElement>('.content-scrollable');
           const before = box?.getBoundingClientRect().top ?? 0;
-          flushSync(() => setQuickPicks((prev) => (prev.length ? prev : page.quickPicks)));
+          flushSync(() =>
+            setQuickPicks((prev) => (prev.length && !stale ? prev : page.quickPicks))
+          );
           // wiersz wstawiony nad widokiem; Chromium sam trzyma treść w miejscu, WebKit nie ma zakotwiczenia
           const shift = (box?.getBoundingClientRect().top ?? 0) - before;
           if (scroller && shift && before < scroller.getBoundingClientRect().top) {
@@ -1115,6 +1156,17 @@ export default function App() {
     },
     [lang, loadHome]
   );
+
+  useEffect(() => {
+    // tylko dane z sieci: zapis migawki pokazanej z migawki przedłużałby jej życie bez końca
+    if (!homeKeyRef.current || !homeSections.length) return;
+    saveHomeSnapshot({
+      key: homeKeyRef.current,
+      sections: homeSections,
+      quickPicks,
+      chips: homeChips,
+    });
+  }, [homeSections, quickPicks, homeChips]);
 
   const searchLangRef = useRef(lang);
   useEffect(() => {
