@@ -4023,11 +4023,22 @@ button.modal-close-icon {
   font-size: 14px;
 }
 
+/* wiersz ma 14 px wewnętrznego marginesu, więc numer zaczyna się w linii z tytułem sekcji */
 .artist-top-songs {
   list-style: none;
-  padding: 0 clamp(16px, 3vw, 52px);
+  padding: 0 calc(var(--content-gutter) - 14px);
   display: flex;
   flex-direction: column;
+}
+
+.artist-top-songs .artist-song-index {
+  text-align: left;
+}
+
+@media (max-width: 768px) {
+  .artist-top-songs {
+    padding: 0 calc(var(--content-gutter) - 8px);
+  }
 }
 
 .artist-song-index {
